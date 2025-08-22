@@ -170,7 +170,6 @@ public class LogicalOptimizeTableHandler extends LogicalCommonDdlHandler {
                 for (String gsiName : gsiBeans.keySet()) {
                     GsiMetaManager.GsiIndexMetaBean gsiBean = gsiBeans.get(gsiName);
                     if (gsiBean != null) {
-
                         continue;
                     }
                     result.add(Pair.of(schema, gsiName));

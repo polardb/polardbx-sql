@@ -64,6 +64,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -169,8 +170,8 @@ public class DeadlockDetectionTask implements Runnable {
             + "information_schema.INNODB_TRX AS trx_a, information_schema.INNODB_TRX AS trx_b, "
             + "information_schema.INNODB_LOCKS AS locks_a, information_schema.INNODB_LOCKS AS locks_b "
             + "WHERE "
-            /* Filter the non-direct-blocking trx. Trx which is waiting a lock should not block others. */
-            + "trx_b.trx_state != 'LOCK WAIT' "
+            /* Filter the non-direct-blocking trx. Trx which is waiting a lock and locked rows <= 1 should not block others. */
+            + "(trx_b.trx_state != 'LOCK WAIT' OR trx_b.trx_rows_locked > 1) "
             + "AND "
             /* Join innodb_trx to get the trx information. */
             + "trx_b.trx_id = lock_waits.blocking_trx_id AND lock_waits.requesting_trx_id = trx_a.trx_id "
@@ -181,6 +182,8 @@ public class DeadlockDetectionTask implements Runnable {
     private static final AtomicLong SKIP = new AtomicLong(0L);
     private final Collection<String> allSchemas;
     private static Class killSyncActionClass;
+
+    private static boolean debug = false;
 
     static {
         // 只有server支持
@@ -224,6 +227,7 @@ public class DeadlockDetectionTask implements Runnable {
             try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
                 final Statement stmt = conn.createStatement();
                 final ResultSet rs = stmt.executeQuery(SQL_QUERY_TRX_80 + " LIMIT " + maxFetchRows)) {
+                StringBuilder sb = new StringBuilder("all innodb trx: ");
                 while (rs.next()) {
                     LocalTrxInfo localTrxInfo = new LocalTrxInfo(
                         rs.getLong("trx_id"),
@@ -237,12 +241,20 @@ public class DeadlockDetectionTask implements Runnable {
                         rs.getInt("heap_size"),
                         rs.getInt("row_locks")
                     );
+                    if (debug) {
+                        sb.append("\n").append(localTrxInfo.info());
+                    }
                     localTrxInfoMap.put(localTrxInfo.getTrxId(), localTrxInfo);
-                    // Record trx holding locks but not waiting any other locks.
-                    if (!localTrxInfo.getState().equalsIgnoreCase("LOCK WAIT")
-                        && localTrxInfo.getRowLocks() > 0) {
+                    if ((!localTrxInfo.getState().equalsIgnoreCase("LOCK WAIT")
+                        && localTrxInfo.getRowLocks() > 0)
+                        || localTrxInfo.getRowLocks() > 1) {
                         blockingTrxSet.add(localTrxInfo.getTrxId());
                     }
+                }
+                if (debug) {
+                    logger.warn(sb.toString());
+                    logger.warn("all blocking trx: ");
+                    blockingTrxSet.forEach(b -> logger.warn(String.valueOf(b)));
                 }
             } catch (SQLException ex) {
                 final String dnId = dataSource.getMasterSourceAddress();
@@ -254,15 +266,32 @@ public class DeadlockDetectionTask implements Runnable {
                 try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
                     final Statement stmt = conn.createStatement();
                     final ResultSet rs = stmt.executeQuery(SQL_QUERY_LOCK_WAITS_80)) {
+                    StringBuilder sb = new StringBuilder("all wait-for trx: ");
                     while (rs.next()) {
                         final long waitingTrxId = rs.getLong("waiting_trx_id");
                         final long blockingTrxId = rs.getLong("blocking_trx_id");
+                        if (debug) {
+                            sb.append("\ntrx ")
+                                .append(waitingTrxId)
+                                .append(" waiting ")
+                                .append(blockingTrxId);
+                        }
                         if (!blockingTrxSet.contains(blockingTrxId)) {
+                            if (debug) {
+                                sb.append("\ntrx ").append(blockingTrxId).append(" not found in blocking list");
+                            }
                             continue;
                         }
                         final LocalTrxInfo waitingTrxInfo = localTrxInfoMap.get(waitingTrxId);
                         final LocalTrxInfo blockingTrxInfo = localTrxInfoMap.get(blockingTrxId);
                         if (null == waitingTrxInfo || null == blockingTrxInfo) {
+                            if (debug) {
+                                if (null == waitingTrxInfo) {
+                                    sb.append("\nwaiting trx ").append(waitingTrxId).append(" not found in local");
+                                } else {
+                                    sb.append("\nblocking trx ").append(blockingTrxId).append(" not found in local");
+                                }
+                            }
                             continue;
                         }
                         // Update the wait-for graph and the lookup set
@@ -275,6 +304,16 @@ public class DeadlockDetectionTask implements Runnable {
                         final TrxLookupSet.Transaction blockingTrx = waitingAndBlockingTrx.getMiddle();
 
                         if (null != waitingTrx && null != blockingTrx) {
+                            if (debug) {
+                                sb.append("\n").append("trx ")
+                                    .append(waitingTrxId)
+                                    .append(" trx id ")
+                                    .append(Long.toHexString(waitingTrx.getTransactionId()))
+                                    .append(" waiting trx ")
+                                    .append(blockingTrxId)
+                                    .append(" trx id ")
+                                    .append(Long.toHexString(blockingTrx.getTransactionId()));
+                            }
                             // Update the wait-for graph and the lookup set
                             graph.addDiEdge(waitingTrx, blockingTrx);
 
@@ -293,7 +332,23 @@ public class DeadlockDetectionTask implements Runnable {
                                 // Ignore.
                                 logger.warn("Get lock-wait message failed.", t);
                             }
+                        } else if (debug) {
+                            if (null != waitingTrx) {
+                                sb.append("\nFound single waiting trx ")
+                                    .append(Long.toHexString(waitingTrx.getTransactionId())).append(" trx id ")
+                                    .append(waitingTrxId).append(" blocking trx id ").append(blockingTrxId);
+                            } else if (null != blockingTrx) {
+                                sb.append("\nFound single blocking trx ")
+                                    .append(Long.toHexString(blockingTrx.getTransactionId())).append(" trx id ")
+                                    .append(blockingTrxId).append(" waiting trx id ").append(waitingTrxId);
+                            } else {
+                                sb.append("\nFound no polardbx trx waiting ").append(waitingTrxId).append(" blocking ")
+                                    .append(blockingTrxId);
+                            }
                         }
+                    }
+                    if (debug) {
+                        logger.warn(sb.toString());
                     }
                 } catch (SQLException ex) {
                     final String dnId = dataSource.getMasterSourceAddress();
@@ -469,6 +524,8 @@ public class DeadlockDetectionTask implements Runnable {
             return;
         }
 
+        debug = DynamicConfig.getInstance().isPrintMoreInfoForDeadlockDetection();
+
         TransactionLogger.debug("Deadlock detection task starts.");
         try {
 
@@ -499,56 +556,84 @@ public class DeadlockDetectionTask implements Runnable {
                         return;
                     }
 
+                    if (debug) {
+                        logger.warn("trx lookup set: " + lookupSet);
+                    }
+
                     // Fetch lock-wait information for this DN,
                     // and update the lookup set and the graph with the information
                     fetchLockWaits(groupDataSource, groupNames, lookupSet, graph);
                 }
             }
 
-            graph.detect().ifPresent((cycle) -> {
-                assert cycle.size() >= 2;
-                final Pair<StringBuilder, StringBuilder> deadlockLog = DeadlockParser.parseGlobalDeadlock(cycle);
-                final StringBuilder simpleDeadlockLog = deadlockLog.getKey();
-                final StringBuilder fullDeadlockLog = deadlockLog.getValue();
+            while (true) {
+                AtomicBoolean detected = new AtomicBoolean(false);
+                graph.detect().ifPresent((cycle) -> {
+                    detected.set(true);
+                    final Pair<StringBuilder, StringBuilder> deadlockLog = DeadlockParser.parseGlobalDeadlock(cycle);
+                    final StringBuilder simpleDeadlockLog = deadlockLog.getKey();
+                    final StringBuilder fullDeadlockLog = deadlockLog.getValue();
 
-                Optional.ofNullable(OptimizerContext.getTransStat(DEFAULT_DB_NAME))
-                    .ifPresent(s -> s.countGlobalDeadlock.incrementAndGet());
+                    Optional.ofNullable(OptimizerContext.getTransStat(DEFAULT_DB_NAME))
+                        .ifPresent(s -> s.countGlobalDeadlock.incrementAndGet());
 
-                // TODO: kill transaction by some priority, such as create time, or prefer to kill internal transaction.
-                // The index of the transaction to be killed in the cycle
-                int indexOfToKillTrx = 0;
-                for (int i = 0; i < cycle.size(); i++) {
-                    if (!cycle.get(i).isDdl()) {
-                        indexOfToKillTrx = i;
+                    // TODO: kill transaction by some priority, such as create time, or prefer to kill internal transaction.
+                    // The index of the transaction to be killed in the cycle
+                    int indexOfToKillTrx = 0;
+                    for (int i = 0; i < cycle.size(); i++) {
+                        if (!cycle.get(i).isDdl()) {
+                            indexOfToKillTrx = i;
+                        }
                     }
+
+                    final TrxLookupSet.Transaction toKillTrx = cycle.get(indexOfToKillTrx);
+                    simpleDeadlockLog
+                        .append(String.format(" Will rollback %s", Long.toHexString(toKillTrx.getTransactionId())));
+                    fullDeadlockLog.append(String.format("*** WE ROLL BACK TRANSACTION (%s)\n", indexOfToKillTrx + 1));
+
+                    if (cycle.get(indexOfToKillTrx).isDdl()) {
+                        printDdlDeadlock(cycle, fullDeadlockLog);
+                    }
+
+                    // Store deadlock log in StorageInfoManager so that executor can access it
+                    StorageInfoManager.updateDeadlockInfo(fullDeadlockLog.toString());
+                    // Record deadlock in meta db.
+                    try (Connection connection = MetaDbUtil.getConnection()) {
+                        DeadlocksAccessor deadlocksAccessor = new DeadlocksAccessor();
+                        deadlocksAccessor.setConnection(connection);
+                        deadlocksAccessor.recordDeadlock(GlobalTxLogManager.getCurrentServerAddr(), "GLOBAL",
+                            fullDeadlockLog.toString());
+                    } catch (Exception e) {
+                        logger.error(e);
+                    }
+
+                    TransactionLogger.warn(simpleDeadlockLog.toString());
+                    logger.warn(simpleDeadlockLog.toString());
+                    EventLogger.log(EventType.DEAD_LOCK_DETECTION, simpleDeadlockLog.toString());
+
+                    final long toKillFrontendConnId = toKillTrx.getFrontendConnId();
+                    killByFrontendConnId(toKillFrontendConnId);
+
+                    graph.removeEdge(toKillTrx);
+                });
+                if (!detected.get()) {
+                    break;
                 }
-                final TrxLookupSet.Transaction toKillTrx = cycle.get(indexOfToKillTrx);
-                simpleDeadlockLog
-                    .append(String.format(" Will rollback %s", Long.toHexString(toKillTrx.getTransactionId())));
-                fullDeadlockLog.append(String.format("*** WE ROLL BACK TRANSACTION (%s)\n", indexOfToKillTrx + 1));
+            }
 
-                // Store deadlock log in StorageInfoManager so that executor can access it
-                StorageInfoManager.updateDeadlockInfo(fullDeadlockLog.toString());
-                // Record deadlock in meta db.
-                try (Connection connection = MetaDbUtil.getConnection()) {
-                    DeadlocksAccessor deadlocksAccessor = new DeadlocksAccessor();
-                    deadlocksAccessor.setConnection(connection);
-                    deadlocksAccessor.recordDeadlock(GlobalTxLogManager.getCurrentServerAddr(), "GLOBAL",
-                        fullDeadlockLog.toString());
-                } catch (Exception e) {
-                    logger.error(e);
-                }
-
-                TransactionLogger.warn(simpleDeadlockLog.toString());
-                logger.warn(simpleDeadlockLog.toString());
-                EventLogger.log(EventType.DEAD_LOCK_DETECTION, simpleDeadlockLog.toString());
-
-                final long toKillFrontendConnId = toKillTrx.getFrontendConnId();
-                killByFrontendConnId(toKillFrontendConnId);
-            });
         } catch (Throwable ex) {
             logger.error("Failed to do deadlock detection", ex);
         }
+    }
+
+    static void printDdlDeadlock(ArrayList<TrxLookupSet.Transaction> cycle, StringBuilder fullDeadlockLog) {
+        TransactionLogger.warn("Deadlock caused by DDL, killing DDL.");
+        logger.warn("Deadlock caused by DDL, killing DDL.");
+        EventLogger.log(EventType.DEAD_LOCK_DETECTION, "Deadlock caused by DDL, killing DDL.");
+        for (TrxLookupSet.Transaction transaction : cycle) {
+            logger.warn(transaction.toString());
+        }
+        logger.warn(fullDeadlockLog.toString());
     }
 
     protected boolean maybeTooManyDataLockWaits(TGroupDataSource dataSource) {
@@ -617,6 +702,16 @@ public class DeadlockDetectionTask implements Runnable {
             this.lockStructs = lockStructs;
             this.heapSize = heapSize;
             this.rowLocks = rowLocks;
+        }
+
+        public String info() {
+            return "{\n"
+                + " trxId: " + trxId + ",\n"
+                + " connId: " + connId + ",\n"
+                + " state: " + state + ",\n"
+                + " rowLocks: " + rowLocks + ",\n"
+                + " sql: " + physicalSql + "\n"
+                + "}";
         }
     }
 }

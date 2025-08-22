@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
@@ -194,6 +195,7 @@ public class ShortBlock extends AbstractBlock {
         ShortBlock vectorSlot = another.cast(ShortBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
+        vectorSlot.updateSizeInfo();
     }
 
     @Override
@@ -229,7 +231,9 @@ public class ShortBlock extends AbstractBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        elementUsedBytes = Byte.BYTES * positionCount + Short.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(values));
+        estimatedSize = elementUsedBytes;
     }
 }

@@ -4,6 +4,7 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.gms.ColumnarStoreUtils;
 import com.alibaba.polardbx.executor.gms.FileVersionStorage;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -25,8 +26,8 @@ public class CsvDataIterator implements Iterator<Chunk> {
         this.csvFileName = csvFileName;
         this.position = position;
         try {
-            this.csvFileReader.open(new ExecutionContext(), columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine,
-                csvFileName, 0, (int) position);
+            this.csvFileReader.open(ColumnarStoreUtils.newEcForCache(), columnMetas,
+                FileVersionStorage.CSV_CHUNK_LIMIT, engine, csvFileName, 0, (int) position);
         } catch (Throwable t) {
             throw new TddlRuntimeException(ErrorCode.ERR_LOAD_CSV_FILE, t,
                 String.format("Failed to open csv file reader, file name: %s, position: %d",
@@ -41,7 +42,7 @@ public class CsvDataIterator implements Iterator<Chunk> {
         this.csvFileName = csvFileName;
         this.position = end;
         try {
-            this.csvFileReader.open(new ExecutionContext(), columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine,
+            this.csvFileReader.open(context, columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine,
                 csvFileName, start, end - start);
         } catch (Throwable t) {
             String msgPrefix =

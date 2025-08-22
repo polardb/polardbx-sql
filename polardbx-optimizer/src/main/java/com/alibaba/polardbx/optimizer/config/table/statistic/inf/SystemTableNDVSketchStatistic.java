@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
+import java.sql.SQLException;
 import java.util.Map;
 
 /**
@@ -29,6 +30,8 @@ public interface SystemTableNDVSketchStatistic {
 
     void deleteByTableName(String schemaName, String logicalTableName);
 
+    void deleteBySchemaName(String schemaName);
+
     SketchRow[] loadAll();
 
     SketchRow[] loadByTableName(String schemaName, String tableName);
@@ -36,9 +39,10 @@ public interface SystemTableNDVSketchStatistic {
     boolean loadByTableNameAndColumnName(String schemaName, String tableName, String columnName,
                                          Map<String, byte[]> shardParts, int[] registers);
 
-    void batchReplace(final SketchRow[] rowList);
+    void batchReplace(final SketchRow[] rowList) throws SQLException;
 
-    void updateCompositeCardinality(String schemaName, String tableName, String columnName, long compositeCardinality);
+    void updateCompositeCardinality(String schemaName, String tableName, String columnName, long compositeCardinality)
+        throws SQLException;
 
     class SketchRow {
         private String schemaName;

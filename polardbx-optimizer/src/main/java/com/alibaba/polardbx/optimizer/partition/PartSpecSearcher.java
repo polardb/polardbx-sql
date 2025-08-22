@@ -45,6 +45,7 @@ public class PartSpecSearcher {
      * partSpec of (sub)partName
      */
     protected Map<String, PartitionSpec> partNameToSpecMap;
+
     /**
      * key: partName of subPartTempName
      * val:
@@ -185,7 +186,11 @@ public class PartSpecSearcher {
         return false;
     }
 
-    public Map<String, PartitionSpec> getPhyPartNameToFirstLevelPartSpecMap() {
-        return phyPartNameToFirstLevelPartSpecMap;
+    public PartitionSpec getSubPartTempSpecNameBySubPartTempName(String subPartTempName) {
+        if (subPartTempNameToSpecMap == null) {
+            return null;
+        }
+        return subPartTempNameToSpecMap.get(subPartTempName);
     }
+
 }

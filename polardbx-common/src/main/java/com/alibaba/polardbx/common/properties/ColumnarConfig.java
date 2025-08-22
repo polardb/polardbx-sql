@@ -13,6 +13,7 @@ import java.util.Map;
 public final class ColumnarConfig {
     public static String DEFAULT = "DEFAULT";
     public static String SNAPSHOT = "SNAPSHOT";
+    // Key in upper case.
     private static Map<String, ColumnarOption> CONFIG = null;
 
     synchronized public static void init(Map<String, ColumnarOption> config) {
@@ -20,10 +21,14 @@ public final class ColumnarConfig {
     }
 
     public static ColumnarOption get(String k) {
-        return null == CONFIG ? null : CONFIG.get(k);
+        return (null == CONFIG || null == k) ? null : CONFIG.get(k.toUpperCase());
     }
 
     public static String getValue(String key, Map<String, String> indexConfig, Map<String, String> globalConfig) {
+        if (null == key) {
+            return null;
+        }
+        key = key.toUpperCase();
         String val = null;
         if (null != indexConfig) {
             val = indexConfig.get(key);

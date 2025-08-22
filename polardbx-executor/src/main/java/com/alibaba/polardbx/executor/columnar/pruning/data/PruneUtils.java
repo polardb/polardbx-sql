@@ -88,7 +88,11 @@ public class PruneUtils {
         Object result = null;
         if (rexNode instanceof RexDynamicParam) {
             final int valueIndex = ((RexDynamicParam) rexNode).getIndex();
-            result = rowParameters.get(valueIndex).getValue();
+            // compatible with JDBC expression
+            ParameterContext parameterContext = rowParameters.get(valueIndex + 1);
+            if (parameterContext != null) {
+                result = parameterContext.getValue();
+            }
         } else if (rexNode instanceof RexLiteral) {
             result = RexLiteralTypeUtils.getJavaObjectFromRexLiteral((RexLiteral) rexNode, true);
         } else {

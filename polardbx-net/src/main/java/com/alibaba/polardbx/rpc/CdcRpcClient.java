@@ -74,10 +74,10 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
         return CdcServiceGrpc.newBlockingStub(channel);
     }
 
-    public CdcServiceStub getCdcServiceStub() {
+    public CdcServiceStub getCdcServiceStub(DumpRequest request) {
 
         ManagedChannel channel = NettyChannelBuilder
-            .forTarget(CdcTargetUtil.getDumperMasterTarget())
+            .forTarget(CdcTargetUtil.getDumperTarget(request))
             .usePlaintext()
             .flowControlWindow(1048576 * 5)
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
@@ -85,9 +85,9 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
         return CdcServiceGrpc.newStub(channel);
     }
 
-    public CdcServiceStub getCdcServiceStub(String streamName) {
+    public CdcServiceStub getCdcServiceStub(String streamName, DumpRequest listenRequest) {
         if (StringUtils.isEmpty(streamName)) {
-            return getCdcServiceStub();
+            return getCdcServiceStub(listenRequest);
         }
         ManagedChannel channel = NettyChannelBuilder
             .forTarget(CdcTargetUtil.getDumperTarget(streamName))
@@ -137,7 +137,8 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
 
         public void dump(final DumpRequest listenRequest, final StreamObserver<DumpStream> messageStream) {
             Runnable runnable = () -> {
-                final CdcServiceStub cdcServiceStub = getCdcRpcClient().getCdcServiceStub(streamName);
+                final CdcServiceStub cdcServiceStub =
+                    getCdcRpcClient().getCdcServiceStub(streamName, listenRequest);
                 channel = (ManagedChannel) cdcServiceStub.getChannel();
                 cdcServiceStub.dump(listenRequest, messageStream);
             };

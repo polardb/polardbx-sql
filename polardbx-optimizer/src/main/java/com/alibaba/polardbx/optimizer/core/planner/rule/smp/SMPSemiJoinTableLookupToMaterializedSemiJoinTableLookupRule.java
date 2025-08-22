@@ -46,6 +46,7 @@ public class SMPSemiJoinTableLookupToMaterializedSemiJoinTableLookupRule
         super(operand, "SMP_" + desc);
     }
 
+    @Override
     protected void createMaterializedSemiJoin(
         RelOptRuleCall call,
         LogicalSemiJoin semiJoin,

@@ -37,7 +37,8 @@ public class HotGsiCaptureTest extends HotGsiTestCommon {
             executionContext,
             executionPlan,
             HotGsiEvolution.getInstance(),
-            cacheKey.getTemplateId());
+            cacheKey.getTemplateId(),
+            true);
 
         String planStr = RelUtils
             .toString(executionPlan.getPlan(), OptimizerUtils.buildParam(sqlParameterized.getParameters()),

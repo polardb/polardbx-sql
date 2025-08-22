@@ -21,10 +21,10 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
-import org.apache.hadoop.fs.FSDataInputStream;
 import org.roaringbitmap.RoaringBitmap;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.text.MessageFormat;
 
 /**
@@ -33,74 +33,61 @@ import java.text.MessageFormat;
  */
 public class SimpleDeletionFileReader implements DeletionFileReader {
     private static final Logger LOGGER = LoggerFactory.getLogger("oss");
+    private ByteBuffer byteBuffer;
     private int offset;
-    private int length;
-    private int pos = 0;
-    private FSDataInputStream inputStream;
 
     @Override
     public void open(Engine engine, String delFileName, int offset, int length) throws IOException {
+        // synchronous reading (it may cause OOM)
+        byte[] buffer;
 
-        // TODO(siyun): turn into streaming read
         if (!FileSystemUtils.fileExists(delFileName, engine, true)) {
-            this.inputStream = null;
+            buffer = new byte[0];
             LOGGER.warn(
                 MessageFormat.format("{0} in Engine:{1} is not exists with offset:{2} and length:{3}", delFileName,
                     engine, offset, length));
+        } else {
+            // read from offset
+            buffer = new byte[length];
+            FileSystemUtils.readFile(delFileName, offset, length, buffer, engine, true);
         }
-        this.inputStream = FileSystemUtils.openStreamFileWithBuffer(delFileName, engine, true);
-        if (offset > 0) {
-            inputStream.seek(offset);
-        }
-
+        this.byteBuffer = ByteBuffer.wrap(buffer);
         this.offset = offset;
-        this.length = length == EOF ? Integer.MAX_VALUE : length;
     }
 
     @Override
     public DeletionEntry next() {
-        if (inputStream == null) {
-            return null;
-        }
-
         // We suppose that the data in byte buffer is complete serialized bitmap list.
-        try {
-            if (inputStream.getPos() < offset + length && inputStream.available() > 0) {
-                final int sizeInBytes = inputStream.readInt();
-                final int fileId = inputStream.readInt();
-                final long tso = inputStream.readLong();
-                RoaringBitmap bitmap = new RoaringBitmap();
-                try {
-                    bitmap.deserialize(inputStream);
-                } catch (IOException e) {
-                    LOGGER.error(MessageFormat.format(
-                        "current bitmap information: sizeInBytes = {0}, fileId = {1}, tso = {2}, position = {3}",
-                        sizeInBytes, fileId, tso, inputStream.getPos()), e);
-                    throw GeneralUtil.nestedException(e);
-                }
-
-                pos = (int) inputStream.getPos();
-                return new DeletionEntry(tso, fileId, bitmap);
+        if (byteBuffer.hasRemaining()) {
+            final int sizeInBytes = byteBuffer.getInt();
+            final int fileId = byteBuffer.getInt();
+            final long tso = byteBuffer.getLong();
+            RoaringBitmap bitmap = new RoaringBitmap();
+            try {
+                bitmap.deserialize(byteBuffer);
+                byteBuffer.position(byteBuffer.position()
+                    + sizeInBytes - (Integer.BYTES + Long.BYTES));
+            } catch (IOException e) {
+                LOGGER.error(MessageFormat.format(
+                    "current bitmap information: sizeInBytes = {0}, fileId = {1}, tso = {2}, dataLen = {3}",
+                    sizeInBytes, fileId, tso, byteBuffer.remaining()), e);
+                throw GeneralUtil.nestedException(e);
             }
-        } catch (IOException e) {
-            LOGGER.error(MessageFormat.format("current readBytesCount = {0}", pos), e);
+
+            return new DeletionEntry(tso, fileId, bitmap);
         }
         return null;
     }
 
     @Override
     public int position() {
-        return pos;
+        return offset + byteBuffer.position();
     }
 
     @Override
     public void close() {
-        if (inputStream != null) {
-            try {
-                inputStream.close();
-            } catch (Throwable t) {
-                // ignore
-            }
+        if (byteBuffer != null) {
+            this.byteBuffer.clear();
         }
     }
 }

@@ -71,6 +71,20 @@ public class ForeignKeyUtilsTest {
         fks.add(fk7);
         fks.add(fk8);
 
+        // fix bug: 特殊字符
+        fks.add(new ForeignKeyData("test", "device", "fk~special!@#", "fk~special!@#",
+            Arrays.asList("e"), "test", "user3",
+            Arrays.asList("e"), null, null));
+        fks.add(new ForeignKeyData("test", "device", "fk@特殊字符", "fk@特殊字符",
+            Arrays.asList("f"), "test", "user4",
+            Arrays.asList("f"), null, null));
+        fks.add(new ForeignKeyData("test", "device", "fk-with-dash_and_underscore", "fk-with-dash_and_underscore",
+            Arrays.asList("g"), "test", "user5",
+            Arrays.asList("g"), null, null));
+        fks.add(new ForeignKeyData("test", "device", "fk$#%^&*()", "fk$#%^&*()",
+            Arrays.asList("h"), "test", "user6",
+            Arrays.asList("h"), null, null));
+
         String createTableSql =
             "CREATE TABLE IF NOT EXISTS device (" +
                 "  a INT PRIMARY KEY AUTO_INCREMENT," +
@@ -88,6 +102,11 @@ public class ForeignKeyUtilsTest {
                 "       REFERENCES `user2` (`b` , `c` , `d`)\n" +
                 "  foreign key (`b` , `c` , `d`)\n" +
                 "       REFERENCES `user2` (`b` , `c` , `d`)\n" +
+                "  CONSTRAINT `fk~special!@#` foreign key (`e`) REFERENCES `user3` (`e`),\n" +
+                "  CONSTRAINT `fk@特殊字符` foreign key (`f`) REFERENCES `user4` (`f`),\n" +
+                "  CONSTRAINT `fk-with-dash_and_underscore` foreign key (`g`) REFERENCES `user5` (`g`),\n" +
+                "  CONSTRAINT `fk$#%^&*()` foreign key (`h`) REFERENCES `user6` (`h`),\n" +
+                "  KEY `c` (`c`)\n" +
                 ") SINGLE ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
 
         String modifiedSql = ForeignKeyUtils.addForeignKeyConstraints(createTableSql, fks);
@@ -108,6 +127,11 @@ public class ForeignKeyUtilsTest {
             "       REFERENCES `user2` (`b` , `c` , `d`)\n" +
             "  CONSTRAINT `device_ibfk_5` foreign key (`b` , `c` , `d`)\n" +
             "       REFERENCES `user2` (`b` , `c` , `d`)\n" +
+            "  CONSTRAINT `fk~special!@#` foreign key (`e`) REFERENCES `user3` (`e`),\n" +
+            "  CONSTRAINT `fk@特殊字符` foreign key (`f`) REFERENCES `user4` (`f`),\n" +
+            "  CONSTRAINT `fk-with-dash_and_underscore` foreign key (`g`) REFERENCES `user5` (`g`),\n" +
+            "  CONSTRAINT `fk$#%^&*()` foreign key (`h`) REFERENCES `user6` (`h`),\n" +
+            "  KEY `c` (`c`)\n" +
             ") SINGLE ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
     }
 

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.ByteType;
 import org.junit.Assert;
 import org.junit.Test;
@@ -28,7 +29,8 @@ public class ByteBlockTest extends BaseBlockTest {
     @Test
     public void testSizeInBytes() {
         ByteBlock byteBlock = new ByteBlock(new ByteType(), 1024);
-        Assert.assertEquals(2048, byteBlock.getElementUsedBytes());
+        MemoryCountable.checkDeviation(byteBlock, .05d, true);
+        Assert.assertEquals(2136, byteBlock.getElementUsedBytes());
     }
 
     @Test
@@ -56,7 +58,9 @@ public class ByteBlockTest extends BaseBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         Block block = blockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertEquals(values.length, block.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -82,5 +86,7 @@ public class ByteBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+        MemoryCountable.checkDeviation(anotherBuilder, .05d, true);
+        MemoryCountable.checkDeviation(anotherBuilder.build(), .05d, true);
     }
 }

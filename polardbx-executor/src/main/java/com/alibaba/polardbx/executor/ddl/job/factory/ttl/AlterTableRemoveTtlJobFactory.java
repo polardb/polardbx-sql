@@ -7,6 +7,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.RemoveTtlInfoTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableModifyTtlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableRemoveTtlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.exception.TtlJobRuntimeException;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -27,7 +28,9 @@ import org.apache.calcite.sql.SqlTimeToLiveExpr;
 import org.apache.calcite.sql.SqlTimeToLiveJobExpr;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -92,6 +95,14 @@ public class AlterTableRemoveTtlJobFactory extends DdlJobFactory {
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         List<DdlTask> taskList = new ArrayList<>();
+
+        TableMeta priTblMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
+        Long priTblMetaVer = priTblMeta.getVersion();
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(primaryTableName, priTblMetaVer);
+        ValidateTableVersionTask validatePrimTblVerTask = new ValidateTableVersionTask(schemaName, tableVersions);
+        taskList.add(validatePrimTblVerTask);
+
         taskList.add(new RemoveTtlInfoTask(schemaName, primaryTableName));
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
         CdcAlterTableRemoveTtlTask cdcRemoveTtlTask = new CdcAlterTableRemoveTtlTask(schemaName, primaryTableName);

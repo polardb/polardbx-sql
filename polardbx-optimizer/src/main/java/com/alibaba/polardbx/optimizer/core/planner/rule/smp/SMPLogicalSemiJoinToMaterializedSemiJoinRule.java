@@ -41,6 +41,7 @@ public class SMPLogicalSemiJoinToMaterializedSemiJoinRule extends LogicalSemiJoi
         super(operand, "SMP_" + desc);
     }
 
+    @Override
     protected void createMaterializedSemiJoin(
         RelOptRuleCall call,
         LogicalSemiJoin semiJoin,

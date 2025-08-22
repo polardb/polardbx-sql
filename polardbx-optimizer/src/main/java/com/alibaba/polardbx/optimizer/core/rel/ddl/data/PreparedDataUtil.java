@@ -109,6 +109,7 @@ public class PreparedDataUtil {
      */
     public static List<String> findNeedBackfillColumns(TableMeta primaryTable, SqlAlterTable alterTable) {
         List<String> columns = new ArrayList<>();
+        boolean addLogicalGeneralColumns = false;
         for (SqlAlterSpecification alter : alterTable.getAlters()) {
             if (alter instanceof SqlAddColumn) {
                 final SqlAddColumn addColumn = (SqlAddColumn) alter;
@@ -116,11 +117,16 @@ public class PreparedDataUtil {
                 if (isDefaultCurrentTimeStampColumns(primaryTable, column)) {
                     columns.add(addColumn.getColName().getLastName());
                 }
+                if (column.isGeneratedAlwaysLogical()) {
+                    addLogicalGeneralColumns = true;
+                }
             }
         }
 
         // Caution: All columns with on update should added.
-        primaryTable.getAutoUpdateColumns().forEach(c -> columns.add(c.getName()));
+        if (!columns.isEmpty() || addLogicalGeneralColumns) {
+            primaryTable.getAutoUpdateColumns().forEach(c -> columns.add(c.getName()));
+        }
         return columns;
     }
 }

@@ -16,20 +16,12 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
-import com.alibaba.polardbx.common.CrcAccumulator;
-import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
 import com.alibaba.polardbx.optimizer.core.datatype.SetType;
-import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
-import com.alibaba.polardbx.optimizer.core.row.Row;
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
-import org.apache.orc.TypeDescription;
 
-import java.time.ZoneId;
-import java.util.Optional;
+import java.nio.ByteBuffer;
 
 public class SetColumnProvider extends StringColumnProvider {
     @Override
@@ -39,8 +31,8 @@ public class SetColumnProvider extends StringColumnProvider {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
-        long longVal = ColumnProvider.longFromByte(bytes, bytes.length);
+        ByteBuffer bytes = row.getBytes(columnId);
+        long longVal = ColumnProvider.longFromByte(bytes);
         blockBuilder.writeString(String.join(",", ((SetType) dataType).convertFromBinary(longVal)));
     }
 }

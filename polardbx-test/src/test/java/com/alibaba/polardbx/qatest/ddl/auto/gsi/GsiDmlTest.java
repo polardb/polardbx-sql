@@ -158,6 +158,8 @@ public class GsiDmlTest extends BaseAutoPartitionNewPartition {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
 
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set names utf8mb4");
+
         // Check emoji.
         String sql = MessageFormat.format(
             "INSERT INTO `{0}` ( id,unit_id,uid,source_id,source_type,source_name,nick_name,mobile,is_agent,is_agent_checked,level_id,is_black,create_time,avatar,member_growth,agent_growth ) VALUES( 1387777936966467584,1250056650086289408,0,1299627390452031488,3,\"xxx\",\"董依依ゆい\uD83C\uDF61   \",\"1392684638010531840\",2,2,1250056650124038144,2,1620876867,\"url\",0,0 )",

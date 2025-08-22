@@ -478,36 +478,6 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
     }
 
     /**
-     * 校验trace中含有特定的string出现n次
-     */
-    protected void assertTraceContains(List<List<String>> trace, String targetStr, int count) {
-        int c = 0;
-        for (List<String> item : trace) {
-            for (String s : item) {
-                if (StringUtils.containsIgnoreCase(s, targetStr)) {
-                    c++;
-                }
-            }
-        }
-        //make sure now() is pushed down, instead of logical execution
-        org.junit.Assert.assertEquals(count, c);
-    }
-
-    /**
-     * 校验trace中含有特定的string
-     */
-    protected void assertTraceContains(List<List<String>> trace, String targetStr) {
-        boolean containsNow = false;
-        for (List<String> item : trace) {
-            for (String s : item) {
-                containsNow |= StringUtils.containsIgnoreCase(s, targetStr);
-            }
-        }
-        //make sure now() is pushed down, instead of logical execution
-        org.junit.Assert.assertTrue(containsNow);
-    }
-
-    /**
      * 1. 校验表结构
      * 2. 校验分库分表规则
      */

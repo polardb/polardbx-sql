@@ -148,20 +148,6 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
             Map<String, List<Pair<String, String>>> instGroupDbInfo =
                 DbTopologyManager.generateDbAndGroupNewConfigInfo(schemaName, dbLocalityDesc);
             if (GeneralUtil.isNotEmpty(instGroupDbInfo)) {
-                final boolean shareStorageMode =
-                    executionContext.getParamManager().getBoolean(ConnectionParams.SHARE_STORAGE_MODE);
-                //for local debug
-                if (shareStorageMode) {
-                    Map<String, List<Pair<String, String>>> copyInstGroupDbInfo = new HashMap<>();
-                    for (Map.Entry<String, List<Pair<String, String>>> entry : instGroupDbInfo.entrySet()) {
-                        for (Pair<String, String> pair : entry.getValue()) {
-                            copyInstGroupDbInfo.computeIfAbsent(entry.getKey(), o -> new ArrayList<>()).add(Pair.of(
-                                GroupInfoUtil.buildGroupNameFromPhysicalDb(pair.getValue() + "S"),
-                                pair.getValue() + "S"));
-                        }
-                    }
-                    instGroupDbInfo = copyInstGroupDbInfo;
-                }
                 dbTableGroupAndInstGroupInfo.put(dbInfoRecord.dbName, new Pair<>(tableGroupConfig, instGroupDbInfo));
             }
         }

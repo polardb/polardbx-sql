@@ -27,12 +27,14 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupVali
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
@@ -58,7 +60,7 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
                                                         AlterTableGroupSplitPartitionByHotValuePreparedData preparedData,
                                                         Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                                         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                                        Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                                        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                                         Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                         Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                                         Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -283,7 +285,7 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
                                           ExecutionContext executionContext) {
         AlterTableSplitPartitionByHotValueBuilder alterTableSplitPartitionByHotValueBuilder =
             new AlterTableSplitPartitionByHotValueBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableSplitPartitionByHotValueBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableSplitPartitionByHotValueBuilder.getTargetTablesTopology();
@@ -303,16 +305,34 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
     @Override
     public void constructSubTasks(String schemaName, ExecutableDdlJob executableDdlJob, DdlTask tailTask,
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
-        AlterTableSplitPartitionByHotValueSubTaskJobFactory subTaskJobFactory =
-            new AlterTableSplitPartitionByHotValueSubTaskJobFactory(ddl,
-                (AlterTableSplitPartitionByHotValuePreparedData) preparedData,
-                tablesPrepareData.get(preparedData.getTableName()),
-                newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
-                tablesTopologyMap.get(preparedData.getTableName()),
-                targetTablesTopology.get(preparedData.getTableName()),
-                sourceTablesTopology.get(preparedData.getTableName()),
-                orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
-                taskType, executionContext);
+        String logicalTableName = preparedData.getTableName();
+        TableMeta tm = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+        final boolean useChangeSet = ChangeSetUtils.isChangeSetProcedure(executionContext);
+        AlterTableGroupSubTaskJobFactory subTaskJobFactory;
+        if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm)) {
+            subTaskJobFactory =
+                new AlterTableSplitPartitionByHotValueChangeSetJobFactory(ddl,
+                    (AlterTableSplitPartitionByHotValuePreparedData) preparedData,
+                    tablesPrepareData.get(preparedData.getTableName()),
+                    newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
+                    tablesTopologyMap.get(preparedData.getTableName()),
+                    targetTablesTopology.get(preparedData.getTableName()),
+                    sourceTablesTopology.get(preparedData.getTableName()),
+                    orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
+                    taskType, executionContext);
+        } else {
+            subTaskJobFactory =
+                new AlterTableSplitPartitionByHotValueSubTaskJobFactory(ddl,
+                    (AlterTableSplitPartitionByHotValuePreparedData) preparedData,
+                    tablesPrepareData.get(preparedData.getTableName()),
+                    newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
+                    tablesTopologyMap.get(preparedData.getTableName()),
+                    targetTablesTopology.get(preparedData.getTableName()),
+                    sourceTablesTopology.get(preparedData.getTableName()),
+                    orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
+                    taskType, executionContext);
+        }
+
         ExecutableDdlJob subTask = subTaskJobFactory.create();
         if (((AlterTableGroupSplitPartitionByHotValuePreparedData) preparedData).isSkipSplit()) {
             return;

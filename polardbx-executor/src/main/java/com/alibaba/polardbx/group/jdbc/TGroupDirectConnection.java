@@ -23,10 +23,12 @@ import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.atom.utils.EncodingUtils;
 import com.alibaba.polardbx.atom.utils.NetworkUtils;
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ConnectionStats;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -35,9 +37,11 @@ import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.biv.MockConnection;
+import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import org.apache.commons.lang.StringUtils;
 
+import javax.sql.DataSource;
 import java.sql.Array;
 import java.sql.Blob;
 import java.sql.CallableStatement;
@@ -53,6 +57,7 @@ import java.sql.SQLXML;
 import java.sql.Savepoint;
 import java.sql.Statement;
 import java.sql.Struct;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
@@ -64,7 +69,8 @@ import java.util.concurrent.Executor;
  * @since 5.0.0
  */
 public class TGroupDirectConnection implements IConnection {
-
+    // for recording thread info
+    public static final ThreadLocal<String> threadParam = new ThreadLocal<>();
     private static final Logger log = LoggerFactory.getLogger(TGroupDirectConnection.class);
 
     protected Connection conn;
@@ -90,8 +96,10 @@ public class TGroupDirectConnection implements IConnection {
 
     public static final Executor socketTimeoutExecutor = new SocketTimeoutExecutor();
 
-    public TGroupDirectConnection(TGroupDataSource groupDataSource, MasterSlave master) throws SQLException {
-        this(groupDataSource, master, null, null);
+    public TGroupDirectConnection(TGroupDataSource groupDataSource, MasterSlave master,
+                                  Collection<IConnection> allocated)
+        throws SQLException {
+        this(groupDataSource, master, null, null, allocated);
     }
 
     public TGroupDirectConnection(TGroupDataSource groupDataSource, Connection connection)
@@ -103,21 +111,77 @@ public class TGroupDirectConnection implements IConnection {
     }
 
     public TGroupDirectConnection(TGroupDataSource groupDataSource, MasterSlave master, String userName,
-                                  String password)
+                                  String password, Collection<IConnection> allocated)
         throws SQLException {
         this.groupDataSource = groupDataSource;
         this.userName = userName;
         this.password = password;
-        setConn(createNewConnection(master));
+        setConn(createNewConnection(master, allocated));
     }
 
-    private Connection createNewConnection(MasterSlave master) throws SQLException {
+    private Connection createNewConnection(MasterSlave master, Collection<IConnection> allocated) throws SQLException {
         long start = System.nanoTime();
         long startTs = System.currentTimeMillis();
         // 这个方法只发生在第一次建立读/写连接的时候，以后都是复用了
         Connection conn;
 
         TAtomDataSource atomDataSource = groupDataSource.getConfigManager().getDataSource(master);
+        // only block when smooth switchover is enabled and all allocated write connections are good
+        if (DynamicConfig.getInstance().isEnableSmoothSwitchover() && allocated != null) {
+            // wait if switch in progress
+            final long startWaitTime = System.currentTimeMillis();
+            boolean waited = false;
+            while (true) {
+                // get latest datasource everytime
+                atomDataSource = groupDataSource.getConfigManager().getDataSource(master);
+                final DataSource ds = atomDataSource.getDataSource();
+                if (ds.isWrapperFor(XDataSource.class) && ds.unwrap(XDataSource.class).getClientPool()
+                    .isChangingLeader()) {
+                    // check need wait or not
+                    if (allocated.stream().anyMatch(c -> {
+                        try {
+                            return c.isWrapperFor(XConnection.class) && c.unwrap(XConnection.class).getSession()
+                                .getClient().getPool().isChangingLeader();
+                        } catch (Throwable t) {
+                            log.error("check writes connection failed", t);
+                            return true;
+                        }
+                    })) {
+                        break; // abort wait if any of allocated writes connection is changing leader
+                    }
+
+                    // check timeout
+                    final long now = System.currentTimeMillis();
+                    final int timeout = DynamicConfig.getInstance().getSwitchoverTimeoutMillis();
+                    if (now - startWaitTime >= timeout) {
+                        break; // abort if timeout exceeded
+                    }
+
+                    // do 100ms notifiable wait and retry
+                    try {
+                        waited = true;
+                        final int interval = DynamicConfig.getInstance().getSwitchoverCheckIntervalMillis();
+                        synchronized (groupDataSource) {
+                            groupDataSource.wait(Math.min(interval, startWaitTime + timeout - now));
+                        }
+                    } catch (InterruptedException e) {
+                        throw new TddlNestableRuntimeException(e);
+                    }
+                } else {
+                    // good or not x data source, just break and continue
+                    break;
+                }
+            }
+
+            if (waited) {
+                // Log wait event
+                final long waitMs = System.currentTimeMillis() - startWaitTime;
+                log.warn(threadParam.get() + " get conn switchover wait " + waitMs + " ms new ds "
+                    + atomDataSource.getDataSource().unwrap(XDataSource.class));
+                atomDataSource.getDataSource().unwrap(XDataSource.class).getSwitchoverPerfCollector()
+                    .recordWait(true, waitMs);
+            }
+        }
         if (userName != null) {
             conn = atomDataSource.getConnection(userName, password);
         } else {

@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.transaction.utils;
 
-import org.apache.calcite.util.Pair;
-
 import java.util.*;
 
 /**
@@ -91,5 +89,9 @@ public class DiGraph<T> {
      */
     public Optional<ArrayList<T>> detect() {
         return (new Detector<T>(this.edges).detect());
+    }
+
+    public void removeEdge(T u) {
+        this.edges.remove(u);
     }
 }

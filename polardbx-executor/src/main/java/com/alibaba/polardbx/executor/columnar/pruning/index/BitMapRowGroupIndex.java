@@ -41,6 +41,7 @@ public class BitMapRowGroupIndex extends BaseColumnIndex {
      */
     private final Map<Integer, Map<String, RoaringBitmap>> val;
     private final Map<Integer, DataType> dtMap;
+    private long sizeInBytes = -1;
 
     public BitMapRowGroupIndex(int rgNum, Map<Integer, Map<String, RoaringBitmap>> val, Map<Integer, DataType> dtMap) {
         super(rgNum);
@@ -149,5 +150,26 @@ public class BitMapRowGroupIndex extends BaseColumnIndex {
 
     public String colIds() {
         return StringUtils.join(dtMap.keySet(), ",");
+    }
+
+    @Override
+    public long getSizeInBytes() {
+        if (this.sizeInBytes >= 0) {
+            return this.sizeInBytes;
+        }
+        long size = 0;
+        // ignore memory size of keys
+        if (val != null) {
+            for (Map<String, RoaringBitmap> value : val.values()) {
+                if (value != null) {
+                    for (RoaringBitmap bitmap : value.values()) {
+                        size += bitmap.getLongSizeInBytes();
+                    }
+                }
+            }
+        }
+
+        this.sizeInBytes = size;
+        return sizeInBytes;
     }
 }

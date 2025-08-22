@@ -72,6 +72,7 @@ import com.alibaba.polardbx.optimizer.sequence.ISequenceManager;
 import com.alibaba.polardbx.rpc.CdcRpcClient;
 import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import com.alibaba.polardbx.server.ServerConnectionFactory;
+import com.alibaba.polardbx.server.handler.ColumnarConfigHandler;
 import com.alibaba.polardbx.ssl.SslContextFactory;
 import com.google.common.annotations.VisibleForTesting;
 import org.apache.commons.io.FileUtils;
@@ -207,6 +208,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                 logger.info("Unit Name : " + system.getUnitName());
             }
 
+            ColumnarConfigHandler.init();
             // 启动前检查Server端口与Manager端口是否可用
             // checkAvailableForAllPortsUsedByServer(system);
             scheduler.scheduleWithFixedDelay(updateTime(), 0L, 20, TimeUnit.MILLISECONDS);
@@ -296,6 +298,10 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             cnProperties.setProperty(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION, "true");
             // Disable full table scan for duplicate check of upsert on table without UGSI
             cnProperties.setProperty(ConnectionProperties.DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN, "false");
+            cnProperties.setProperty(ConnectionProperties.DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY, "false");
+            cnProperties.setProperty(ConnectionProperties.DML_CHECK_UPSERT_DYNAMIC_IMPLICIT_WITH_COLUMN_REF, "true");
+            // Enable dml replace dynamic implicit default only
+            cnProperties.setProperty(ConnectionProperties.DML_REPLACE_DYNAMIC_IMPLICIT_DEFAULT, "true");
 
             //忽略事务情况下，DML串行执行
             cnProperties.setProperty(ConnectionProperties.ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION, "true");
@@ -303,9 +309,13 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             //Disable udf
             cnProperties.setProperty(TddlConstants.ENABLE_JAVA_UDF, "false");
 
+            cnProperties.setProperty(ConnectionProperties.ENABLE_LOWER_CASE_TABLE_NAMES, "true");
 
             // enable strict set global
             cnProperties.setProperty(TddlConstants.ENABLE_STRICT_SET_GLOBAL, "true");
+
+            // enable auto close connection when trx got fatal error
+            cnProperties.setProperty(ConnectionProperties.ENABLE_CLOSE_CONNECTION_WHEN_TRX_FATAL, "true");
 
             // Update inst config using insert ignore.
             try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {

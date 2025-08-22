@@ -109,8 +109,13 @@ public class ForceIndexPrimaryAggTest extends ReadBaseTestCase {
             for (final String opt : planCacheOptions) {
                 try {
                     JdbcUtil.executeUpdateSuccess(tddlConnection, "set PLAN_CACHE=" + opt);
-                    testForceIndex();
-                    testGlobalSwitch();
+                    if (!isMySQL80()) {
+                        testForceIndex();
+                        testGlobalSwitch();
+                        testDistinct();
+                    } else {
+                        test80();
+                    }
                 } finally {
                     JdbcUtil.executeUpdateSuccess(tddlConnection, "set PLAN_CACHE=true");
                 }
@@ -144,7 +149,7 @@ public class ForceIndexPrimaryAggTest extends ReadBaseTestCase {
 
             // For TSO.
             try {
-                JdbcUtil.executeUpdate(tddlConnection, "set transaction_policy=\"TSO\"");
+                JdbcUtil.executeUpdate(tddlConnection, "set transaction_policy=TSO");
                 JdbcUtil.executeUpdate(tddlConnection, "begin");
                 final List<Float> result = getResult(sql, tddlConnection);
                 Assert.assertTrue(compareList(expected, result),
@@ -200,8 +205,44 @@ public class ForceIndexPrimaryAggTest extends ReadBaseTestCase {
         final String sql1 = "explain select count(0) from {0} where id > 0";
 
         for (String table : TABLES) {
-            JdbcUtil.executeUpdate(tddlConnection, "set transaction_policy=\"TSO\"");
+            JdbcUtil.executeUpdate(tddlConnection, "set transaction_policy=TSO");
             testsql(MessageFormat.format(sql0, table), MessageFormat.format(sql1, table));
+        }
+    }
+
+    private void testDistinct() throws SQLException {
+        final String sql0 = "explain select count(distinct id) from {0}";
+        for (String table : TABLES) {
+            try {
+                // Enable optimization for TSO without filter.
+                System.out.println("Test distinct");
+                JdbcUtil.executeUpdate(tddlConnection, "set transaction_policy=TSO");
+                JdbcUtil.executeUpdateSuccess(tddlConnection, "set global ENABLE_FORCE_PRIMARY_FOR_TSO=true");
+                JdbcUtil.executeUpdate(tddlConnection, "begin");
+
+                boolean found = isFoundForceIndex(MessageFormat.format(sql0, table));
+                Assert.assertTrue(!found, "Found force index(primary), which should not happen, sql: " + sql0);
+            } finally {
+                JdbcUtil.executeUpdate(tddlConnection, "rollback");
+            }
+        }
+    }
+
+    private void test80() throws SQLException {
+        final String sql0 = "explain select count(0) from {0}";
+        for (String table : TABLES) {
+            try {
+                // Enable optimization for TSO without filter.
+                System.out.println("Test 8032 should not force primary");
+                JdbcUtil.executeUpdate(tddlConnection, "set transaction_policy=TSO");
+                JdbcUtil.executeUpdateSuccess(tddlConnection, "set global ENABLE_FORCE_PRIMARY_FOR_TSO=true");
+                JdbcUtil.executeUpdate(tddlConnection, "begin");
+
+                boolean found = isFoundForceIndex(MessageFormat.format(sql0, table));
+                Assert.assertTrue(!found, "Found force index(primary), which should not happen, sql: " + sql0);
+            } finally {
+                JdbcUtil.executeUpdate(tddlConnection, "rollback");
+            }
         }
     }
 

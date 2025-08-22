@@ -409,7 +409,10 @@ if [ -n "$str" ]; then
     fi
 
     if [ $elasticHeapMode -ge 0 ]; then
-        if [ $freecount -ge 131072 ] ; then
+        if [ $freecount -ge 262144 ] ; then
+            JAVA_OPTS="-server -Xms220g -Xmx220g -XX:MaxDirectMemorySize=20g "
+            elasticHeapMode=2
+        elif [ $freecount -ge 131072 ] ; then
             JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=16g "
             elasticHeapMode=2
         elif [ $freecount -ge 65536 ] ; then
@@ -442,14 +445,16 @@ if [ -n "$str" ]; then
         fi
     else
         # do not support elasticHeap
-        if [ $freecount -ge 131072 ] ; then
-            JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=16g"
+        if [ $freecount -ge 262144 ] ; then
+            JAVA_OPTS="-server -Xms220g -Xmx220g -XX:MaxDirectMemorySize=20g "
+        elif [ $freecount -ge 131072 ] ; then
+            JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=16g "
         elif [ $freecount -ge 65536 ] ; then
-            JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g"
+            JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g "
         elif [ $freecount -ge 32768  ] ; then
-            JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g"
+            JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g "
         elif [ $freecount -ge 16384  ] ; then
-            JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g"
+            JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g "
         elif [ $freecount -ge 8192 ] ; then
             JAVA_OPTS="-server -Xms4g -Xmx4g "
         elif [ $freecount -ge 4096 ] ; then

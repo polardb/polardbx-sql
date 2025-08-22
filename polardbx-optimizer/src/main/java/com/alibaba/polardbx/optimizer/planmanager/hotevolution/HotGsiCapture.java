@@ -45,7 +45,8 @@ public class HotGsiCapture {
         ExecutionContext ec,
         ExecutionPlan executionPlan,
         HotGsiEvolution hotGsiEvolution,
-        String templateId) {
+        String templateId,
+        boolean captureOnly) {
         String schema = ec.getSchemaName();
 
         try {
@@ -58,6 +59,9 @@ public class HotGsiCapture {
             String index = candidateHotGsi(ec, executionPlan.getPlan());
 
             if (!StringUtils.isEmpty(index)) {
+                if (captureOnly) {
+                    return true;
+                }
                 // submit to evolution
                 boolean offer = hotGsiEvolution.submitEvolutionTask(
                     new GsiEvolutionInfo(sqlParameterized, ec, executionPlan, index, templateId));
@@ -107,7 +111,7 @@ public class HotGsiCapture {
         String indexName = indexScan.getTableNames().get(0);
         // don't evolute if statistics missed
         if (StatisticManager.expired(ec.getSchemaName(), indexName)) {
-            OptimizerAlertManager.getInstance().log(OptimizerAlertType.STATISTIC_MISS, ec);
+            //OptimizerAlertManager.getInstance().log(OptimizerAlertType.STATISTIC_MISS, ec);
             return null;
         }
 

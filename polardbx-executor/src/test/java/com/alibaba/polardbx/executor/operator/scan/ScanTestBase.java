@@ -473,6 +473,11 @@ public class ScanTestBase {
         }
 
         @Override
+        public Iterator<Chunk> flashbackCsvData(long tso, String csvFileName) {
+            return null;
+        }
+
+        @Override
         public int fillSelection(String fileName, long tso, int[] selection, LongBlock positionBlock) {
             return 0;
         }

@@ -10,9 +10,34 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
  */
 public class SQLTimeToLiveExpr extends SQLExprImpl {
 
+    /**
+     * <pre>
+     * usage1- expire by time:
+     *     `ttlColName` EXPIRE AFTER $interval $timeUnit [TIMEZONE '$timezone']
+     * usage2- expire by partition count:
+     *     `ttlColName` EXPIRE OVER $partCount PARTITIONS [TIMEZONE '$timezone']
+     * </pre>
+     */
+
+    /**
+     * For ttlColName
+     */
     protected SQLExpr column;
+
+    /**
+     * For $interval $timeUnit of EXPIRE AFTER
+     */
     protected SQLExpr expireAfter;
     protected SQLExpr unit;
+
+    /**
+     * For $partCount of EXPIRE OVER
+     */
+    protected SQLExpr expireOver;
+
+    /**
+     * For TIMEZONE '$timezone'
+     */
     protected SQLExpr timezone;
 
     public SQLTimeToLiveExpr() {
@@ -33,6 +58,7 @@ public class SQLTimeToLiveExpr extends SQLExprImpl {
         SQLTimeToLiveExpr otherTtlExpr = (SQLTimeToLiveExpr) obj;
         SQLExpr otherColumn = otherTtlExpr.getColumn();
         SQLExpr otherExpireAfter = otherTtlExpr.getExpireAfter();
+        SQLExpr otherExpireOver = otherTtlExpr.getExpireOver();
         SQLExpr otherUnit = otherTtlExpr.getUnit();
         SQLExpr otherTimezone = otherTtlExpr.getTimezone();
 
@@ -66,6 +92,16 @@ public class SQLTimeToLiveExpr extends SQLExprImpl {
             }
         }
 
+        if (expireOver != null) {
+            if (!expireOver.equals(otherExpireOver)) {
+                return false;
+            }
+        } else {
+            if (otherExpireOver != null) {
+                return false;
+            }
+        }
+
         if (timezone != null) {
             if (!timezone.equals(otherTimezone)) {
                 return false;
@@ -83,6 +119,7 @@ public class SQLTimeToLiveExpr extends SQLExprImpl {
     public int hashCode() {
         int result = column != null ? column.hashCode() : 0;
         result = 31 * result + (expireAfter != null ? expireAfter.hashCode() : 0);
+        result = 31 * result + (expireOver != null ? expireOver.hashCode() : 0);
         result = 31 * result + (unit != null ? unit.hashCode() : 0);
         result = 31 * result + (timezone != null ? timezone.hashCode() : 0);
         return result;
@@ -94,9 +131,12 @@ public class SQLTimeToLiveExpr extends SQLExprImpl {
         if (column != null) {
             newTtlExpr.setColumn(column.clone());
         }
-
         if (expireAfter != null) {
             newTtlExpr.setExpireAfter(expireAfter.clone());
+        }
+
+        if (expireOver != null) {
+            newTtlExpr.setExpireOver(expireOver.clone());
         }
 
         if (unit != null) {
@@ -116,12 +156,16 @@ public class SQLTimeToLiveExpr extends SQLExprImpl {
                 acceptChild(visitor, this.column);
             }
 
-            if (this.timezone != null) {
+            if (this.expireAfter != null) {
                 acceptChild(visitor, this.expireAfter);
             }
 
             if (this.unit != null) {
                 acceptChild(visitor, this.unit);
+            }
+
+            if (this.expireOver != null) {
+                acceptChild(visitor, this.expireOver);
             }
 
             if (this.timezone != null) {
@@ -170,5 +214,13 @@ public class SQLTimeToLiveExpr extends SQLExprImpl {
 
     public void setTimezone(SQLExpr timezone) {
         this.timezone = timezone;
+    }
+
+    public SQLExpr getExpireOver() {
+        return expireOver;
+    }
+
+    public void setExpireOver(SQLExpr expireOver) {
+        this.expireOver = expireOver;
     }
 }

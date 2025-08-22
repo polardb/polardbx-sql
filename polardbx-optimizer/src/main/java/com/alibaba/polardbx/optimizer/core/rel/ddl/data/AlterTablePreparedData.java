@@ -118,6 +118,8 @@ public class AlterTablePreparedData extends DdlPreparedData {
 
     private boolean pushDownMultipleStatement = false;
 
+    private Map<String, String> isNullableMap;
+
     /**
      * Columnar DDL
      */

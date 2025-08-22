@@ -53,6 +53,12 @@ public class ColumnarAppendedFilesAccessorTest {
 
             result = columnarAppendedFilesAccessor.queryFilesByFileType("pk_idx_log_meta");
             Assert.assertEquals(1, result.size());
+
+            result = columnarAppendedFilesAccessor.queryFileLastAppendedRecord("file2");
+            Assert.assertEquals(1, result.size());
+
+            result = columnarAppendedFilesAccessor.queryLastValidCSVAppendByTsoAndTableId(111L, "db", "table");
+            Assert.assertEquals(1, result.size());
         }
     }
 
@@ -78,6 +84,26 @@ public class ColumnarAppendedFilesAccessorTest {
             deleteCount.set(16);
             count = columnarAppendedFilesAccessor.deleteByEqualTso(123L);
             Assert.assertEquals(16, count);
+
+            deleteCount.set(18);
+            count = columnarAppendedFilesAccessor.deleteLimitByTableAndFileName("schema", "table", "file1", 123L);
+            Assert.assertEquals(18, count);
+        }
+    }
+
+    @Test
+    public void testError() {
+        try (final MockedStatic<MetaDbUtil> metaDbUtilMockedStatic = mockStatic(MetaDbUtil.class)) {
+            metaDbUtilMockedStatic.when(() -> MetaDbUtil.query(Mockito.anyString(), Mockito.anyMap(),
+                    Mockito.eq(ColumnarAppendedFilesRecord.class), Mockito.any()))
+                .thenThrow(new RuntimeException("mock error"));
+            ColumnarAppendedFilesAccessor columnarAppendedFilesAccessor = new ColumnarAppendedFilesAccessor();
+            try {
+                columnarAppendedFilesAccessor.queryLastValidCSVAppendByTsoAndTableId(111L, "db", "table");
+                Assert.fail();
+            } catch (Exception e) {
+                Assert.assertTrue(e.getMessage().contains("mock error"));
+            }
         }
     }
 }

@@ -53,6 +53,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.RexHandlerCallFactory;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.RexHandlerChain;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
@@ -171,6 +173,11 @@ import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
 import static com.alibaba.polardbx.common.TddlConstants.INFORMATION_SCHEMA;
+import static com.alibaba.polardbx.optimizer.core.rel.dml.util.LogicalWriteUtil.DynamicImplicitDefaultHandlerCall;
+import static com.alibaba.polardbx.optimizer.core.rel.dml.util.LogicalWriteUtil.deterministicColumnNames;
+import static com.alibaba.polardbx.optimizer.core.rel.dml.util.LogicalWriteUtil.implicitDefaultColumnNames;
+import static com.alibaba.polardbx.optimizer.core.rel.dml.util.LogicalWriteUtil.literalColumnNames;
+import static com.alibaba.polardbx.optimizer.core.rel.dml.util.RexHandlerFactory.DYNAMIC_IMPLICIT_DEFAULT_ALL_HANDLERS;
 import static com.google.common.util.concurrent.Runnables.doNothing;
 import static org.apache.calcite.util.Static.RESOURCE;
 
@@ -345,12 +352,16 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     }
                 );
 
+                final boolean primaryHasAutoUpdatePartitionKey = CheckModifyLimitation
+                    .checkPartitionColumn(ImmutableList.of(modify.getTable()),
+                        (t, sk) -> CBOUtil.getTableMeta(t.e).isAutoUpdateColumn(sk));
+
                 if (isBroadcast || modifyGsi || modifyPartitionKey || scaleOutCanWrite
                     || replaceNonDeterministicFunction || (!pushdownDuplicateCheck && !canPushDuplicateCheck) ||
-                    upsertContainUnpushableFunc) {
+                    upsertContainUnpushableFunc || primaryHasAutoUpdatePartitionKey) {
                     for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
                         if (!updateColumns.contains(columnMeta.getName())) {
-                            if (TStringUtil.containsIgnoreCase(columnMeta.getField().getExtra(), "on update")) {
+                            if (columnMeta.isAutoUpdateColumn()) {
                                 final Field field = columnMeta.getField();
                                 String columnName = columnMeta.getName();
 
@@ -2268,6 +2279,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 this.plannerContext.getExecutionContext());
         final boolean gsiHasAutoUpdateColumns =
             CheckModifyLimitation.checkGsiHasAutoUpdateColumns(srcTables, this.plannerContext.getExecutionContext());
+        final boolean primaryHasAutoUpdatePartitionKey = CheckModifyLimitation
+            .checkPartitionColumn(targetTables, (t, sk) -> CBOUtil.getTableMeta(t.e).isAutoUpdateColumn(sk));
         final boolean hasGeneratedColumn =
             CheckModifyLimitation.checkHasLogicalGeneratedColumns(targetTables,
                 this.plannerContext.getExecutionContext());
@@ -2279,7 +2292,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final AtomicInteger ordinal = new AtomicInteger(selectList.size() - 1);
 
         if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning && !gsiHasAutoUpdateColumns
-        && !hasGeneratedColumn) {
+        && !primaryHasAutoUpdatePartitionKey && !hasGeneratedColumn) {
             sourceSelect.setSelectList(new SqlNodeList(selectList, SqlParserPos.ZERO));
             return update.getSourceSelect();
         }
@@ -2318,24 +2331,23 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
             tableMeta.getAllColumns()
                 .stream()
-                .filter(c -> !targetColumnSet.contains(c.getName()))
+                .filter(c -> !targetColumnSet.contains(c.getName())
+                    // column with ON UPDATE CURRENT_TIMESTAMP
+                    && c.isAutoUpdateColumn())
                 .forEach(columnMeta -> {
-                    final Field field = columnMeta.getField();
-
                     // Add SET for column ON UPDATE CURRENT_TIMESTAMP
-                    if (TStringUtil.containsIgnoreCase(field.getExtra(), "on update")) {
-                        if (DataTypeUtil
-                            .anyMatchSemantically(field.getDataType(), DataTypes.TimestampType,
-                                DataTypes.DatetimeType)) {
-                            outExtraTargetTableIndexes.add(tableIndex);
-                            outExtraTargetColumns.add(columnMeta.getName());
-                            selectList
-                                .add(SqlValidatorUtil.addAlias(new SqlBasicCall(SqlStdOperatorTable.CURRENT_TIMESTAMP,
-                                    new SqlNode[] {
-                                        SqlLiteral.createExactNumeric(String.valueOf(field.getDataType().getScale()),
-                                            SqlParserPos.ZERO)},
-                                    SqlParserPos.ZERO), SqlUtil.deriveAliasFromOrdinal(ordinal.getAndIncrement())));
-                        }
+                    final Field field = columnMeta.getField();
+                    if (DataTypeUtil
+                        .anyMatchSemantically(field.getDataType(), DataTypes.TimestampType,
+                            DataTypes.DatetimeType)) {
+                        outExtraTargetTableIndexes.add(tableIndex);
+                        outExtraTargetColumns.add(columnMeta.getName());
+                        selectList
+                            .add(SqlValidatorUtil.addAlias(new SqlBasicCall(SqlStdOperatorTable.CURRENT_TIMESTAMP,
+                                new SqlNode[] {
+                                    SqlLiteral.createExactNumeric(String.valueOf(field.getDataType().getScale()),
+                                        SqlParserPos.ZERO)},
+                                SqlParserPos.ZERO), SqlUtil.deriveAliasFromOrdinal(ordinal.getAndIncrement())));
                     }
                 });
         }
@@ -2405,26 +2417,149 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
     }
 
     @Override
+    protected RelNode handleDynamicImplicitDefault(RelNode old, SqlUpdate call, List<String> targetColumns,
+                                                   TableInfo tableInfo) {
+        final List<RelOptTable> targetTables = tableInfo.getSrcInfos().stream()
+            .map(tableInfoNode ->
+                (tableInfoNode.getRefTables() == null || tableInfoNode.getRefTables().isEmpty()) ?
+                    null
+                    : tableInfoNode.getRefTable())
+            .collect(Collectors.toList());
+        final List<Integer> targetTableIndexes = tableInfo.getTargetTableIndexes();
+
+        if (isNotLogicalExecute(targetColumns, tableInfo.getTargetTables())) {
+            return old;
+        }
+
+        final ExecutionContext ec = PlannerContext.getPlannerContext(this.getCluster()).getExecutionContext();
+
+        final boolean replaceImplicitDefault =
+            ec.getParamManager().getBoolean(ConnectionParams.DML_REPLACE_IMPLICIT_DEFAULT);
+        final boolean replaceDynamicImplicitDefault =
+            ec.getParamManager().getBoolean(ConnectionParams.DML_REPLACE_DYNAMIC_IMPLICIT_DEFAULT);
+        if (!replaceImplicitDefault && !replaceDynamicImplicitDefault) {
+            return old;
+        }
+
+        // DN will use implicit default for non-null column in multi-value-insert and insert select statement,
+        // no matter if it is insert ignore or not.
+        // see https://dev.mysql.com/doc/refman/5.7/en/constraint-invalid-data.html
+        //
+        // Try on dn with example below:
+        //
+        // CREATE TABLE `t` (`a` bigint(20) NOT NULL);
+        // SET sql_mode = "";
+        //
+        // -- Throw exception: ERROR 1048 (23000): Column 'a' cannot be null
+        // INSERT INTO t (`a`) VALUES(null);
+        //
+        // -- No exception, only warning: Warning | 1048 | Column 'a' cannot be null
+        // INSERT INTO t (`a`) VALUES(null),(null);
+        //
+        // -- No exception, only warning: Warning | 1048 | Column 'a' cannot be null
+        // INSERT INTO t (`a`) SELECT NULL FROM t;
+        //
+        // So that we have to replace implicit default value for "must-be-literal" column no meter if it is with ignore or not.
+        final boolean isUpdateIgnore = true;
+
+        final Map<Integer, Map<String, RexNode>> allImplicitDefaultColumnNames = new HashMap<>();
+        final Map<Integer, Map<String, RexNode>> dynamicImplicitDefaultColumnNames = new HashMap<>();
+
+        implicitDefaultColumnNames(targetColumns,
+            targetTableIndexes,
+            targetTables,
+            isUpdateIgnore,
+            replaceImplicitDefault,
+            replaceDynamicImplicitDefault,
+            getRexBuilder(),
+            allImplicitDefaultColumnNames,
+            dynamicImplicitDefaultColumnNames);
+
+        if (allImplicitDefaultColumnNames.isEmpty()) {
+            return old;
+        }
+
+        final Map<Integer, Set<String>> tableIndexLiteralColumnsMap = new HashMap<>();
+        final Map<Integer, Set<String>> tableIndexDeterministicColumnsMap = new HashMap<>();
+        for (Ord<Integer> o : Ord.zip(targetTableIndexes)) {
+            if (!tableIndexLiteralColumnsMap.containsKey(o.getValue())) {
+                final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTables.get(o.getValue()));
+                tableIndexLiteralColumnsMap.put(o.getValue(), literalColumnNames(qn.left, qn.right, ec));
+                tableIndexDeterministicColumnsMap.put(o.getValue(), deterministicColumnNames(qn.left, qn.right, ec));
+            }
+        }
+
+        // If any of dynamic implicit default column must be computed, make it all
+        final boolean computeAllDynamicImplicitDefault =
+            Ord.zip(targetColumns).stream().anyMatch(o -> {
+                final Integer targetTableIndex = targetTableIndexes.get(o.i);
+                return dynamicImplicitDefaultColumnNames.containsKey(targetTableIndex)
+                    && dynamicImplicitDefaultColumnNames.get(targetTableIndex).containsKey(o.e)
+                    && (tableIndexLiteralColumnsMap.get(targetTableIndex).contains(o.e)
+                    || tableIndexDeterministicColumnsMap.get(targetTableIndex).contains(o.e));
+            });
+
+        final Project project = getProject(old);
+        final List<RexNode> currentProjectItems = project.getProjects();
+        final List<String> currentFieldNames = project.getRowType().getFieldNames();
+        final int setSrcOffset = currentProjectItems.size() - targetColumns.size();
+
+        final List<RexNode> resultProjects = new ArrayList<>(currentProjectItems.subList(0, setSrcOffset));
+        for (Ord<String> o : Ord.zip(targetColumns)) {
+            final Integer targetTableIndex = targetTableIndexes.get(o.i);
+
+            final boolean withImplicitDefault = allImplicitDefaultColumnNames.containsKey(targetTableIndex)
+                && allImplicitDefaultColumnNames.get(targetTableIndex).containsKey(o.getValue());
+            final boolean withDynamicImplicitDefault = dynamicImplicitDefaultColumnNames.containsKey(targetTableIndex)
+                && dynamicImplicitDefaultColumnNames.get(targetTableIndex).containsKey(o.getValue());
+            final boolean mustBeLiteral = tableIndexLiteralColumnsMap.get(targetTableIndex).contains(o.getValue());
+            final boolean mustBeDeterministic =
+                tableIndexDeterministicColumnsMap.get(targetTableIndex).contains(o.getValue());
+
+            final int refIndex = setSrcOffset + o.i;
+            RexNode rexNode = currentProjectItems.get(refIndex);
+
+            if (withImplicitDefault) {
+                final RexNode defaultRex = Optional.ofNullable(allImplicitDefaultColumnNames.get(targetTableIndex))
+                    .map(m -> m.get(o.getValue())).orElse(null);
+
+                final RexHandlerChain<DynamicImplicitDefaultHandlerCall> chain =
+                    RexHandlerChain.create(DYNAMIC_IMPLICIT_DEFAULT_ALL_HANDLERS);
+
+                final DynamicImplicitDefaultHandlerCall handlerCall =
+                    RexHandlerCallFactory.createDynamicImplicitDefaultHandlerCall(rexNode,
+                        mustBeLiteral,
+                        mustBeDeterministic,
+                        withImplicitDefault,
+                        withDynamicImplicitDefault,
+                        computeAllDynamicImplicitDefault,
+                        defaultRex,
+                        rexBuilder,
+                        refIndex,
+                        project);
+
+                rexNode = chain.process(handlerCall).getResult();
+            }
+
+            resultProjects.add(rexNode);
+        }
+
+        RelNode result = buildProject(resultProjects, currentFieldNames, project.getInput());
+
+        if (old instanceof Sort) {
+            result = ((Sort) old).copy(old.getTraitSet(), ImmutableList.of(result));
+        }
+
+        return result;
+    }
+
+    @Override
     protected RelNode transformUpdateSourceRel(RelNode old, TableInfo tableInfo, List<String> targetColumns,
                                                List<Map<String, Integer>> sourceColumnIndexMap,
                                                List<String> outTargetColumns, List<Integer> outTargetTables) {
         final List<RelOptTable> targetTables = tableInfo.getTargetTables();
         final List<Integer> targetTableIndexes = tableInfo.getTargetTableIndexes();
-        final boolean modifyBroadcast = CheckModifyLimitation.checkModifyBroadcast(targetTables, doNothing());
-        final boolean modifyGsi = CheckModifyLimitation
-            .checkModifyGsi(targetTables, targetColumns, false, this.plannerContext.getExecutionContext());
-        final boolean scaleOutIsRunning =
-            ComplexTaskPlanUtils.isScaleOutRunningOnTables(targetTables, this.plannerContext.getExecutionContext());
-        final boolean modifyPartitionKey =
-            CheckModifyLimitation.checkModifyShardingColumnWithGsi(targetTables, targetColumns,
-                this.plannerContext.getExecutionContext());
-        final boolean hasGeneratedColumn =
-            CheckModifyLimitation.checkHasLogicalGeneratedColumns(targetTables,
-                this.plannerContext.getExecutionContext());
-
-        final ExecutionStrategy hintEx = getExecutionStrategy();
-        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning
-            && hintEx != ExecutionStrategy.LOGICAL && !hasGeneratedColumn) {
+        if (isNotLogicalExecute(targetColumns, targetTables)) {
             outTargetColumns.addAll(targetColumns);
             outTargetTables.addAll(targetTableIndexes);
             return old;
@@ -2536,6 +2671,28 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         return result;
     }
 
+    private boolean isNotLogicalExecute(List<String> targetColumns, List<RelOptTable> targetTables) {
+        final boolean modifyBroadcast = CheckModifyLimitation.checkModifyBroadcast(targetTables, doNothing());
+        final boolean modifyGsi = CheckModifyLimitation
+            .checkModifyGsi(targetTables, targetColumns, false, this.plannerContext.getExecutionContext());
+        final boolean scaleOutIsRunning =
+            ComplexTaskPlanUtils.isScaleOutRunningOnTables(targetTables, this.plannerContext.getExecutionContext());
+        final boolean modifyPartitionKey =
+            CheckModifyLimitation.checkModifyShardingColumnWithGsi(targetTables, targetColumns,
+                this.plannerContext.getExecutionContext());
+        final boolean hasGeneratedColumn =
+            CheckModifyLimitation.checkHasLogicalGeneratedColumns(targetTables,
+                this.plannerContext.getExecutionContext());
+        final ExecutionStrategy hintEx = getExecutionStrategy();
+
+        return !modifyPartitionKey
+            && !modifyBroadcast
+            && !modifyGsi
+            && !scaleOutIsRunning
+            && hintEx != ExecutionStrategy.LOGICAL
+            && !hasGeneratedColumn;
+    }
+
     private Project buildProject(List<RexNode> currentProjectItems, List<String> currentFieldNames, RelNode bottom) {
         Project topProject;
         if (bottom instanceof Project) {
@@ -2553,6 +2710,11 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final List<RexNode> topProjects = PlannerUtils.mergeProject(topProject, bottom, relBuilder);
         topProject = LogicalProject.create(bottom, topProjects, currentFieldNames);
         return topProject;
+    }
+
+    protected Project mergeProject(Project top, Project bottom) {
+        final List<RexNode> topProjects = PlannerUtils.mergeProject(top, bottom, relBuilder);
+        return LogicalProject.create(bottom.getInput(), topProjects, top.getRowType());
     }
 
     private static Project getProject(RelNode rel) {

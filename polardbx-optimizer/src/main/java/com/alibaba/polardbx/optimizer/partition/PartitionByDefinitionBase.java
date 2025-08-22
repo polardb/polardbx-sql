@@ -364,6 +364,31 @@ public abstract class PartitionByDefinitionBase {
         return cmp;
     }
 
+    public static SearchDatumComparator buildQuerySpaceComparatorBySpecifyDataTypes(
+        List<RelDataType> partFldRelDataTypes,
+        List<DataType> partFldDataTypes
+    ) {
+        if (partFldRelDataTypes.isEmpty()) {
+            return null;
+        }
+        int partCnt = partFldRelDataTypes.size();
+        RelDataType[] datumDataTypes = new RelDataType[partCnt];
+        DataType[] datumDrdsDataTypes = new DataType[partCnt];
+        Charset[] datumCharsets = new Charset[partCnt];
+        SqlCollation[] datumCollations = new SqlCollation[partCnt];
+        for (int i = 0; i < partCnt; i++) {
+            RelDataType partFldRelDataType = partFldRelDataTypes.get(i);
+            DataType partFldDataType = partFldDataTypes.get(i);
+            datumDataTypes[i] = partFldRelDataType;
+            datumDrdsDataTypes[i] = partFldDataType;
+            datumCharsets[i] = datumDataTypes[i].getCharset();
+            datumCollations[i] = datumDataTypes[i].getCollation();
+        }
+        SearchDatumComparator cmp =
+            new SearchDatumComparator(datumDataTypes, datumDrdsDataTypes, datumCharsets, datumCollations);
+        return cmp;
+    }
+
     protected static SearchDatumHasher buildHasher(PartitionStrategy strategy,
                                                    List<ColumnMeta> partitionFieldList,
                                                    List<RelDataType> partitionExprTypeList) {

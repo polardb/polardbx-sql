@@ -81,9 +81,9 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
     private static final String INSTANCE_ID = PropertiesUtil.configProp.getProperty("instanceId");
 
     private static final String HINT =
-        "/*+TDDL:CMD_EXTRA(ALLOW_ADD_GSI=TRUE, GSI_IGNORE_RESTRICTION=TRUE, GSI_BACKFILL_BATCH_SIZE=1000, GSI_BACKFILL_SPEED_LIMITATION=-1, GSI_BACKFILL_PARALLELISM=4, GSI_CHECK_SPEED_LIMITATION=-1, GSI_CHECK_PARALLELISM=4)*/";
+        "/*+TDDL:CMD_EXTRA(ALLOW_ADD_GSI=TRUE, GSI_IGNORE_RESTRICTION=TRUE, GSI_BACKFILL_BATCH_SIZE=1000, GSI_BACKFILL_SPEED_LIMITATION=-1, GSI_BACKFILL_PARALLELISM=4, GSI_CHECK_SPEED_LIMITATION=-1, GSI_CHECK_PARALLELISM=4,GSI_BUILD_LOCAL_INDEX_LATER=false)*/";
     private static final String SLOW_HINT =
-        "/*+TDDL: cmd_extra(GSI_BACKFILL_BATCH_SIZE=100, GSI_BACKFILL_SPEED_LIMITATION=-1, GSI_BACKFILL_PARALLELISM=4, GSI_CHECK_SPEED_LIMITATION=-1, GSI_CHECK_PARALLELISM=4, GSI_DEBUG=\"slow\")*/";
+        "/*+TDDL: cmd_extra(GSI_BACKFILL_BATCH_SIZE=100, GSI_BACKFILL_SPEED_LIMITATION=-1, GSI_BACKFILL_PARALLELISM=4, GSI_CHECK_SPEED_LIMITATION=-1, GSI_CHECK_PARALLELISM=4, GSI_DEBUG=\"slow\",GSI_BUILD_LOCAL_INDEX_LATER=false)*/";
 
     private static final String ASYNC_TABLE_NAME = "gsi_async_backfill";
     private static final String ASYNC_INDEX_NAME = "g_i_async_backfill";
@@ -931,6 +931,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
                     logger.info(Thread.currentThread().getName() + " find exception when insert " + e.getMessage());
                     throw GeneralUtil.nestedException(e);
                 }
+                logger.warn(sqlInsert, e);
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException ignore) {
@@ -958,6 +959,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
                     logger.info(Thread.currentThread().getName() + " find exception when update " + e.getMessage());
                     throw GeneralUtil.nestedException(e);
                 }
+                logger.warn(sqlUpdate, e);
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException ignore) {
@@ -984,6 +986,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
                     logger.info(Thread.currentThread().getName() + " find exception when delete " + e.getMessage());
                     throw GeneralUtil.nestedException(e);
                 }
+                logger.warn(sqlDelete, e);
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException ignore) {

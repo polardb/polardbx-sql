@@ -115,7 +115,8 @@ public class SpecifiedOssSplit extends OssSplit {
                 .getBoolean(ConnectionParams.SCHEDULE_BY_PARTITION);
 
             int partition = needPartition ?
-                calcPartition(logicalSchema, logicalTableName, physicalSchema, phyTable) : NO_PARTITION_INFO;
+                calcPartition(logicalSchema, logicalTableName, physicalSchema, phyTable, executionContext) :
+                NO_PARTITION_INFO;
             boolean localPairWise =
                 executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
                     && partitionWise.isLocalPartition();

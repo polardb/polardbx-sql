@@ -29,6 +29,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.model.hint.DirectlyRouteCondition;
 import com.alibaba.polardbx.common.model.hint.ExtraCmdRouteCondition;
 import com.alibaba.polardbx.common.model.hint.RouteCondition;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
@@ -42,6 +43,10 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
@@ -53,6 +58,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlLexer;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.Token;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.gms.config.SqlEngineAlert;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
@@ -70,7 +76,8 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
-import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime.Now;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.RelToXPlanConverter;
@@ -126,7 +133,6 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.SubQueryPlanEnumera
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
-import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.CollectorTableVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.CountVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
@@ -226,6 +232,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlTruncateTable;
 import org.apache.calcite.sql.SqlUpdate;
+import org.apache.calcite.sql.SqlWith;
 import org.apache.calcite.sql.TDDLSqlSelect;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
@@ -234,6 +241,7 @@ import org.apache.calcite.util.Util;
 import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
@@ -661,16 +669,7 @@ public class Planner {
                 (DrdsParameterizeSqlVisitor.ConstantVariable) param;
             String name = StringUtils.strip(constantVariable.getName().toLowerCase(), "`");
             if ("now".equals(name)) {
-                Now now = null;
-                if (constantVariable.getArgs().length != 0) {
-                    now = new Now(null, (new DateTimeType((Integer) constantVariable.getArgs()[0])));
-                    return new DateTimeType((Integer) constantVariable.getArgs()[0])
-                        .convertFrom(executionContext.getConstantValue(name, now, new Object[] {6}));
-                } else {
-                    now = new Now(null, new DateTimeType());
-                    return new DateTimeType()
-                        .convertFrom(executionContext.getConstantValue(name, now, new Object[] {6}));
-                }
+                return new OriginalTimestamp(handleNow(executionContext, constantVariable));
             }
         } else if (param instanceof NlsString) {
             executionContext.getParameterNlsStrings().put(index, (NlsString) param);
@@ -683,6 +682,25 @@ public class Planner {
             }
         }
         return param;
+    }
+
+    public static @Nullable MysqlDateTime handleNow(final ExecutionContext executionContext,
+                                                    DrdsParameterizeSqlVisitor.ConstantVariable constantVariable) {
+        // first, store MysqlDatetime with maximum precision at once.
+        MysqlDateTime nowValue =
+            executionContext.getConstantValue("now", () -> DataTypeUtil.getNow(6, executionContext));
+        nowValue = nowValue.clone();
+
+        if (constantVariable.getArgs().length != 0) {
+
+            // truncate to given scale.
+            int scale = DataTypes.IntegerType.convertFrom(constantVariable.getArgs()[0]);
+            return MySQLTimeCalculator.timeTruncate(nowValue, scale);
+
+        } else {
+            // truncate to 0 scale.
+            return MySQLTimeCalculator.timeTruncate(nowValue, 0);
+        }
     }
 
     /**
@@ -783,13 +801,17 @@ public class Planner {
             disableMpp(ec);
         }
 
-        if (hintCollection.pushdownOriginSql() ||
-            hintCollection.directWithRealTableName() ||
-            (StringUtils.isNotEmpty(ec.getPartitionHint()) &&
-                (ast.isA(DML) || ast.isA(QUERY)) &&
-                checkAst(ast) &&
-                isSuitableForDirectMode(explain) &&
-                !ec.isVisitDBBuildIn()
+        boolean isDirectHintWithGroupName = isDirectHintWithGroupName(ec.getSchemaName(), cmdBean, param);
+
+        if (!isDirectHintWithGroupName &&
+            (hintCollection.pushdownOriginSql() ||
+                hintCollection.directWithRealTableName() ||
+                (StringUtils.isNotEmpty(ec.getPartitionHint()) &&
+                    (ast.isA(DML) || ast.isA(QUERY)) &&
+                    checkAst(ast) &&
+                    isSuitableForDirectMode(explain) &&
+                    !ec.isVisitDBBuildIn()
+                )
             )) {
             executionPlan = hintPlanner.direct(ast, cmdBean, hintCollection, param, ec.getSchemaName(), ec);
         } else if (ast.getKind() == SqlKind.BASELINE) {
@@ -837,7 +859,41 @@ public class Planner {
                 (PostPlanner.usePostPlanner(explain, ec.isUseHint())
                     || hintCollection.usePostPlanner()));
         executionPlan.setHintCollection(hintCollection);
+        // mock alert
+        if (StringUtils.isNotEmpty(ec.getParamManager().getString(ConnectionParams.MOCK_SQL_ENGINE_ALERT))) {
+            SqlEngineAlert.getInstance()
+                .put(ec.getParamManager().getString(ConnectionParams.MOCK_SQL_ENGINE_ALERT), "mock test");
+        }
         return executionPlan;
+    }
+
+    protected static boolean isDirectHintWithGroupName(String schema, HintCmdOperator.CmdBean cmdBean,
+                                                       Map<Integer, ParameterContext> param) {
+        if (cmdBean != null && cmdBean.jsonHint()) {
+            // JSON HINT
+            RouteCondition rc =
+                SimpleHintParser.convertHint2RouteCondition(schema, SimpleHintParser.TDDL_HINT_PREFIX
+                        + cmdBean.getJson()
+                        + SimpleHintParser.TDDL_HINT_END,
+                    param);
+            if (rc == null) {
+                return false;
+            }
+            cmdBean.getExtraCmd().putAll(rc.getExtraCmds());
+
+            if (rc instanceof DirectlyRouteCondition) {
+                final DirectlyRouteCondition drc = (DirectlyRouteCondition) rc;
+                String partName = drc.getDbId();
+                if (partName == null) {
+                    return false;
+                }
+                if (partName.toLowerCase().contains("group") ||
+                    MetaDbDataSource.DEFAULT_META_DB_GROUP_NAME.equalsIgnoreCase(partName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -871,10 +927,7 @@ public class Planner {
         }
         plannerContext.setSqlKind(ast.getKind());
         // enable record
-        if (ast instanceof TDDLSqlSelect) {
-            plannerContext.setEnableSelectStatistics(
-                OutFileParams.IsStatistics(((TDDLSqlSelect) ast).getOutFileParams()));
-        }
+        enableRecordViewMap(ast, plannerContext);
         // disable direct plan for CTE
         if (ast.getKind() == SqlKind.WITH) {
             plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_DIRECT_PLAN, false);
@@ -906,6 +959,7 @@ public class Planner {
                 plannerContext.setExprMap(predicateMap);
             }
         }
+        plannerContext.setHasPagingForce(toDrdsRelVisitor.isExistPagingForce());
 
         RelMetadataQuery mq = drdsRelNode.getCluster().getMetadataQuery();
         if (Boolean
@@ -986,6 +1040,18 @@ public class Planner {
             toDrdsRelVisitor.existsCannotPushDown());
 
         return executionPlan;
+    }
+
+    private void enableRecordViewMap(SqlNode ast, PlannerContext plannerContext) {
+        boolean enable = false;
+        if (ast instanceof TDDLSqlSelect) {
+            enable = OutFileParams.IsStatistics(((TDDLSqlSelect) ast).getOutFileParams());
+        } else if (ast instanceof SqlWith && ((SqlWith) ast).body instanceof TDDLSqlSelect) {
+            enable = OutFileParams.IsStatistics(((TDDLSqlSelect) ((SqlWith) ast).body).getOutFileParams());
+        }
+        if (enable) {
+            plannerContext.setEnableSelectStatistics();
+        }
     }
 
     private RelNode checkLBACRowAccess(RelNode relNode, SqlNode sqlNode, ExecutionContext executionContext) {
@@ -1683,7 +1749,7 @@ public class Planner {
 
         // replace table scan to columnar table scan
         final CBOUtil.ColumnarScanReplacer columnarScanReplacer = new CBOUtil.ColumnarScanReplacer(plannerContext);
-        return CBOUtil.optimizeByPullProject(rboOutput.accept(columnarScanReplacer), plannerContext);
+        return CBOUtil.optimizeByColumnarPostRBO(rboOutput.accept(columnarScanReplacer), plannerContext);
     }
 
     private Map<String, Object> configureColumnarRBO(ParamManager paramManager,
@@ -1883,7 +1949,7 @@ public class Planner {
     }
 
     private RelNode addPartitionWiseTrait(RelNode input, boolean joinKeepPartition) {
-        return new PartitionWiseAssigner(input, joinKeepPartition).assign();
+        return PartitionWiseAssigner.assign(input, joinKeepPartition);
     }
 
     private RelNode optimizeRowAfterCBO(RelNode input, PlannerContext plannerContext) {
@@ -1954,6 +2020,10 @@ public class Planner {
         }
 
         if (toDrdsRelVisitor.isExistForceColumnar()) {
+            return ExecutionPlan.DirectMode.NONE;
+        }
+
+        if (toDrdsRelVisitor.isExistPagingForce()) {
             return ExecutionPlan.DirectMode.NONE;
         }
 
@@ -2191,7 +2261,7 @@ public class Planner {
         /* Here, we use global config value to judge whether we **try** to optimize this plan.
            But whether we really optimize this plan depends on local config value, i.e., pc.isAddForcePrimary().
          */
-        if (InstConfUtil.getBool(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO)) {
+        if (!InstanceVersion.isMYSQL80() && InstConfUtil.getBool(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO)) {
             final ForceIndexVisitor forceIndexVisitor =
                 new ForceIndexVisitor(plannerContext.isAddForcePrimary(), plannerContext.getExecutionContext());
             optimizedNode = optimizedNode.accept(forceIndexVisitor);
@@ -2206,7 +2276,7 @@ public class Planner {
         /* Here, we use global config value to judge whether we **try** to optimize this plan.
            But whether we really optimize this plan depends on local config value, i.e., pc.isAddForcePrimary().
          */
-        if (InstConfUtil.getBool(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO)) {
+        if (!InstanceVersion.isMYSQL80() && InstConfUtil.getBool(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO)) {
             final ForceIndexSingleVisitor forceIndexSingleVisitor = new ForceIndexSingleVisitor(
                 validator, pc.isAddForcePrimary(), pc.getExecutionContext());
             sqlNode = sqlNode.accept(forceIndexSingleVisitor);
@@ -2280,55 +2350,55 @@ public class Planner {
      */
     private ExecutionPlan updatePlanProperties(ExecutionPlan plan, ToDrdsRelVisitor visitor, SqlNode sqlNode) {
         if (visitor.isModifyBroadcastTable()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
+            plan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
         }
 
         if (visitor.isOnlyBroadcastTable()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.ONLY_BROADCAST_TABLE);
+            plan.getPlanProperties().add(ExecutionPlanProperties.ONLY_BROADCAST_TABLE);
         }
 
         if (visitor.isModifyGsiTable()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_GSI_TABLE);
+            plan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_GSI_TABLE);
         }
 
         if (visitor.isContainReplicateWriableTable()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_GSI_TABLE);
+            plan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_GSI_TABLE);
         }
         if (GeneralUtil.isNotEmpty(visitor.getModifiedTables())) {
             plan.setModifiedTables(visitor.getModifiedTables());
-            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_TABLE);
+            plan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_TABLE);
         }
         if (visitor.getLockMode() != SqlSelect.LockMode.UNDEF) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.SELECT_WITH_LOCK);
+            plan.getPlanProperties().add(ExecutionPlanProperties.SELECT_WITH_LOCK);
         }
         if (visitor.isModifyShardingColumn()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
+            plan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
         }
         if (visitor.isWithIndexHint()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.WITH_INDEX_HINT);
+            plan.getPlanProperties().add(ExecutionPlanProperties.WITH_INDEX_HINT);
         }
         if (!sqlNode.isA(SqlKind.DML)) {
             plan.setOriginTableNames(visitor.getTableNames());
         }
 
         if (sqlNode.isA(SqlKind.DML)) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.DML);
+            plan.getPlanProperties().add(ExecutionPlanProperties.DML);
         }
         if (sqlNode.isA(QUERY)) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.QUERY);
+            plan.getPlanProperties().add(ExecutionPlanProperties.QUERY);
         }
 
         if (sqlNode.isA(DDL)) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.DDL);
+            plan.getPlanProperties().add(ExecutionPlanProperties.DDL);
         }
         if (visitor.isContainScaleOutWritableTable()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
+            plan.getPlanProperties().add(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
         }
         if (visitor.isContainScaleOutWritableTable()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
+            plan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
         }
         if (visitor.isModifyForeignKey()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_FOREIGN_KEY);
+            plan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_FOREIGN_KEY);
         }
 
         return plan;

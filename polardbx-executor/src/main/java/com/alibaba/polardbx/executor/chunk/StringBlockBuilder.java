@@ -16,10 +16,13 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.chars.CharArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Arrays;
 
@@ -28,10 +31,13 @@ import java.util.Arrays;
  *
  */
 public class StringBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(StringBlockBuilder.class).instanceSize();
 
     private final int initialStringLength;
-    final IntArrayList offsets; // records where the bytes end at
-    final CharArrayList data;
+    final MemoryCountableIntArrayList offsets; // records where the bytes end at
+    final MemoryCountableCharArrayList data;
+
+    @FieldMemoryCounter(value = false)
     final DataType dataType;
 
     public StringBlockBuilder(int capacity, int expectedStringLength) {
@@ -41,9 +47,17 @@ public class StringBlockBuilder extends AbstractBlockBuilder {
     public StringBlockBuilder(DataType dataType, int capacity, int expectedStringLength) {
         super(capacity);
         this.dataType = dataType;
-        this.offsets = new IntArrayList(capacity);
-        this.data = new CharArrayList(capacity * expectedStringLength);
+        this.offsets = new MemoryCountableIntArrayList(capacity);
+        this.data = new MemoryCountableCharArrayList(capacity * expectedStringLength);
         this.initialStringLength = expectedStringLength;
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE
+            + FastMemoryCounter.sizeOf(offsets)
+            + FastMemoryCounter.sizeOf(data)
+            + FastMemoryCounter.sizeOf(valueIsNull);
     }
 
     @Override

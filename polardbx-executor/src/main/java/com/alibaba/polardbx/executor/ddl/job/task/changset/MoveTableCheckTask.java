@@ -41,18 +41,20 @@ import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import io.airlift.slice.DataSize;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.util.Pair;
 
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 @TaskName(name = "MoveTableCheckTask")
 @Getter
@@ -87,6 +89,9 @@ public class MoveTableCheckTask extends BaseBackfillTask implements RemoteExecut
 
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ROLLBACK_ON_CHECKER)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " force rollback on checker!");
+        }
         // for debug, skip checker
         if (executionContext.getParamManager().getBoolean(ConnectionParams.SKIP_CHANGE_SET_CHECKER)
             || !executionContext.getParamManager().getBoolean(ConnectionParams.SCALEOUT_CHECK_AFTER_BACKFILL)) {
@@ -122,9 +127,10 @@ public class MoveTableCheckTask extends BaseBackfillTask implements RemoteExecut
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         if (optimizeDoubleWrite) {
             // sync to restore the status of table meta
+            PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+                ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
             SyncManagerHelper.sync(
-                new TablesMetaChangePreemptiveSyncAction(schemaName, relatedTables, 1500L, 1500L,
-                    TimeUnit.MICROSECONDS), SyncScope.ALL);
+                new TablesMetaChangePreemptiveSyncAction(schemaName, relatedTables, preemptiveTime), SyncScope.ALL);
         }
     }
 
@@ -266,9 +272,12 @@ public class MoveTableCheckTask extends BaseBackfillTask implements RemoteExecut
             "FastChecker for move table, schema [{0}] logical src table [{1}] logic dst table [{2}] start",
             schemaName, logicalTable, logicalTable));
 
+        Map<Pair<String, String>, List<Pair<String, String>>> srcTarPhyTableMap =
+            ScaleOutPlanUtil.generateSrcTarPhyTableMapForMoveTable(sourcePhyTableNames, targetPhyTableNames,
+                sourceTargetGroup);
         FastChecker fastChecker = MoveTableFastChecker
             .create(schemaName, logicalTable,
-                sourcePhyTableNames, targetPhyTableNames, executionContext);
+                sourcePhyTableNames, targetPhyTableNames, srcTarPhyTableMap, true, executionContext);
 
         boolean fastCheckResult = false;
         try {
@@ -347,5 +356,13 @@ public class MoveTableCheckTask extends BaseBackfillTask implements RemoteExecut
         sb.append(DataSize.succinctBytes(dataSize));
         sb.append("]");
         return sb.toString();
+    }
+
+    @Override
+    public List<String> explainInfo() {
+        String backfillTask = "MOVE_TABLE_CHECK_TASK(" + logicalTableName + ")";
+        List<String> command = new ArrayList<>(1);
+        command.add(backfillTask);
+        return command;
     }
 }

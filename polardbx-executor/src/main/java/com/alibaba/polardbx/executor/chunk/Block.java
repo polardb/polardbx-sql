@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.common.utils.bloomfilter.RFBloomFilter;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.executor.accumulator.state.NullableLongGroupState;
@@ -36,7 +37,7 @@ import java.util.BitSet;
 /**
  * Block stores data in columnar format
  */
-public interface Block extends CastableBlock {
+public interface Block extends CastableBlock, MemoryCountable {
     public static final int NULL_HASH_CODE = 0;
 
     /**

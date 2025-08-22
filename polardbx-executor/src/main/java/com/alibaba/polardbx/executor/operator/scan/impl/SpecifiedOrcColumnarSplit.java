@@ -390,6 +390,11 @@ public class SpecifiedOrcColumnarSplit extends MorselColumnarSplit {
         }
 
         @Override
+        public ColumnarSplitBuilder isFlashback(boolean isFlashback) {
+            return this;
+        }
+
+        @Override
         public ColumnarSplitBuilder tso(Long tso) {
             this.tso = tso;
             return this;

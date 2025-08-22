@@ -30,8 +30,8 @@ import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.orc.TypeDescription;
 
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Optional;
 
 public class BinaryColumnProvider implements ColumnProvider<String> {
@@ -132,14 +132,15 @@ public class BinaryColumnProvider implements ColumnProvider<String> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        ByteBuffer bytes = row.getBytes(columnId);
         BinaryType binaryType = (BinaryType) dataType;
 
-        if (binaryType.isFixedLength()) {
+        if (binaryType.isFixedLength() && bytes.remaining() != binaryType.length()) {
+            // TODO(siyun): avoid array copy once
             byte[] paddingBytes = ColumnProvider.convertToPaddingBytes(bytes, binaryType);
             blockBuilder.writeByteArray(paddingBytes);
         } else {
-            blockBuilder.writeByteArray(bytes);
+            blockBuilder.writeByteArray(bytes.array(), bytes.position(), bytes.remaining());
         }
     }
 }

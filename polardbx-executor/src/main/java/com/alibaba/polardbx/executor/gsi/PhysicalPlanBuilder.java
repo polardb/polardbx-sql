@@ -333,6 +333,32 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return new SqlBasicCall(SqlStdOperatorTable.IN, new SqlNode[] {keyNameNode, outerRow}, SqlParserPos.ZERO);
     }
 
+    /**
+     * Build the condition for duplicate check on 8.0 DN
+     * Format:
+     * <pre>
+     * AND(=(SqlIdentifier, SqlDynamicParam), =(SqlIdentifier, SqlDynamicParam))
+     * </pre>
+     *
+     * @param values [uk column 1 value, uk column 2 value]
+     * @param keyNames [uk column 1, uk column 2]
+     * @return the condition node
+     */
+    protected SqlNode buildEqualCondition(List<Object> values, List<String> keyNames) {
+        SqlNode[] allEquals = new SqlNode[values.size()];
+
+        for (int i = 0; i < values.size(); i++) {
+            final String key = keyNames.get(i);
+            final SqlDynamicParam value = buildParam(ParameterMethod.setObject1, values.get(i));
+
+            // Rows with null uk values are allowed to be inserted
+            allEquals[i] = new SqlBasicCall(SqlStdOperatorTable.EQUALS,
+                new SqlNode[] {new SqlIdentifier(key, SqlParserPos.ZERO), value},
+                SqlParserPos.ZERO);
+        }
+
+        return new SqlBasicCall(SqlStdOperatorTable.AND, allEquals, SqlParserPos.ZERO);
+    }
     protected SqlNode buildConstant(Object value, String name) {
         SqlIdentifier sqlIdentifier = new SqlIdentifier(name, SqlParserPos.ZERO);
         SqlNode param = buildParam(ParameterMethod.setObject1, value);
@@ -2097,7 +2123,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                                                   final List<List<List<Object>>> lookUpUniqueKey,
                                                   final List<List<Pair<Integer, Integer>>> lookUpUniqueKeyIndex,
                                                   final List<String> selectKey, boolean withValueIndex,
-                                                  int maxSqlUnionCount, boolean isFullTableScan) {
+                                                  int maxSqlUnionCount, boolean isFullTableScan,
+                                                  boolean useUnionEqual) {
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults = isFullTableScan ?
             getShardResultsFullTableScan(tableMeta, values.size()) :
             getShardResults(tableMeta, values, insertColumns, true);
@@ -2171,7 +2198,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                         tableParamIndexes.add(tableParamIndex);
 
                         // (key_column1, key_column2) = (?, ?)
-                        SqlNode condition = buildInCondition(ImmutableList.of(key), keyNameNode);
+                        SqlNode condition = useUnionEqual ? buildEqualCondition(key, conditionKeys.get(i)) :
+                            buildInCondition(ImmutableList.of(key), keyNameNode);
 
                         // SELECT (value_index, uk_index) FROM DUAL WHERE (key_column1, key_column2) IN ((?, ?)) FOR UPDATE
                         SqlSelect sqlSelect =

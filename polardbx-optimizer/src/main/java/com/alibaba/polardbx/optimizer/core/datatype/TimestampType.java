@@ -273,7 +273,7 @@ public class TimestampType extends AbstractDataType<java.sql.Timestamp> {
         if (t == null) {
             return null;
         }
-        Timestamp timestamp = new OriginalTimestamp(t);
+        OriginalTimestamp timestamp = new OriginalTimestamp(t);
         if (!round) {
             return timestamp;
         }
@@ -285,7 +285,7 @@ public class TimestampType extends AbstractDataType<java.sql.Timestamp> {
         }
 
         // round: Timestamp -> MysqlDateTime -> OriginalTimestamp
-        return Optional.ofNullable(t)
+        return Optional.ofNullable(timestamp.getMysqlDateTime())
             .map(
                 mysqlDateTime -> MySQLTimeCalculator.roundDatetime(mysqlDateTime, scale)
             )

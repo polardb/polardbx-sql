@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.polardbx.optimizer.parse.visitor;
 
 import com.alibaba.polardbx.common.DefaultSchema;
@@ -609,11 +610,10 @@ public class PolarXBindParamTypeVisitor extends SQLExprTypeVisitor {
     }
 
     protected void handleValueExpr(TableMeta tableMeta, List<SQLExpr> exprs, List<SQLExpr> valueExprs) {
-        if (exprs.size() == valueExprs.size() || (
-            exprs.size() == 0 && tableMeta.getAllColumns().size() == valueExprs.size())) {
+        if (exprs.size() == valueExprs.size() || exprs.isEmpty()) {
             for (int i = 0; i < valueExprs.size(); i++) {
                 ColumnMeta column = null;
-                if (exprs.size() == 0) {
+                if (exprs.isEmpty()) {
                     column = tableMeta.getAllColumns().get(i);
                 } else {
                     SQLExpr expr = exprs.get(i);

@@ -494,4 +494,8 @@ public class ConnectionManager {
     public String getMysqlAddressSecond() {
         return mysqlAddressSecond;
     }
+
+    public String getPolardbxPassword() {
+        return polardbxPassword;
+    }
 }

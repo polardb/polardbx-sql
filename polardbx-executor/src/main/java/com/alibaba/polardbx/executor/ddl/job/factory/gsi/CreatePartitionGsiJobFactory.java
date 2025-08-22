@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
-import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionGlobalIndexBuilder;
@@ -33,7 +32,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMeta
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterGsiAddLocalIndexTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPreValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
@@ -42,24 +40,19 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupsSyncTask
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
-import com.alibaba.polardbx.executor.ddl.twophase.DnStats;
 import com.alibaba.polardbx.executor.gsi.corrector.GsiChecker;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
-import com.alibaba.polardbx.gms.node.GmsNodeManager;
-import com.alibaba.polardbx.gms.node.StorageStatusManager;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
-import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
-import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Lists;
-import io.airlift.slice.DataSize;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang3.StringUtils;
 
@@ -71,6 +64,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.executor.gsi.GsiUtils.columnAst2SubPart;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.columnAst2nameStr;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.getAvaliableNodeNum;
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.DELETE_ONLY;
@@ -208,6 +202,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     physicalPlanData.getTableGroupConfig(), removePartitioning, false);
 
             List<String> columns = columnAst2nameStr(this.columns);
+            List<Long> subParts = columnAst2SubPart(this.columns);
             List<String> coverings = columnAst2nameStr(this.coverings);
 
             Map<String, String> columnMapping = omcColumnMap == null ? null :
@@ -286,6 +281,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     gsiMaxParallelism,
                     cpuAcquired
                 );
+                // has been set.
                 physicalPlanDataForLocalIndex = null;
             } else if (needOnlineSchemaChange) {
                 TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
@@ -302,6 +298,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     dstColumnNewDefinitions,
                     modifyStringColumns,
                     physicalPlanData,
+                    physicalPlanDataForLocalIndex,
                     tableMeta,
                     gsiCdcMark,
                     onlineModifyColumn,
@@ -350,6 +347,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     primaryTableName,
                     indexTableName,
                     columns,
+                    subParts,
                     coverings,
                     unique,
                     indexComment,
@@ -357,6 +355,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     IndexStatus.CREATING,
                     clusteredIndex,
                     globalIndexPreparedData.isVisible() ? IndexVisibility.VISIBLE : IndexVisibility.INVISIBLE,
+                    LackLocalIndexStatus.convert(physicalPlanData.isPopLocalIndex()),
                     needOnlineSchemaChange,
                     columnMapping,
                     addNewColumns
@@ -384,7 +383,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
 //        taskList.add(new GsiSyncTask(schemaName, primaryTableName, indexTableName));
             //3.2 gsi status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> PUBLIC
             result.addSequentialTasks(taskList);
-            if (splitByPkRange || splitByPartition) {
+            if (needOnlineSchemaChange && (splitByPkRange || splitByPartition)) {
                 result.combineTasks(bringUpGsiDdlJob);
                 result.addTaskRelationship(taskList.get(taskList.size() - 1), bringUpGsiDdlJob.getHead());
                 taskList = new ArrayList<>();
@@ -393,12 +392,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                 taskList.addAll(bringUpGsi);
             }
 
-            if (buildLocalIndexLater && physicalPlanDataForLocalIndex != null) {
-                AlterGsiAddLocalIndexTask alterGsiPhyTable =
-                    new AlterGsiAddLocalIndexTask(schemaName, primaryTableName, indexTableName,
-                        physicalPlanDataForLocalIndex);
-                taskList.add(alterGsiPhyTable);
-            }
+
             DdlTask tableSyncTask = new TableSyncTask(schemaName, indexTableName);
             taskList.add(tableSyncTask);
 
@@ -416,7 +410,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                 result.appendTask(taskList.get(i));
             }
             result.labelAsHead(validateTask);
-            result.labelAsTail(tableSyncTask);
+            result.labelAsTail(taskList.get(taskList.size() - 1));
 
             result.setCreateGsiPreCheckTask(preValidateTask);
             result.setCreateGsiValidateTask(validateTask);
@@ -534,17 +528,19 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
     public static ExecutableDdlJob create4CreateTableWithGsi(@Deprecated DDL ddl,
                                                              CreateGlobalIndexPreparedData globalIndexPreparedData,
                                                              ExecutionContext ec) {
+        ec.setForbidBuildLocalIndexLater(true);
         CreateGlobalIndexBuilder builder =
             new CreatePartitionGlobalIndexBuilder(ddl, globalIndexPreparedData, null, false, ec);
         builder.build();
 
         boolean autoPartition = globalIndexPreparedData.getIndexTablePreparedData().isAutoPartition();
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData(autoPartition);
+        PhysicalPlanData physicalPlanDataForLocalIndex = DdlPhyPlanBuilder.getPhysicalPlanDataForLocalIndex(builder, autoPartition);
         ec.getDdlContext().setIgnoreCdcGsiMark(true);
         CreateGsiJobFactory gsiJobFactory = new CreatePartitionGsiJobFactory(
             globalIndexPreparedData,
             physicalPlanData,
-            null,
+            physicalPlanDataForLocalIndex,
             true,
             ec
         );

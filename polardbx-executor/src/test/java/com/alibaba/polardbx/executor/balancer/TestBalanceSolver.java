@@ -1,10 +1,16 @@
 package com.alibaba.polardbx.executor.balancer;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
 import com.alibaba.polardbx.executor.balancer.solver.GreedyModel;
 import com.alibaba.polardbx.executor.balancer.solver.SequentialPlaceModel;
 import com.alibaba.polardbx.executor.balancer.solver.Solution;
 import com.alibaba.polardbx.executor.balancer.solver.MixedModel;
 
+import com.google.common.collect.Lists;
+import groovy.lang.IntRange;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -12,6 +18,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -21,7 +28,10 @@ import java.util.stream.Collectors;
  * @since 2022/08
  */
 public class TestBalanceSolver {
-    public void testMixedSolver(int M, int N, int[] originalPlace, double[] weight, double moveRate, double overRate) {
+    public static Logger logger =  LoggerFactory.getLogger(TestBalanceSolver.class);
+
+    public static void testMixedSolver(int M, int N, int[] originalPlace, double[] weight, double moveRate,
+                                       double overRate) {
         Solution solution = MixedModel.solveMovePartition(M, N, originalPlace, weight);
         Assert.assertTrue(solution.withValidSolve);
         int[] targetPlace = solution.targetPlace;
@@ -53,8 +63,35 @@ public class TestBalanceSolver {
         }
         double actualMoveRate = moveCost / fullWeight;
         double actualOverRate = maxOverload / avgWeight;
+        System.out.println("actualMoveRate = " + String.valueOf(actualMoveRate));
+        System.out.println("actualOverRate = " + actualOverRate);
+        System.out.println(visualizeCase(M, N, originalPlace, weight, targetPlace));
         Assert.assertTrue(actualMoveRate < moveRate);
         Assert.assertTrue(actualOverRate < overRate);
+    }
+
+    public static DataDistInfo.DnInfo mockDnInfo(int i){
+        return new DataDistInfo.DnInfo("dn" + i, "group_" + i);
+    }
+
+    public static DataDistInfo.TgDataDistInfo mockTgDataDistInfo(int N, int[] originalPlace, double[] weight, int[] targetPlace) {
+        String tgName = "mock_tg";
+        String tableName = "mock_table";
+        List<DataDistInfo.PgDataDistInfo> pgDataDistInfos = Lists.newArrayList();
+        for (int i = 0; i < N; i++) {
+            String pgName = "pg" + i;
+            pgDataDistInfos.add(new DataDistInfo.PgDataDistInfo(tgName, pgName, (long) weight[i], (long)weight[i], originalPlace[i], targetPlace[i], ""));
+        }
+        DataDistInfo.TgDataDistInfo tgDataDistInfo = new DataDistInfo.TgDataDistInfo(tgName, pgDataDistInfos, Lists.newArrayList(tableName));
+        return tgDataDistInfo;
+    }
+    public static String visualizeCase(int M, int N, int[] originalPlace, double[] weight, int[] targetPlace){
+        String schemaName = "mock_db";
+        List<DataDistInfo.DnInfo> dnInfoList = new IntRange(0, M - 1).stream().map(o->mockDnInfo(o)).collect(Collectors.toList());
+        DataDistInfo.TgDataDistInfo tgDataDistInfo = mockTgDataDistInfo(N, originalPlace, weight, targetPlace);
+        DataDistInfo dataDistInfo = new DataDistInfo(schemaName, dnInfoList, Lists.newArrayList(tgDataDistInfo));
+        String result = JSON.toJSONString(dataDistInfo);
+        return result;
     }
 
     public void testSequentialModelSolver(int M, int N, int[] originalPlace, double[] weight) {
@@ -86,7 +123,8 @@ public class TestBalanceSolver {
         }
     }
 
-    public void testGreedySolver(int M, int N, int[] originalPlace, double[] weight, double moveRate, double overRate) {
+    public static void testGreedySolver(int M, int N, int[] originalPlace, double[] weight, double moveRate,
+                                        double overRate) {
         int[] targetPlace = GreedyModel.solve(M, N, originalPlace, weight);
         double[] sumWeight = new double[M];
         double fullWeight = 0;
@@ -119,8 +157,8 @@ public class TestBalanceSolver {
         Assert.assertTrue(maxOverload / avgWeight < overRate);
     }
 
-    public void testMixedSolverDrainNode(int M, int N, int[] originalPlace, double[] weight, double moveRate,
-                                         double overRate, int[] drainIndexes) {
+    public static void testMixedSolverDrainNode(int M, int N, int[] originalPlace, double[] weight, double moveRate,
+                                                double overRate, int[] drainIndexes) {
         Solution solution = MixedModel.solveMovePartition(M, N, originalPlace, weight, drainIndexes);
         int resM = M - drainIndexes.length;
         Assert.assertTrue(solution.withValidSolve);
@@ -164,8 +202,8 @@ public class TestBalanceSolver {
         Assert.assertTrue(actualOverRate < overRate);
     }
 
-    public void testGreedySolverDrainNode(int M, int N, int[] originalPlace, double[] weight, double moveRate,
-                                          double overRate, int[] drainIndexes) {
+    public static void testGreedySolverDrainNode(int M, int N, int[] originalPlace, double[] weight, double moveRate,
+                                                 double overRate, int[] drainIndexes) {
         int[] targetPlace = GreedyModel.solve(M, N, originalPlace, weight, drainIndexes);
         int resM = M - drainIndexes.length;
         double[] sumWeight = new double[M];
@@ -206,9 +244,9 @@ public class TestBalanceSolver {
         Assert.assertTrue(maxOverload / avgWeight < overRate);
     }
 
-    public void testSolverFromFile(String sampleName, String solverType) throws FileNotFoundException {
+    public static void testSolverFromFile(String sampleName, String solverType) throws FileNotFoundException {
         String resourceDir = String.format("com/alibaba/polardbx/executor/balancer/%s.sample.txt", sampleName);
-        String fileDir = getClass().getClassLoader().getResource(resourceDir).getPath();
+        String fileDir = TestBalanceSolver.class.getClassLoader().getResource(resourceDir).getPath();
         File file = new File(fileDir);
         try (Scanner scanner = new Scanner(file)) {
             int N = scanner.nextInt();
@@ -219,7 +257,7 @@ public class TestBalanceSolver {
                 originalPlace[i] = scanner.nextInt();
             }
             for (int i = 0; i < N; i++) {
-                weight[i] = scanner.nextInt();
+                weight[i] = scanner.nextDouble();
             }
             double moveRate = scanner.nextDouble();
             double overRate = scanner.nextDouble();
@@ -245,6 +283,7 @@ public class TestBalanceSolver {
             }
         }
     }
+
 
     @Test
     public void testSequentialSolver() {
@@ -434,6 +473,9 @@ public class TestBalanceSolver {
         String sampleName = "rebalance_256_16_mixed";
         testSolverFromFile(sampleName, "mixed");
     }
+
+
+
 
     @Test
     public void testMixedSolverDrainNode256_16() throws FileNotFoundException {

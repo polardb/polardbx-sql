@@ -1188,7 +1188,7 @@ public class TableInfoManager extends AbstractAccessor {
         for (int i = 0; i < Math.min(columnarColumnEvolutionRecords.size(), columnsRecords.size()); i++) {
             ColumnarColumnEvolutionRecord evolutionRecord = columnarColumnEvolutionRecords.get(i);
             ColumnsRecord columnsRecord = columnsRecords.get(i);
-            if (!isColumnRecordEqual(columnsRecord, evolutionRecord.columnsRecord)) {
+            if (!ColumnsRecord.equalsColumnRecord(columnsRecord, evolutionRecord.columnsRecord)) {
                 pos = i;
                 break;
             }
@@ -1206,19 +1206,10 @@ public class TableInfoManager extends AbstractAccessor {
             record1.equals(record2);
     }
 
-    public void changeColumnarIndexColumnMeta(PhyInfoSchemaContext context,
-                                              Map<String, Map<String, Object>> columnsJdbcExtInfo,
+    public void changeColumnarIndexColumnMeta(String schemaName, String logicalTableName,
                                               List<Pair<String, String>> changeColumns, String indexName) {
         List<String> newColumnNames =
             changeColumns.stream().map(Pair::getKey).collect(Collectors.toList());
-
-        List<ColumnsInfoSchemaRecord> columnsInfoSchemaRecords =
-            fetchColumnMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, newColumnNames,
-                context.dataSource);
-
-        List<ColumnsRecord> columnsRecords =
-            RecordConverter.convertColumn(columnsInfoSchemaRecords, columnsJdbcExtInfo, context.tableSchema,
-                context.tableName);
 
         Map<String, String> columnNameMap = new HashMap<>();
         for (Pair<String, String> pair : changeColumns) {
@@ -1228,7 +1219,7 @@ public class TableInfoManager extends AbstractAccessor {
         // Adjust the columns to keep the original order.
         for (String newColumnName : newColumnNames) {
             // indexes system table
-            indexesAccessor.updateColumnName(context.tableSchema, context.tableName, newColumnName,
+            indexesAccessor.updateColumnName(schemaName, logicalTableName, newColumnName,
                 columnNameMap.get(newColumnName));
         }
     }
@@ -1572,6 +1563,17 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
+    public void updateCreateOptions(PhyInfoSchemaContext context,
+                                    String schemaName,
+                                    String logicalTableName) {
+        TablesInfoSchemaRecord tablesInfoSchemaRecord =
+            fetchTableMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, context.dataSource);
+        if (tablesInfoSchemaRecord != null) {
+            tablesAccessor.updateCreateOptions(tablesInfoSchemaRecord.createOptions, schemaName, logicalTableName);
+        }
+
+    }
+
     public void insertLogicForeignKeyIndexes(List<ForeignKeyData> addedForeignKeys, PhyInfoSchemaContext context,
                                              List<IndexesInfoSchemaRecord> indexesInfoSchemaRecords) {
         List<IndexesRecord> indexesRecordsFKs = new ArrayList<>();
@@ -1750,7 +1752,7 @@ public class TableInfoManager extends AbstractAccessor {
 
     public void removeColumnarTable(String schemaName, String columnarTableName) {
         // clean up columnar table meta
-        removeTable(schemaName, columnarTableName, null, true);
+        removeTable(schemaName, columnarTableName, null, true, true);
     }
 
     public void truncateColumnarTable(String schemaName, String primaryTableName, Set<Pair<Long, String>> indexes,
@@ -1796,7 +1798,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public void removeTable(String tableSchema, String tableName, SequenceBaseRecord sequenceRecord,
-                            boolean withTablesExtOrPartition) {
+                            boolean withTablesExtOrPartition, boolean dropEmptyTableGroup) {
         tablesAccessor.delete(tableSchema, tableName);
         columnsAccessor.delete(tableSchema, tableName);
         indexesAccessor.delete(tableSchema, tableName);
@@ -1816,7 +1818,7 @@ public class TableInfoManager extends AbstractAccessor {
             sequencesAccessor.delete(sequenceRecord);
         }
         if (withTablesExtOrPartition && DbInfoManager.getInstance().isNewPartitionDb(tableSchema)) {
-            this.deletePartitionInfo(tableSchema, tableName);
+            this.deletePartitionInfo(tableSchema, tableName, dropEmptyTableGroup);
             this.removeLocalPartitionRecord(tableSchema, tableName);
             this.removeTtlInfoRecord(tableSchema, tableName);
             this.removeScheduledJobRecord(tableSchema, tableName);
@@ -1858,7 +1860,7 @@ public class TableInfoManager extends AbstractAccessor {
         tablesAccessor.updateVersion(tableSchema, tableName, newVersion);
         tablesExtAccessor.updateVersion(tableSchema, tableName, newVersion);
         columnsAccessor.updateVersion(tableSchema, tableName, newVersion);
-        indexesAccessor.updateVersion(tableSchema, tableName, newVersion);
+        // indexesAccessor.updateVersion(tableSchema, tableName, newVersion);
         tablePartitionAccessor.updateVersion(tableSchema, tableName, newVersion);
         // MetaDbConfigManager.getInstance()
         //    .notify(MetaDbDataIdBuilder.getTableDataId(tableSchema, tableName), this.connection);
@@ -1875,7 +1877,7 @@ public class TableInfoManager extends AbstractAccessor {
         tablesAccessor.updateVersion(tableSchema, tableName, newVersion);
         tablesExtAccessor.updateVersion(tableSchema, tableName, newVersion);
         columnsAccessor.updateVersion(tableSchema, tableName, newVersion);
-        indexesAccessor.updateVersion(tableSchema, tableName, newVersion);
+        // indexesAccessor.updateVersion(tableSchema, tableName, newVersion);
         tablePartitionAccessor.updateVersion(tableSchema, tableName, newVersion);
         return newVersion;
     }
@@ -2368,6 +2370,17 @@ public class TableInfoManager extends AbstractAccessor {
         indexesAccessor.insert(indexesRecords, context.tableSchema, context.tableName);
     }
 
+    public void addLocalIndexesPublic(PhyInfoSchemaContext context, List<String> indexNames) {
+        List<IndexesInfoSchemaRecord> indexesInfoSchemaRecords =
+            fetchIndexMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, indexNames, context.dataSource);
+        List<IndexesRecord> indexesRecords =
+            RecordConverter.convertIndex(indexesInfoSchemaRecords, context.tableSchema, context.tableName);
+        for (IndexesRecord indexRecord : indexesRecords) {
+            indexRecord.indexStatus = IndexStatus.PUBLIC.getValue();
+        }
+        indexesAccessor.insert(indexesRecords, context.tableSchema, context.tableName);
+    }
+
     public void addIndexes(PhyInfoSchemaContext context, List<String> indexNamesSpecified,
                            List<String> firstColumnsWithoutIndexNames) {
         if (CollectionUtils.isNotEmpty(indexNamesSpecified)) {
@@ -2836,88 +2849,95 @@ public class TableInfoManager extends AbstractAccessor {
         foreignColsAccessor.delete(schemaName);
     }
 
+    public TablePartRecordInfoContext addTableGroupAndbuildTablePartRecordInfoContext(
+        TableGroupDetailConfig tableGroupConfig) {
+        TablePartRecordInfoContext tablePartRecordInfoContext =
+            tableGroupConfig.getTablesPartRecordInfoContext().get(0);
+        boolean mayEmptyTableGroup = false;
+        boolean isEmptyTableGroup = false;
+
+        List<TablePartitionRecord> phyPartSpecList =
+            TablePartRecordInfoContext.buildAllPhysicalPartitionRecList(tablePartRecordInfoContext);
+        Map<String, TablePartitionRecord> partNameToPartRecMap =
+            new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        for (int i = 0; i < phyPartSpecList.size(); i++) {
+            partNameToPartRecMap.put(phyPartSpecList.get(i).getPartName(), phyPartSpecList.get(i));
+        }
+
+        if (tableGroupConfig.getTableGroupRecord() != null) {
+            Long lastInsertId = tableGroupAccessor.addNewTableGroup(tableGroupConfig.getTableGroupRecord());
+            //int i = 0;
+
+            if (lastInsertId != null) {
+                tablePartRecordInfoContext.getLogTbRec().groupId = lastInsertId;
+
+                List<PartitionGroupRecord> allPgList = tableGroupConfig.getPartitionGroupRecords();
+                for (int j = 0; j < allPgList.size(); j++) {
+                    PartitionGroupRecord pgRec = allPgList.get(j);
+                    pgRec.tg_id = lastInsertId;
+                    Long pgId = partitionGroupAccessor.addNewPartitionGroup(pgRec, false);
+                    TablePartitionRecord targetPhyPartSpecRec = partNameToPartRecMap.get(pgRec.getPartition_name());
+                    targetPhyPartSpecRec.groupId = pgId;
+                }
+
+                String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(lastInsertId,
+                    tableGroupConfig.getTableGroupRecord().tg_type);
+                List<TableGroupRecord> tableGroupRecords =
+                    tableGroupAccessor
+                        .getTableGroupsBySchemaAndName(tableGroupConfig.getTableGroupRecord().schema, finalTgName,
+                            false);
+                if (GeneralUtil.isNotEmpty(tableGroupRecords)
+                    && tableGroupConfig.getTableGroupRecord().tg_type == TG_TYPE_PARTITION_TBL_TG) {
+                    finalTgName = "tg" + String.valueOf(System.currentTimeMillis());
+                }
+                tableGroupAccessor.updateTableGroupName(lastInsertId, finalTgName);
+            }
+        } else {
+            mayEmptyTableGroup = tableGroupConfig.getAllTables().size() == 1;
+        }
+
+        List<TablePartitionRecord> phyPartRecList =
+            TablePartRecordInfoContext.buildAllPhysicalPartitionRecList(tablePartRecordInfoContext);
+        List<PartitionGroupRecord> pgRecList = tableGroupConfig.getPartitionGroupRecords();
+        Map<String, PartitionGroupRecord> partNameToPgRecMap =
+            new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        for (int i = 0; i < pgRecList.size(); i++) {
+            PartitionGroupRecord pgRec = pgRecList.get(i);
+            partNameToPgRecMap.put(pgRec.getPartition_name(), pgRec);
+        }
+        for (int i = 0; i < GeneralUtil.emptyIfNull(phyPartRecList).size(); i++) {
+            TablePartitionRecord partition = phyPartRecList.get(i);
+            String partName = partition.getPartName();
+            if (partition.groupId == null || partition.groupId == -1) {
+                //PartitionGroupRecord pgRecord = tableGroupConfig.getPartitionGroupRecords().get(i);
+                PartitionGroupRecord pgRecord = partNameToPgRecMap.get(partName);
+                if (pgRecord == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
+                        "no found target partition group " + partName);
+                }
+                pgRecord.tg_id = tablePartRecordInfoContext.getLogTbRec().groupId;
+                Long pgId = partitionGroupAccessor.addNewPartitionGroup(pgRecord, false);
+                partition.groupId = pgId;
+                isEmptyTableGroup = mayEmptyTableGroup;
+            }
+        }
+
+        if (isEmptyTableGroup) {
+            int tableType = tablePartRecordInfoContext.getLogTbRec().getTblType();
+            if (tableType == TablePartitionRecord.PARTITION_TABLE_TYPE_SINGLE_TABLE) {
+                int tableGroupType = TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
+                tableGroupAccessor
+                    .updateTableGroupType(tablePartRecordInfoContext.getLogTbRec().groupId, tableGroupType);
+            }
+        }
+        return tablePartRecordInfoContext;
+    }
+
     public void addTablePartitionInfos(TableGroupDetailConfig tableGroupConfig, boolean isUpsert) {
 
         try {
             TablePartRecordInfoContext tablePartRecordInfoContext =
-                tableGroupConfig.getTablesPartRecordInfoContext().get(0);
-            boolean mayEmptyTableGroup = false;
-            boolean isEmptyTableGroup = false;
-
-            List<TablePartitionRecord> phyPartSpecList =
-                TablePartRecordInfoContext.buildAllPhysicalPartitionRecList(tablePartRecordInfoContext);
-            Map<String, TablePartitionRecord> partNameToPartRecMap =
-                new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-            for (int i = 0; i < phyPartSpecList.size(); i++) {
-                partNameToPartRecMap.put(phyPartSpecList.get(i).getPartName(), phyPartSpecList.get(i));
-            }
-
-            if (tableGroupConfig.getTableGroupRecord() != null) {
-                Long lastInsertId = tableGroupAccessor.addNewTableGroup(tableGroupConfig.getTableGroupRecord());
-                //int i = 0;
-
-                if (lastInsertId != null) {
-                    tablePartRecordInfoContext.getLogTbRec().groupId = lastInsertId;
-
-                    List<PartitionGroupRecord> allPgList = tableGroupConfig.getPartitionGroupRecords();
-                    for (int j = 0; j < allPgList.size(); j++) {
-                        PartitionGroupRecord pgRec = allPgList.get(j);
-                        pgRec.tg_id = lastInsertId;
-                        Long pgId = partitionGroupAccessor.addNewPartitionGroup(pgRec, false);
-                        TablePartitionRecord targetPhyPartSpecRec = partNameToPartRecMap.get(pgRec.getPartition_name());
-                        targetPhyPartSpecRec.groupId = pgId;
-                    }
-
-                    String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(lastInsertId,
-                        tableGroupConfig.getTableGroupRecord().tg_type);
-                    List<TableGroupRecord> tableGroupRecords =
-                        tableGroupAccessor
-                            .getTableGroupsBySchemaAndName(tableGroupConfig.getTableGroupRecord().schema, finalTgName,
-                                false);
-                    if (GeneralUtil.isNotEmpty(tableGroupRecords)
-                        && tableGroupConfig.getTableGroupRecord().tg_type == TG_TYPE_PARTITION_TBL_TG) {
-                        finalTgName = "tg" + String.valueOf(System.currentTimeMillis());
-                    }
-                    tableGroupAccessor.updateTableGroupName(lastInsertId, finalTgName);
-                }
-            } else {
-                mayEmptyTableGroup = tableGroupConfig.getAllTables().size() == 1;
-            }
-
-            List<TablePartitionRecord> phyPartRecList =
-                TablePartRecordInfoContext.buildAllPhysicalPartitionRecList(tablePartRecordInfoContext);
-            List<PartitionGroupRecord> pgRecList = tableGroupConfig.getPartitionGroupRecords();
-            Map<String, PartitionGroupRecord> partNameToPgRecMap =
-                new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-            for (int i = 0; i < pgRecList.size(); i++) {
-                PartitionGroupRecord pgRec = pgRecList.get(i);
-                partNameToPgRecMap.put(pgRec.getPartition_name(), pgRec);
-            }
-            for (int i = 0; i < GeneralUtil.emptyIfNull(phyPartRecList).size(); i++) {
-                TablePartitionRecord partition = phyPartRecList.get(i);
-                String partName = partition.getPartName();
-                if (partition.groupId == null || partition.groupId == -1) {
-                    //PartitionGroupRecord pgRecord = tableGroupConfig.getPartitionGroupRecords().get(i);
-                    PartitionGroupRecord pgRecord = partNameToPgRecMap.get(partName);
-                    if (pgRecord == null) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
-                            "no found target partition group " + partName);
-                    }
-                    pgRecord.tg_id = tablePartRecordInfoContext.getLogTbRec().groupId;
-                    Long pgId = partitionGroupAccessor.addNewPartitionGroup(pgRecord, false);
-                    partition.groupId = pgId;
-                    isEmptyTableGroup = mayEmptyTableGroup;
-                }
-            }
-
-            if (isEmptyTableGroup) {
-                int tableType = tablePartRecordInfoContext.getLogTbRec().getTblType();
-                if (tableType == TablePartitionRecord.PARTITION_TABLE_TYPE_SINGLE_TABLE) {
-                    int tableGroupType = TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
-                    tableGroupAccessor
-                        .updateTableGroupType(tablePartRecordInfoContext.getLogTbRec().groupId, tableGroupType);
-                }
-            }
+                addTableGroupAndbuildTablePartRecordInfoContext(tableGroupConfig);
             tablePartitionAccessor.addNewTablePartitionConfigs(tablePartRecordInfoContext.getLogTbRec(),
                 tablePartRecordInfoContext.getPartitionRecList(), tablePartRecordInfoContext.getSubPartitionRecMap(),
                 isUpsert, false);
@@ -2925,8 +2945,28 @@ public class TableInfoManager extends AbstractAccessor {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
                 e.getMessage());
         }
+    }
 
-        return;
+    public void updateTablePartitionInfo4RepartitionOptimize(TableGroupDetailConfig tableGroupConfig,
+                                                             String schemaName, String tableName, long oldGroupId) {
+
+        try {
+            TablePartRecordInfoContext tablePartRecordInfoContext =
+                addTableGroupAndbuildTablePartRecordInfoContext(tableGroupConfig);
+            tablePartitionAccessor.updateTablePartitionConfig4RepartitionOptimize(
+                tablePartRecordInfoContext.getLogTbRec(),
+                tablePartRecordInfoContext.getPartitionRecList(),
+                tableName);
+
+            List<TablePartitionRecord> allTablePartitionRecordsInCurGroup = tablePartitionAccessor
+                .getTablePartitionsByDbNameGroupId(schemaName, oldGroupId);
+            if (GeneralUtil.isEmpty(allTablePartitionRecordsInCurGroup)) {
+                TableGroupUtils.deleteEmptyTableGroupInfo(schemaName, oldGroupId, getConnection());
+            }
+        } catch (Throwable e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
     }
 
     public List<TableGroupRecord> queryTableGroupById(Long id) {
@@ -2974,7 +3014,7 @@ public class TableInfoManager extends AbstractAccessor {
         return records.stream().collect(Collectors.toMap(x -> x.schemaName, x -> x.defaultDbIndex));
     }
 
-    public void deletePartitionInfo(String tableSchema, String tableName) {
+    public void deletePartitionInfo(String tableSchema, String tableName, boolean dropEmptyTableGroup) {
         List<TablePartitionRecord> tablePartitionRecords =
             tablePartitionAccessor.getTablePartitionsByDbNameTbNameLevel(tableSchema, tableName,
                 TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE, false);
@@ -2983,7 +3023,7 @@ public class TableInfoManager extends AbstractAccessor {
             tablePartitionAccessor.deleteTablePartitionConfigs(tableSchema, tableName);
             List<TablePartitionRecord> allTablePartitionRecordsInCurGroup = tablePartitionAccessor
                 .getTablePartitionsByDbNameGroupId(tableSchema, tablePartitionRecords.get(0).groupId);
-            if (GeneralUtil.isEmpty(allTablePartitionRecordsInCurGroup)) {
+            if (GeneralUtil.isEmpty(allTablePartitionRecordsInCurGroup) && dropEmptyTableGroup) {
                 TableGroupUtils
                     .deleteEmptyTableGroupInfo(tableSchema, tablePartitionRecords.get(0).groupId, getConnection());
             }
@@ -3071,7 +3111,8 @@ public class TableInfoManager extends AbstractAccessor {
                                              String arcTmpTableName,
                                              String ttlSchemaName,
                                              String ttlTableName) {
-        ttlInfoAccessor.updateArcTableInfoByByDbAndTb(TtlInfoRecord.ARCHIVE_STATUS_DISABLE_OSS_ARCHIVE, ossTableSchema,
+        ttlInfoAccessor.updateArcTableInfoByByDbAndTb(
+            TtlInfoRecord.ARCHIVE_STATUS_BIT_OF_CLEANUP_EXPIRED_DATA_OF_TTL_TBL, ossTableSchema,
             ossTableName, arcTmpTableSchema, arcTmpTableName, ttlSchemaName, ttlTableName);
     }
 

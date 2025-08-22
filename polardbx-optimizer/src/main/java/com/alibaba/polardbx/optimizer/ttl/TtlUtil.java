@@ -25,22 +25,30 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
+import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
+import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNumericLiteral;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlTimeToLiveDefinitionExpr;
 import org.apache.calcite.sql.SqlTimeToLiveExpr;
 import org.apache.calcite.sql.SqlTimeToLiveJobExpr;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.Pair;
 
 import java.sql.Connection;
@@ -62,6 +70,130 @@ public class TtlUtil {
      */
     public static final String ARC_TMP_NAME_TEMPLATE_WITH_HASHCODE = "arctmp_%s_%s";
     public static final String ARC_TMP_NAME_TEMPLATE_WITHOUT_HASHCODE = "arctmp_%s";
+
+    protected static class TtlColumnFinder extends SqlShuttle {
+
+        protected SqlIdentifier ttlCol;
+        protected boolean foundTtlCol = false;
+        protected boolean foundFromUnixTimeFunc = false;
+        protected boolean foundFromDaysFunc = false;
+        protected boolean foundDivFunc = false;
+
+        protected TtlColumnFinder() {
+        }
+
+        public boolean find(SqlNode partExpr) {
+            partExpr.accept(this);
+            return ttlCol != null;
+        }
+
+        @Override
+        public SqlNode visit(SqlIdentifier id) {
+            ttlCol = id;
+            foundTtlCol = true;
+            return super.visit(id);
+        }
+
+        @Override
+        public SqlNode visit(SqlCall call) {
+            SqlOperator sqlOp = call.getOperator();
+            String sqlOpName = sqlOp.getName();
+            checkIfInvalidTtlFuncExpr(sqlOpName);
+
+            if (sqlOpName.equalsIgnoreCase(TddlOperatorTable.FROM_UNIXTIME.getName())) {
+                foundFromUnixTimeFunc = true;
+            }
+
+            if (sqlOpName.equalsIgnoreCase(TddlOperatorTable.FROM_DAYS.getName())) {
+                foundFromDaysFunc = true;
+            }
+
+            if (sqlOpName.equalsIgnoreCase(TddlOperatorTable.DIVIDE.getName())) {
+                foundDivFunc = true;
+                SqlCall divCall = call;
+                List<SqlNode> opList = divCall.getOperandList();
+                for (int i = 0; i < opList.size(); i++) {
+                    SqlNode op = opList.get(i);
+                    if (op instanceof SqlNumericLiteral) {
+                        SqlLiteral opLiteral = (SqlNumericLiteral) op;
+                        int opIntVal = opLiteral.intValue(true);
+                        if (opIntVal != 1000) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format(
+                                "Failed to create ttl definition function expression of ttl_col use invalid params of %s",
+                                opIntVal));
+                        }
+                    }
+                }
+            }
+
+            List<SqlNode> opList = call.getOperandList();
+            for (int i = 0; i < opList.size(); i++) {
+                SqlNode op = opList.get(i);
+                op.accept(this);
+            }
+
+            return call;
+        }
+
+        public SqlIdentifier getTtlColumn() {
+            return ttlCol;
+        }
+
+        public boolean ttlColUseFuncExpr() {
+            return foundTtlCol && (foundFromUnixTimeFunc || foundFromDaysFunc);
+        }
+
+        public boolean ttlColUseFromUnixTimeFuncWithoutDiv() {
+            return foundTtlCol && foundFromUnixTimeFunc && !foundDivFunc;
+        }
+
+        public boolean ttlColUseFromUnixTimeFuncWithDiv() {
+            return foundTtlCol && foundFromUnixTimeFunc && foundDivFunc;
+        }
+
+        public boolean ttlColUseFromDays() {
+            return foundTtlCol && foundFromDaysFunc && !foundDivFunc;
+        }
+
+    }
+
+    private static void checkIfInvalidTtlFuncExpr(String sqlOpName) {
+        if (!(
+            sqlOpName.equalsIgnoreCase(TddlOperatorTable.FROM_UNIXTIME.getName())
+                || sqlOpName.equalsIgnoreCase(TddlOperatorTable.FROM_DAYS.getName())
+                || sqlOpName.equalsIgnoreCase(TddlOperatorTable.DIVIDE.getName())
+        )) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TTL_PARAMS,
+                "Find unsupported function expression on ttl_expr definition");
+        }
+    }
+
+    protected static class TtlColumnAsSqlDynamicParamReplacer extends SqlShuttle {
+
+        protected TtlColumnAsSqlDynamicParamReplacer() {
+        }
+
+        @Override
+        public SqlNode visit(SqlIdentifier id) {
+            SqlNode sqlDynamicParams = new SqlDynamicParam(1, SqlTypeName.BIGINT, SqlParserPos.ZERO);
+            return sqlDynamicParams;
+        }
+
+        @Override
+        public SqlNode visit(SqlCall call) {
+            SqlOperator sqlOp = call.getOperator();
+            String sqlOpName = sqlOp.getName();
+            checkIfInvalidTtlFuncExpr(sqlOpName);
+            List<SqlNode> opList = call.getOperandList();
+            for (int i = 0; i < opList.size(); i++) {
+                SqlNode op = opList.get(i);
+                SqlNode newOp = op.accept(this);
+                call.setOperand(i, newOp);
+            }
+            return call;
+        }
+
+    }
 
     public static boolean checkIfCreateArcTblLikeRowLevelTtl(SqlCreateTable sqlCreateTable,
                                                              ExecutionContext ec) {
@@ -122,7 +254,7 @@ public class TtlUtil {
         if (ttlInfo == null) {
             return false;
         }
-        if (ttlInfo.needPerformExpiredDataArchivingByCci()) {
+        if (ttlInfo.needPerformExpiredDataArchiving()) {
             String arcCciName = ttlInfo.getTtlInfoRecord().getArcTmpTblName();
             Map<String, GsiMetaManager.GsiIndexMetaBean> tmpGsiName2Bean =
                 new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
@@ -178,60 +310,6 @@ public class TtlUtil {
         return ttlDefinitionInfo;
     }
 
-    public static SQLPartitionBy buildNewSqlPartByAstForOssTable(ColumnMeta ttlTblTimeColMeta,
-                                                                 List<ColumnMeta> ttlTblPkColMetas,
-                                                                 int defaultSubHashPartCnt,
-                                                                 String minRangeValue,
-                                                                 ExecutionContext ec) {
-
-        /**
-         * Build 2nd-level part by key
-         */
-        // Generate the partitioning clause.
-        final SQLSubPartitionByHash sqlSubPartitionByHash = new SQLSubPartitionByHash();
-        SQLIntegerExpr intExpr = new SQLIntegerExpr(defaultSubHashPartCnt);
-        int maxPartColCnt = ec.getParamManager().getInt(ConnectionParams.MAX_PARTITION_COLUMN_COUNT);
-        List<SQLIdentifierExpr> subPartKeys = new ArrayList<>();
-        for (int i = 0; i < ttlTblPkColMetas.size(); i++) {
-            ColumnMeta pkCol = ttlTblPkColMetas.get(i);
-            SQLIdentifierExpr idAst = new SQLIdentifierExpr(pkCol.getName());
-            subPartKeys.add(idAst);
-            if (i >= maxPartColCnt) {
-                break;
-            }
-        }
-        sqlSubPartitionByHash.getColumns().addAll(subPartKeys);
-        sqlSubPartitionByHash.setKey(true);
-        sqlSubPartitionByHash.setSubPartitionsCount(intExpr);
-
-        /**
-         * Build 1st-level part by range
-         */
-        List<SQLIdentifierExpr> partKeys = new ArrayList<>();
-        SQLIdentifierExpr ttlColAst = new SQLIdentifierExpr(ttlTblTimeColMeta.getName());
-        partKeys.add(ttlColAst);
-        List<SQLIdentifierExpr> rangePartKeys = partKeys;
-
-        SQLCharExpr valExpr = new SQLCharExpr(minRangeValue);
-        SQLPartitionValue p1SpecVal = new SQLPartitionValue(SQLPartitionValue.Operator.LessThan);
-        p1SpecVal.addItem(valExpr);
-        SQLPartition p1PartSpec = new SQLPartition();
-        p1PartSpec.setName(new SQLIdentifierExpr("pstart"));
-        p1PartSpec.setValues(p1SpecVal);
-
-        SQLPartitionByRange sqlPartitionByRange = new SQLPartitionByRange();
-        sqlPartitionByRange.setColumns(true);
-        sqlPartitionByRange.getColumns().addAll(rangePartKeys);
-        sqlPartitionByRange.getPartitions().add(p1PartSpec);
-
-        /**
-         * Set the subpartBy for partBy
-         */
-        sqlPartitionByRange.setSubPartitionBy(sqlSubPartitionByHash);
-
-        return sqlPartitionByRange;
-    }
-
     public static String buildArcTmpNameByArcTblName(String arcTblName) {
         String finalArcTmpName = "";
         if (StringUtils.isEmpty(arcTblName)) {
@@ -264,7 +342,7 @@ public class TtlUtil {
         if (ttlInfo == null) {
             return false;
         }
-        if (!ttlInfo.needPerformExpiredDataArchivingByCci()) {
+        if (!ttlInfo.needPerformExpiredDataArchiving()) {
             return false;
         }
         return true;
@@ -283,7 +361,7 @@ public class TtlUtil {
         if (ttlInfo == null) {
             return false;
         }
-        if (!ttlInfo.needPerformExpiredDataArchivingByCci()) {
+        if (!ttlInfo.needPerformExpiredDataArchiving()) {
             return false;
         }
 
@@ -374,7 +452,7 @@ public class TtlUtil {
                 /**
                  * Check if the ttl-definition table contain the archive table cci
                  */
-                if (ttlInfo.performArchiveByColumnarIndex() && forbidDropTableWithArcCci) {
+                if (ttlInfo.needPerformExpiredDataArchiving() && forbidDropTableWithArcCci) {
                     return false;
                 }
             }
@@ -416,7 +494,7 @@ public class TtlUtil {
                 TableMeta ttlTblTm = executionContext.getSchemaManager(ttlTblSchema).getTableWithNull(ttlTblName);
                 if (ttlTblTm != null) {
                     TtlDefinitionInfo ttlInfo = ttlTblTm.getTtlDefinitionInfo();
-                    if (ttlInfo.performArchiveByColumnarIndex()) {
+                    if (ttlInfo.needPerformExpiredDataArchiving()) {
                         String ciNameOfArcTbl = ttlInfo.getTmpTableName();
                         boolean useGsiForCci =
                             TtlConfigUtil.isUseGsiInsteadOfCciForCreateColumnarArcTbl(executionContext);
@@ -461,7 +539,7 @@ public class TtlUtil {
             return false;
         }
 
-        if (!ttlDefinitionInfo.needPerformExpiredDataArchivingByCci()) {
+        if (!ttlDefinitionInfo.needPerformExpiredDataArchiving()) {
             return false;
         }
 
@@ -489,8 +567,7 @@ public class TtlUtil {
     public static TtlDefinitionInfo createTtlDefinitionInfoBySqlCreateTable(SqlCreateTable sqlCreateTable,
                                                                             TableMeta tableMeta,
                                                                             PartitionInfo newCreateTblPartInfo,
-                                                                            ExecutionContext executionContext
-    ) {
+                                                                            ExecutionContext executionContext) {
         boolean foundTtlDefinition = false;
 
         SqlNode ttlDefinitionExprNode = sqlCreateTable.getTtlDefinition();
@@ -517,7 +594,9 @@ public class TtlUtil {
         SqlNode ttlEnableExpr = ttlDefinitionExprAst.getTtlEnableExpr();
         SqlNode ttlExprNode = ttlDefinitionExprAst.getTtlExpr();
         SqlNode ttlJobNode = ttlDefinitionExprAst.getTtlJobExpr();
-//        SqlNode ttlFilterExpr = ttlDefinitionExprAst.getTtlFilterExpr();
+        SqlNode ttlFilterExpr = ttlDefinitionExprAst.getTtlFilterExpr();
+        SqlNode ttlCleanupExpr = ttlDefinitionExprAst.getTtlCleanupExpr();
+        SqlNode ttlPartIntervalExpr = ttlDefinitionExprAst.getTtlPartIntervalExpr();
         SqlNode archiveTypeExpr = ttlDefinitionExprAst.getArchiveTypeExpr();
         SqlNode archiveTableSchemaExpr = ttlDefinitionExprAst.getArchiveTableSchemaExpr();
         SqlNode archiveTableNameExpr = ttlDefinitionExprAst.getArchiveTableNameExpr();
@@ -526,7 +605,7 @@ public class TtlUtil {
 
         String ttlEnable = TtlInfoRecord.TTL_STATUS_DISABLE_SCHEDULE_STR_VAL;
         if (ttlEnableExpr != null) {
-            ttlEnable = ttlEnableExpr.toString();
+            ttlEnable = SQLUtils.normalizeNoTrim(ttlEnableExpr.toString());
         }
 
         SqlTimeToLiveExpr ttlExpr = (SqlTimeToLiveExpr) ttlExprNode;
@@ -540,6 +619,16 @@ public class TtlUtil {
         for (int i = 0; i < pkColMetas.size(); i++) {
             ColumnMeta pkCm = pkColMetas.get(i);
             pkColNames.add(pkCm.getName());
+        }
+
+        String ttlFilterStr = null;
+        if (ttlFilterExpr != null) {
+            ttlFilterStr = SQLUtils.normalizeNoTrim(ttlFilterExpr.toString());
+        }
+
+        String ttlCleanupStr = TtlInfoRecord.TTL_CLEANUP_OFF;
+        if (ttlCleanupExpr != null) {
+            ttlCleanupStr = SQLUtils.normalizeNoTrim(ttlCleanupExpr.toString());
         }
 
         String archiveTypeVal = null;
@@ -559,7 +648,7 @@ public class TtlUtil {
 
         Integer arcPreAllocateVal = TtlConfigUtil.getPreBuiltPartCntForCreatColumnarIndex();
         if (archiveTablePreAllocateExpr != null) {
-            arcPreAllocateVal = Integer.valueOf(archiveTablePostAllocateExpr.toString());
+            arcPreAllocateVal = Integer.valueOf(archiveTablePreAllocateExpr.toString());
         }
 
         Integer arcPostAllocateVal = TtlConfigUtil.getPostBuiltPartCntForCreateColumnarIndex();
@@ -567,13 +656,26 @@ public class TtlUtil {
             arcPostAllocateVal = Integer.valueOf(archiveTablePostAllocateExpr.toString());
         }
 
-        ttlDefinitionInfo = TtlDefinitionInfo.createNewTtlInfo(schemaName, tableName,
-            ttlEnable, ttlExpr, ttlJob, archiveTypeVal, archiveTableSchemaVal, archiveTableNameVal, arcPreAllocateVal,
-            arcPostAllocateVal, pkColNames, tableMeta,
+        BuildTtlInfoParams buildParams = new BuildTtlInfoParams();
+        buildParams.setTableSchema(schemaName);
+        buildParams.setTableName(tableName);
+        buildParams.setTtlEnable(ttlEnable);
+        buildParams.setTtlExpr(ttlExpr);
+        buildParams.setTtlJob(ttlJob);
+        buildParams.setTtlFilter(ttlFilterStr);
+        buildParams.setTtlCleanup(ttlCleanupStr);
+        buildParams.setTtlPartInterval(ttlPartIntervalExpr);
+        buildParams.setArchiveKind(archiveTypeVal);
+        buildParams.setArchiveTableSchema(archiveTableSchemaVal);
+        buildParams.setArchiveTableName(archiveTableNameVal);
+        buildParams.setArcPreAllocateCount(arcPreAllocateVal);
+        buildParams.setArcPostAllocateCount(arcPostAllocateVal);
+        buildParams.setTtlTableMeta(tableMeta);
+        buildParams.setEc(executionContext);
+        ttlDefinitionInfo = TtlDefinitionInfo.createNewTtlInfo(
+            buildParams,
             newCreateTblPartInfo,
-            sqlCreateTable,
-            executionContext);
-
+            sqlCreateTable);
         return ttlDefinitionInfo;
     }
 

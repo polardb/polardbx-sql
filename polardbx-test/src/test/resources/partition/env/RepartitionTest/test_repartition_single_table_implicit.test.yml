@@ -1,0 +1,17 @@
+drop table if exists re_single_t1;
+
+create table if not exists re_single_t1 ( a int PRIMARY KEY, b int ) SINGLE DEFAULT CHARACTER SET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci WITH TABLEGROUP = single_tg IMPLICIT;
+
+show full create table re_single_t1;
+
+ALTER TABLE re_single_t1 PARTITION BY KEY (a) PARTITIONS 1 WITH TABLEGROUP=mytg2637 IMPLICIT;
+
+show full create table re_single_t1;
+
+ALTER TABLE re_single_t1 PARTITION BY KEY (a) PARTITIONS 1 WITH TABLEGROUP=mytg2637 IMPLICIT;
+
+show full create table re_single_t1;
+
+ALTER TABLE re_single_t1 PARTITION BY KEY (a) PARTITIONS 1;
+
+show full create table re_single_t1;

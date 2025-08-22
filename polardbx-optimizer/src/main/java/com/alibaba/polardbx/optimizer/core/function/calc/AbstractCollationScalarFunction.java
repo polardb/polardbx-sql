@@ -18,8 +18,10 @@ package com.alibaba.polardbx.optimizer.core.function.calc;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.expression.build.Rex2ExprUtil;
@@ -44,33 +46,36 @@ public abstract class AbstractCollationScalarFunction extends AbstractScalarFunc
     }
 
     protected DataType getEqualType(List<Object> args) {
-        if (equalType == null) {
-            DataType type;
-            boolean hasNumericArg = false;
-            for (Object arg : args) {
-                if (arg instanceof Number) {
-                    hasNumericArg = true;
-                    break;
-                }
+        DataType type;
+        boolean hasNumericArg = false;
+        boolean hasRowType = false;
+        for (Object arg : args) {
+            if (arg instanceof Number) {
+                hasNumericArg = true;
+                break;
+            } else if (arg instanceof RowValue) {
+                hasRowType = true;
             }
-            List<DataType> argTypes = new ArrayList<>();
-            if (operandTypes == null || operandTypes.isEmpty()) {
-                argTypes.add(DataTypeUtil.getTypeOfObject(args.get(0)));
-                argTypes.add(DataTypeUtil.getTypeOfObject(args.get(1)));
-            } else {
-                argTypes.addAll(operandTypes);
-            }
-            if (hasNumericArg) {
-                type = calculateMathCompareType(argTypes.get(0), argTypes.get(1));
-            } else {
-                type = calculateCompareType(argTypes.get(0), argTypes.get(1));
-            }
-            if (DataTypeUtil.isStringType(type)) {
-                CharsetName charsetName = CollationName.getCharsetOf(collation);
-                type = new VarcharType(charsetName, collation);
-            }
-            equalType = type;
         }
+        List<DataType> argTypes = new ArrayList<>();
+        if (operandTypes == null || operandTypes.isEmpty()) {
+            argTypes.add(DataTypeUtil.getTypeOfObject(args.get(0)));
+            argTypes.add(DataTypeUtil.getTypeOfObject(args.get(1)));
+        } else {
+            argTypes.addAll(operandTypes);
+        }
+        if (hasRowType) {
+            type = DataTypes.RowType;
+        } else if (hasNumericArg) {
+            type = calculateMathCompareType(argTypes.get(0), argTypes.get(1));
+        } else {
+            type = calculateCompareType(argTypes.get(0), argTypes.get(1));
+        }
+        if (DataTypeUtil.isStringType(type)) {
+            CharsetName charsetName = CollationName.getCharsetOf(collation);
+            type = new VarcharType(charsetName, collation);
+        }
+        equalType = type;
         return equalType;
     }
 
@@ -93,6 +98,5 @@ public abstract class AbstractCollationScalarFunction extends AbstractScalarFunc
 
         return compareType;
     }
-
 
 }

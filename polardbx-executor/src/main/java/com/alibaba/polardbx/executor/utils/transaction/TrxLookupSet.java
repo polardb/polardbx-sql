@@ -237,6 +237,8 @@ public class TrxLookupSet {
         public String toString() {
             return "Trx{" +
                 "transactionId=" + transactionId +
+                "frontendConnId=" + frontendConnId +
+                "sql=" + sql +
                 "localTransactions=" + localTransactions +
                 '}';
         }
@@ -244,9 +246,11 @@ public class TrxLookupSet {
 
     @Override
     public String toString() {
+        StringBuilder sb = new StringBuilder("TrxLookupSet{\ngroupConn2Tran=");
+        for (Map.Entry<GroupConnPair, Long> entry : groupConn2Tran.entrySet()) {
+            sb.append("\n{").append(entry.getKey()).append(":").append(entry.getValue()).append("}");
+        }
         return "TrxLookupSet{" +
-            "groupConn2Tran=" + groupConn2Tran +
-            ", transactionMap=" + transactionMap +
-            '}';
+            "groupConn2Tran=" + groupConn2Tran + '}';
     }
 }

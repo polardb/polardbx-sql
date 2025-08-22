@@ -24,10 +24,7 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePhyTableWithRollbackCheckTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateTablesVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.*;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableSetTableGroupMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTableGroupDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
@@ -51,6 +48,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -75,7 +73,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author luoyanxin
@@ -177,14 +174,14 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
             DdlTask updateTablesVersionTask =
                 new UpdateTablesVersionTask(schemaName, ImmutableList.of(preparedData.getPrimaryTableName()));
 
-            boolean enablePreemptiveMdl =
-                executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
-            Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-            Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+//            boolean enablePreemptiveMdl =
+//                executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
+//            PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+//                ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
             // make sure the tablegroup is reload before table, we can't update table version inside TablesSyncTask
+            // not use preemptive sync to interrupt dml， just wait for the sync task to finish
             DdlTask syncTable =
-                new TableSyncTask(schemaName, preparedData.getPrimaryTableName(), enablePreemptiveMdl, initWait,
-                    interval, TimeUnit.MILLISECONDS);
+                new TablesSyncTask(schemaName, Lists.newArrayList(preparedData.getPrimaryTableName()));
 
             if (!executionContext.getDdlContext().isSubJob()) {
                 boolean isGsi = isGsi(schemaName, preparedData.getPrimaryTableName(), preparedData.getTableName());
@@ -420,7 +417,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
             StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG.name(), finalStatus);
 
         List<DdlTask> bringUpNewPartitions =
-            ComplexTaskFactory.addPartitionTasks(schemaName, tableName, sourceTableTopology, targetTableTopology,
+            ComplexTaskFactory.addPartitionTasks(schemaName, tableName, null, sourceTableTopology, targetTableTopology,
                 stayAtCreating, stayAtDeleteOnly, stayAtWriteOnly, stayAtWriteReOrg, false, executionContext, false,
                 ComplexTaskMetaManager.ComplexTaskType.SET_TABLEGROUP);
         //3.2 status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> READY_TO_PUBLIC

@@ -83,7 +83,7 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
         final String dbName = sqlDropDatabase.getDbName().getSimple();
         final DbInfoRecord dbInfo = DbInfoManager.getInstance().getDbInfo(dbName);
 
-        // validateChangeSetExists(dbName, executionContext);
+        Long connId = executionContext.getConnId();
 
         final ITimestampOracle timestampOracle =
             executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
@@ -107,6 +107,8 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         dropDbInfo.setSocketTimeout(socketTimeout == null ? -1 : socketTimeout);
         dropDbInfo.setVersionId(DdlUtils.generateVersionId(executionContext));
+        dropDbInfo.setConnId(connId);
+        dropDbInfo.setTraceId(executionContext.getTraceId());
 
         DbTopologyManager.dropLogicalDb(dropDbInfo);
         CdcManagerHelper.getInstance()

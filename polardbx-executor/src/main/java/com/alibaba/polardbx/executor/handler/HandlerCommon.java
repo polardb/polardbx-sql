@@ -294,8 +294,9 @@ public abstract class HandlerCommon implements PlanHandler {
         Set<String> groupNames = groupAndQcs.keySet();
 
         int prefetch = executionContext.getParamManager().getInt(ConnectionParams.PREFETCH_SHARDS);
+        int ddlpara = executionContext.getParamManager().getInt(ConnectionParams.PHYSICAL_DDL_PARALLELISM);
         Boolean overrideDdlParams = executionContext.isOverrideDdlParams();
-        if (prefetch < 0) {
+        if (prefetch <= 0 && ddlpara <= 0) {
             if (overrideDdlParams) {
                 prefetch = 3;
             } else {
@@ -304,7 +305,7 @@ public abstract class HandlerCommon implements PlanHandler {
             }
         }
         Map<String, Integer> groupAndResidues = new HashMap<>();
-        int finalPrefetch = prefetch;
+        int finalPrefetch = Math.max(Math.max(prefetch, ddlpara), 1);
         groupNames.forEach(o -> groupAndResidues.put(o, finalPrefetch));
 
         Map<String, List<Future<Cursor>>> groupAndFutures = new HashMap<>();
@@ -321,6 +322,8 @@ public abstract class HandlerCommon implements PlanHandler {
                 ddlContext.getSchemaName(), ddlContext.getObjectName());
         });
 
+        int emitPhyDdlDelay = executionContext.getParamManager().getInt(ConnectionParams.EMIT_PHY_TABLE_DDL_DELAY);
+
         for (int execute = 0; execute < subNodes.size(); ) {
             for (String groupName : groupNames) {
                 int residue = groupAndResidues.get(groupName);
@@ -332,6 +335,13 @@ public abstract class HandlerCommon implements PlanHandler {
                     GenericPhyObjectRecorder phyObjectRecorder =
                         CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext);
                     if (!phyObjectRecorder.checkIfDone()) {
+                        if (emitPhyDdlDelay > 0) {
+                            try {
+                                Thread.sleep(emitPhyDdlDelay * 1000);
+                            } catch (InterruptedException e) {
+                                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, e.getMessage());
+                            }
+                        }
                         Future<Cursor> rcfuture = ExecutorContext.getContext(schemaName)
                             .getTopologyExecutor()
                             .execByExecPlanNodeFuture(subNode, executionContext, null);
@@ -344,6 +354,7 @@ public abstract class HandlerCommon implements PlanHandler {
                         }
                         groupAndResidues.put(groupName, residue - 1);
                     } else {
+                        execute++;
                         // skip
                     }
 
@@ -381,6 +392,10 @@ public abstract class HandlerCommon implements PlanHandler {
                 futures.removeAll(doneFutures);
                 groupAndResidues.put(groupName, groupAndResidues.get(groupName) + doneFutures.size());
                 execute += doneFutures.size();
+            }
+            if (executionContext.getDdlContext().isInterrupted()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                    "The job '" + executionContext.getDdlContext().getJobId() + "' has been cancelled");
             }
 //            Thread.sleep(100);
         }
@@ -614,7 +629,7 @@ public abstract class HandlerCommon implements PlanHandler {
             executeSubNodesBlockConcurrent(executionContext, inputs, inputCursors, schemaName);
             break;
         case DDL_CONCURRENT:
-            // full concurrent
+            // ddl concurrent
             executeSubNodesBlockConcurrentAmongShards(executionContext, inputs, inputCursors, schemaName);
             break;
         case RELAXED_GROUP_CONCURRENT:
@@ -1366,6 +1381,12 @@ public abstract class HandlerCommon implements PlanHandler {
                     tableMeta, true);
 
             if (updateValueList.get(0).isEmpty()) {
+                return;
+            }
+
+            // continue if contains null (MATCH SIMPLE)
+            updateValueList.removeIf(conditionValue -> conditionValue.contains(null));
+            if (updateValueList.isEmpty()) {
                 return;
             }
 

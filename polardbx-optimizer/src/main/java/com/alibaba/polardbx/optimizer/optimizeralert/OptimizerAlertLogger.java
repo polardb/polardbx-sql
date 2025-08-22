@@ -19,6 +19,8 @@ package com.alibaba.polardbx.optimizer.optimizeralert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
+import java.util.Map;
+
 public interface OptimizerAlertLogger {
 
     /**
@@ -34,6 +36,10 @@ public interface OptimizerAlertLogger {
      * @return return if log success
      */
     boolean logDetail(ExecutionContext ec, Object object);
+
+    default boolean logDetail(ExecutionContext ec, Object object, Map<String, Object> extra){
+        return logDetail(ec, object);
+    }
 
     /**
      * collect alert count since last schedule job

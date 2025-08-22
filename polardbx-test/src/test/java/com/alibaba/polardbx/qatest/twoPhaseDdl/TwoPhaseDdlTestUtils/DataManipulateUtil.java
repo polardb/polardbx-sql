@@ -1,8 +1,8 @@
 package com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils;
 
 import com.alibaba.polardbx.qatest.ConnectionWrap;
-import com.alibaba.polardbx.qatest.ddl.balancer.datagenerator.DataLoader;
-import com.alibaba.polardbx.qatest.ddl.balancer.datagenerator.UniformDistributionDataGenerator;
+import com.alibaba.polardbx.qatest.ddl.datamigration.balancer.datagenerator.DataLoader;
+import com.alibaba.polardbx.qatest.ddl.datamigration.balancer.datagenerator.UniformDistributionDataGenerator;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang.StringUtils;

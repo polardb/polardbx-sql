@@ -20,6 +20,8 @@ import com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationExceptio
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.exception.Nestable;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -154,5 +156,12 @@ public class ExceptionUtils {
             }
         }
         return false;
+    }
+
+    public static String exceptionStackTrace(Throwable ex) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        ex.printStackTrace(pw);
+        return sw.toString();
     }
 }

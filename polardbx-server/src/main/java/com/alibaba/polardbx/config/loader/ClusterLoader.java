@@ -36,6 +36,9 @@ import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlIntraTaskExecutor;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.ChangeSetThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
+import com.alibaba.polardbx.executor.ddl.workqueue.OmcThreadPoll;
+import com.alibaba.polardbx.executor.gms.ColumnarManager;
+import com.alibaba.polardbx.executor.gms.DynamicColumnarManager;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.executor.ddl.workqueue.PriorityWorkQueue;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaChecker;
@@ -50,6 +53,7 @@ import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
+import com.alibaba.polardbx.optimizer.partition.FullScanTableBlackListManager;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
@@ -183,6 +187,8 @@ public abstract class ClusterLoader extends BaseClusterLoader {
         if (p.containsKey(ConnectionProperties.STORAGE_HA_TASK_PERIOD)) {
             Integer newHaTaskPeriod = Integer.valueOf(p.getProperty(ConnectionProperties.STORAGE_HA_TASK_PERIOD));
             if (newHaTaskPeriod > 0) {
+                DynamicConfig.getInstance().loadValue(logger, ConnectionProperties.STORAGE_HA_TASK_PERIOD,
+                    p.getProperty(ConnectionProperties.STORAGE_HA_TASK_PERIOD));
                 StorageHaManager.getInstance().adjustStorageHaTaskPeriod(newHaTaskPeriod);
             }
         }
@@ -206,13 +212,6 @@ public abstract class ClusterLoader extends BaseClusterLoader {
         if (p.containsKey(ConnectionProperties.ENABLE_HA_CHECK_TASK_LOG)) {
             Boolean enableTaskLog = Boolean.valueOf(p.getProperty(ConnectionProperties.ENABLE_HA_CHECK_TASK_LOG));
             StorageHaChecker.setPrintHaCheckTaskLog(enableTaskLog);
-        }
-
-        if (p.containsKey(ConnectionProperties.STORAGE_HA_TASK_PERIOD)) {
-            Integer newHaTaskPeriod = Integer.valueOf(p.getProperty(ConnectionProperties.STORAGE_HA_TASK_PERIOD));
-            if (newHaTaskPeriod > 0) {
-                StorageHaManager.getInstance().adjustStorageHaTaskPeriod(newHaTaskPeriod);
-            }
         }
 
         if (p.containsKey(ConnectionProperties.BACKFILL_PARALLELISM)) {
@@ -244,6 +243,11 @@ public abstract class ClusterLoader extends BaseClusterLoader {
         if (p.containsKey(ConnectionProperties.FASTCHECKER_THREAD_POOL_SIZE)) {
             int parallelism = Integer.parseInt(p.getProperty(ConnectionProperties.FASTCHECKER_THREAD_POOL_SIZE));
             FastCheckerThreadPool.getInstance().setParallelism(parallelism);
+        }
+
+        if (p.containsKey(ConnectionProperties.OMC_THREAD_POOL_SIZE)) {
+            int parallelism = Integer.parseInt(p.getProperty(ConnectionProperties.OMC_THREAD_POOL_SIZE));
+            OmcThreadPoll.getInstance().setParallelism(parallelism);
         }
 
         if (p.containsKey(ConnectionProperties.GLOBAL_MEMORY_LIMIT)) {
@@ -512,7 +516,6 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             String valStr = p.getProperty(ConnectionProperties.TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL);
             DynamicConfig.getInstance()
                 .loadValue(logger, ConnectionProperties.TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL, valStr);
-
         }
 
         if (p.containsKey(ConnectionProperties.TTL_JOB_DEFAULT_BATCH_SIZE)) {
@@ -659,6 +662,30 @@ public abstract class ClusterLoader extends BaseClusterLoader {
                 DynamicConfig.getInstance().getTtlIgnoreMaintainWindowInDdlJob());
         }
 
+        if (p.containsKey(ConnectionProperties.TTL_JOB_MAINTENANCE_ENABLE)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_JOB_MAINTENANCE_ENABLE);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_JOB_MAINTENANCE_ENABLE, valStr);
+            TtlConfigUtil.setTtlJobMaintenanceEnable(
+                DynamicConfig.getInstance().getTtlJobMaintenanceEnable());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_JOB_MAINTENANCE_TIME_START)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_JOB_MAINTENANCE_TIME_START);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_JOB_MAINTENANCE_TIME_START, valStr);
+            TtlConfigUtil.setTtlJobMaintenanceTimeStart(
+                DynamicConfig.getInstance().getTtlJobMaintenanceTimeStart());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_JOB_MAINTENANCE_TIME_END)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_JOB_MAINTENANCE_TIME_END);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_JOB_MAINTENANCE_TIME_END, valStr);
+            TtlConfigUtil.setTtlJobMaintenanceTimeEnd(
+                DynamicConfig.getInstance().getTtlJobMaintenanceTimeEnd());
+        }
+
         if (p.containsKey(ConnectionProperties.TTL_GLOBAL_WORKER_DN_RATIO)) {
             String valStr = p.getProperty(ConnectionProperties.TTL_GLOBAL_WORKER_DN_RATIO);
             DynamicConfig.getInstance()
@@ -690,6 +717,13 @@ public abstract class ClusterLoader extends BaseClusterLoader {
                 DynamicConfig.getInstance().getTtlEnableAutoAddPartsForArcCci());
         }
 
+        if (p.containsKey(ConnectionProperties.FULL_SCAN_TABLE_BLACK_LIST)) {
+            String valStr = p.getProperty(ConnectionProperties.FULL_SCAN_TABLE_BLACK_LIST);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.FULL_SCAN_TABLE_BLACK_LIST, valStr);
+            FullScanTableBlackListManager.getInstance().reload(DynamicConfig.getInstance().getFullScanTableBlackList());
+        }
+
         if (CobarServer.getInstance().isInited()) {
             CobarServer.getInstance().reloadSystemConfig();
         }
@@ -712,10 +746,20 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             ColumnarTsoManager.getInstance().resetColumnarTsoUpdateInterval(columnarTsoUpdateInterval);
         }
 
+        if (p.containsKey(ConnectionProperties.CSV_CACHE_SIZE)) {
+            int newSize = Integer.parseInt(p.getProperty(ConnectionProperties.CSV_CACHE_SIZE));
+            ((DynamicColumnarManager) ColumnarManager.getInstance()).resetCsvCacheSize(newSize);
+        }
+
         if (p.containsKey(ConnectionProperties.COLUMNAR_TSO_PURGE_INTERVAL)) {
             int columnarTsoPurgeInterval =
                 Integer.parseInt(p.getProperty(ConnectionProperties.COLUMNAR_TSO_PURGE_INTERVAL));
             ColumnarTsoManager.getInstance().resetColumnarTsoPurgeInterval(columnarTsoPurgeInterval);
+        }
+
+        if (p.containsKey(ConnectionProperties.COLUMNAR_SNAPSHOT_CACHE_TTL_MS)) {
+            int cacheTtlMs = Integer.parseInt(p.getProperty(ConnectionProperties.COLUMNAR_SNAPSHOT_CACHE_TTL_MS));
+            ((DynamicColumnarManager) ColumnarManager.getInstance()).resetSnapshotCacheTtlMs(cacheTtlMs);
         }
 
         if (p.containsKey(ConnectionProperties.PLAN_CACHE_SIZE)) {

@@ -21,9 +21,12 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.AutoCrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.validator.DataOperator;
 import com.alibaba.polardbx.qatest.validator.DataValidator;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -66,6 +69,15 @@ public class RangeScanTest extends AutoCrudBasedLockTestCase {
         + "  PARTITION p202404b VALUES LESS THAN('2024-04-21'),\n"
         + "  PARTITION p202404c VALUES LESS THAN('2024-05-01')\n"
         + "  );\n";
+
+    @Before
+    public void prepare() {
+        try {
+            tddlConnection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     @Test
     public void testRangePartition() {

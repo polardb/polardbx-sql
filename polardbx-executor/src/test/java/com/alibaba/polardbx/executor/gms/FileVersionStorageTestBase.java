@@ -428,6 +428,14 @@ public abstract class FileVersionStorageTestBase {
         }
     }
 
+    public static byte[] readMockFile(String fileName) {
+        try (InputStream in = FILESYSTEM.open(new Path(ClassLoader.getSystemResource(fileName).getPath()))) {
+            return IOUtils.toByteArray(in);
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
     public static FSDataInputStream openMockFile(String fileName) {
         try {
             return FILESYSTEM.open(new Path(ClassLoader.getSystemResource(fileName).getPath()));

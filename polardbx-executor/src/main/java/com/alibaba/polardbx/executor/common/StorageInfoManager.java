@@ -506,6 +506,29 @@ public class StorageInfoManager extends AbstractLifecycle {
 
     @Override
     protected void doInit() {
+        refresh(storageInfos);
+    }
+
+    public void reload() {
+        if(isInited()) {
+            Map<String, StorageInfo> tmpStorageInfos = new ConcurrentHashMap<>();
+            refresh(tmpStorageInfos);
+            //不直接调用storageInfos.clear，防止：DML调用的时候storageInfos为空，getDnVersion返回不正确
+            storageInfos.putAll(tmpStorageInfos);
+            Iterator<Map.Entry<String, StorageInfo>> it = storageInfos.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<String, StorageInfo> entry = it.next();
+                String key = entry.getKey();
+                if (!tmpStorageInfos.containsKey(key)) {
+                    it.remove();
+                }
+            }
+        } else {
+            init();
+        }
+    }
+
+    private void refresh(Map<String, StorageInfo> storageInfos) {
         boolean tmpSupportXA = true;
         boolean tmpSupportTso = true;
         boolean tmpSupportTsoHeartbeat = true;
@@ -543,7 +566,7 @@ public class StorageInfoManager extends AbstractLifecycle {
 
             IGroupExecutor groupExecutor = topologyHandler.get(group.getName());
 
-            final StorageInfo storageInfo = initStorageInfo(group, groupExecutor.getDataSource());
+            final StorageInfo storageInfo = initStorageInfo(group, groupExecutor.getDataSource(), storageInfos);
             if (storageInfo != null) {
                 storageInfoEmpty = false;
                 tmpSupportXA &= supportXA(storageInfo);
@@ -687,7 +710,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         storageInfos.clear();
     }
 
-    private StorageInfo initStorageInfo(Group group, IDataSource dataSource) {
+    private StorageInfo initStorageInfo(Group group, IDataSource dataSource, Map<String, StorageInfo> storageInfos) {
 
         if (!ConfigDataMode.needDNResource() && !SystemDbHelper.isDBBuildInExceptCdc(group.getSchemaName())) {
             return null;

@@ -26,6 +26,7 @@ public class PhysicalPartitionInfo {
     protected Long partId;
     protected Integer partBitSetIdx;
     protected String partName;
+    protected String subPartTempName;
     protected String parentPartName;
     protected String groupKey;
     protected String phyTable;
@@ -88,4 +89,13 @@ public class PhysicalPartitionInfo {
     public void setParentPartName(String parentPartName) {
         this.parentPartName = parentPartName;
     }
+
+    public String getSubPartTempName() {
+        return subPartTempName;
+    }
+
+    public void setSubPartTempName(String subPartTempName) {
+        this.subPartTempName = subPartTempName;
+    }
+
 }

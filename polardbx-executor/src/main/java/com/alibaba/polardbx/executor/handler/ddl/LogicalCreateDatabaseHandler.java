@@ -72,6 +72,7 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
         final LogicalCreateDatabase createDatabase = (LogicalCreateDatabase) logicalPlan;
         final SqlCreateDatabase sqlCreateDatabase = (SqlCreateDatabase) createDatabase.getNativeSqlNode();
         final LocalityManager lm = LocalityManager.getInstance();
+        Long connId = executionContext.getConnId();
 
         String dbName = sqlCreateDatabase.getDbName().getSimple();
         if (!DbNameUtil.validateDbName(dbName, KeyWordsUtil.isKeyWord(dbName))) {
@@ -149,6 +150,8 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
             dbType,
             isCreateIfNotExists, socketTimeoutVal, shardDbCountEachStorageInst);
         initHookFuncForCreateDbInfo(executionContext, dbName, sqlCreateDatabase, createDbInfo, finalLocalityDesc, lm);
+        createDbInfo.setConnId(connId);
+        createDbInfo.setTraceId(executionContext.getTraceId());
         DbTopologyManager.createLogicalDb(createDbInfo);
         DbEventUtil.logFirstAutoDbCreationEvent(createDbInfo);
 

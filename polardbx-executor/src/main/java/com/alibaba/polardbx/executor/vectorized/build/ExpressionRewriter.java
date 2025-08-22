@@ -43,6 +43,7 @@ import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexUtil;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
@@ -58,8 +59,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static org.apache.calcite.sql.type.SqlTypeName.BIGINT;
-import static org.apache.calcite.sql.type.SqlTypeName.CHAR;
-import static org.apache.calcite.sql.type.SqlTypeName.VARCHAR;
 
 /**
  * Rewrite the expression tree to fit the vectorized framework.
@@ -75,6 +74,13 @@ public class ExpressionRewriter {
     private ExprContextProvider contextProvider;
     private RexConstantFoldShuttle constantFoldShuttle;
 
+    private List<SqlOperator> extraBlacklist;
+    private List<SqlOperator> extraWhitelist;
+
+    // for IN expression.
+    private Map<Integer, Map<String, List>> rewriterParams;
+    private String currentPhyTable;
+
     public ExpressionRewriter(ExecutionContext executionContext) {
         this.executionContext = executionContext;
         this.fallback =
@@ -82,7 +88,64 @@ public class ExpressionRewriter {
         this.enableCSE =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE);
         this.contextProvider = new ExprContextProvider(executionContext);
-        this.constantFoldShuttle = new RexConstantFoldShuttle(REX_BUILDER, executionContext);
+
+        String extraBlacklistStr =
+            executionContext.getParamManager().getString(ConnectionParams.CONSTANT_FOLD_BLACKLIST);
+        String extraWhitelistStr =
+            executionContext.getParamManager().getString(ConnectionParams.CONSTANT_FOLD_WHITELIST);
+
+        extraBlacklist = splitOperators(extraBlacklistStr);
+        extraWhitelist = splitOperators(extraWhitelistStr);
+
+        this.constantFoldShuttle =
+            new RexConstantFoldShuttle(REX_BUILDER, executionContext, extraBlacklist, extraWhitelist);
+    }
+
+    public List<SqlOperator> getExtraBlacklist() {
+        return extraBlacklist;
+    }
+
+    public List<SqlOperator> getExtraWhitelist() {
+        return extraWhitelist;
+    }
+
+    /**
+     * This method splits a given string of operators into a List.
+     *
+     * @param operators A string of operators separated by commas.
+     * @return A list containing the individual operators without leading or trailing spaces.
+     */
+    public static List<SqlOperator> splitOperators(String operators) {
+        if (operators == null || operators.isEmpty()) {
+            return ImmutableList.of();
+        }
+        // Split the string by comma
+        // Note: trim each resulting operator to remove any leading or trailing spaces
+        String[] operatorArray = operators.split(",");
+        List<String> operatorList = new ArrayList<>();
+
+        // Use trimmed results to remove leading and trailing spaces
+        for (int i = 0; i < operatorArray.length; i++) {
+            String op = operatorArray[i];
+            if (op != null) {
+                operatorList.add(op.trim());
+            }
+        }
+
+        List<SqlOperator> results = new ArrayList<>();
+        for (String operatorStr : operatorList) {
+            SqlOperator sqlOperator = FoldFunctionUtils.lookup(operatorStr);
+            if (sqlOperator != null) {
+                results.add(sqlOperator);
+            }
+        }
+
+        return results;
+    }
+
+    void rewriteIn(Map<Integer, Map<String, List>> rewriterParams, String currentPhyTable) {
+        this.rewriterParams = rewriterParams;
+        this.currentPhyTable = currentPhyTable;
     }
 
     public RexCall rewriteConstFold(RexCall call) {
@@ -198,7 +261,7 @@ public class ExpressionRewriter {
         for (RexNode operand : ((RexCall) right).getOperands()) {
             if (operand instanceof RexDynamicParam) {
                 // evaluate dynamic param
-                Object value = extractDynamicValue((RexDynamicParam) operand);
+                Object value = extractDynamicValueForIn((RexDynamicParam) operand);
 
                 // check if list value
                 if (value instanceof List) {
@@ -216,8 +279,19 @@ public class ExpressionRewriter {
                             false);
                         newOperandList.add(literalNode);
                     }
+
+                }  else if (value instanceof String || value instanceof Number) {
+                    // prepare mode
+                    SqlTypeName typeName = DataTypeUtil.typeNameOfParam(value);
+                    RelDataType relDataType = TYPE_FACTORY.createSqlType(typeName);
+                    DataType dataType = DataTypeUtil.calciteToDrdsType(relDataType);
+                    RexNode literalNode = REX_BUILDER.makeLiteral(
+                        dataType.convertFrom(value),
+                        relDataType,
+                        false);
+                    newOperandList.add(literalNode);
                 } else {
-                    // ban prepare mode
+                    // unknown mode.
                     return false;
                 }
             } else {
@@ -510,6 +584,27 @@ public class ExpressionRewriter {
         return rexCall;
     }
 
+    private Object extractDynamicValueForIn(RexDynamicParam dynamicParam) {
+
+        int dynamicParamIndex = dynamicParam.getIndex();
+        if (rewriterParams != null && currentPhyTable != null && rewriterParams.containsKey(dynamicParamIndex)) {
+            Map<String, List> map = rewriterParams.get(dynamicParamIndex);
+            if (map.containsKey(currentPhyTable)) {
+                return map.get(currentPhyTable);
+            } else {
+                // all list value are pruned.
+                return ImmutableList.of();
+            }
+        }
+
+        // pre-compute the dynamic value when binging expression.
+        DynamicParamExpression dynamicParamExpression =
+            new DynamicParamExpression(dynamicParam.getIndex(), contextProvider,
+                dynamicParam.getSubIndex(), dynamicParam.getSkIndex());
+
+        return dynamicParamExpression.eval(null, executionContext);
+    }
+
     private Object extractDynamicValue(RexDynamicParam dynamicParam) {
         // pre-compute the dynamic value when binging expression.
         DynamicParamExpression dynamicParamExpression =
@@ -519,14 +614,20 @@ public class ExpressionRewriter {
         return dynamicParamExpression.eval(null, executionContext);
     }
 
-    private static class RexConstantFoldShuttle extends RexShuttle {
+    public static class RexConstantFoldShuttle extends RexShuttle {
         RexBuilder rexBuilder;
 
         ExecutionContext ec;
 
-        RexConstantFoldShuttle(RexBuilder rexBuilder, ExecutionContext ec) {
+        private List<SqlOperator> extraBlacklist;
+        private List<SqlOperator> extraWhitelist;
+
+        RexConstantFoldShuttle(RexBuilder rexBuilder, ExecutionContext ec,
+                               List<SqlOperator> extraBlacklist, List<SqlOperator> extraWhitelist) {
             this.rexBuilder = rexBuilder;
             this.ec = ec;
+            this.extraBlacklist = extraBlacklist;
+            this.extraWhitelist = extraWhitelist;
         }
 
         private boolean isTypeAllowed(RelDataType relDataType) {
@@ -550,7 +651,19 @@ public class ExpressionRewriter {
             if (!isTypeAllowed(call.getType())) {
                 return call;
             }
-            if (RexUtil.isConstant(call)) {
+
+            boolean isConstant = FoldFunctionUtils.isFoldEnabled(call, extraBlacklist, extraWhitelist);
+            if (!isConstant) {
+                // Don't allow folding subtree of expression for some function.
+                if (call.op == TddlOperatorTable.DATE_ADD
+                    || call.op == TddlOperatorTable.ADDDATE
+                    || call.op == TddlOperatorTable.DATE_SUB
+                    || call.op == TddlOperatorTable.SUBDATE) {
+                    return call;
+                }
+            }
+
+            if (isConstant) {
                 Object obj = RexUtils.getEvalFuncExec(call, new ExprContextProvider(ec)).eval(null);
                 if (obj instanceof RowValue) {
                     return super.visitCall(call);

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
@@ -175,6 +176,11 @@ public class SortWindow extends Window implements PhysicalNode {
         }
 
         if (required.getConvention() == MppConvention.INSTANCE) {
+            return null;
+        }
+
+        // don't pass through sort window in columnar optimizer
+        if (CBOUtil.isColumnarOptimizer(sortWindow)) {
             return null;
         }
 

@@ -33,6 +33,7 @@ import org.apache.calcite.sql.SqlNode;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class AlterTableMovePartitionSubTaskJobFactory extends AlterTableGroupSubTaskJobFactory {
 
@@ -42,7 +43,8 @@ public class AlterTableMovePartitionSubTaskJobFactory extends AlterTableGroupSub
                                                     AlterTableMovePartitionPreparedData parentPrepareData,
                                                     AlterTableGroupItemPreparedData preparedData,
                                                     List<PhyDdlTableOperation> phyDdlTableOperations,
-                                                    Map<String, List<List<String>>> tableTopology,
+                                                    Map<String, org.apache.calcite.util.Pair<String, String>> ptbGroupMap,
+                                                    TreeMap<String, List<List<String>>> tableTopology,
                                                     Map<String, Set<String>> targetTableTopology,
                                                     Map<String, Set<String>> sourceTableTopology,
                                                     Map<String, Pair<String, String>> orderedTargetTableLocations,
@@ -50,7 +52,8 @@ public class AlterTableMovePartitionSubTaskJobFactory extends AlterTableGroupSub
                                                     boolean skipBackfill,
                                                     ComplexTaskMetaManager.ComplexTaskType taskType,
                                                     ExecutionContext executionContext) {
-        super(ddl, parentPrepareData, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology,
+        super(ddl, parentPrepareData, preparedData, phyDdlTableOperations, ptbGroupMap, tableTopology,
+            targetTableTopology,
             sourceTableTopology, orderedTargetTableLocations, targetPartition, skipBackfill, taskType,
             executionContext);
         this.parentPrepareData = parentPrepareData;

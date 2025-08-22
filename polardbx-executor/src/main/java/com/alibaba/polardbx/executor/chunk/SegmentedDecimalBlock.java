@@ -17,7 +17,9 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
 import io.airlift.slice.Slice;
+import org.openjdk.jol.info.ClassLayout;
 
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.FRACTIONS_OFFSET;
@@ -67,6 +69,7 @@ public interface SegmentedDecimalBlock {
         // (12 bytes) int2 * 10^9 + int1 + frac * 10^-9
         SIMPLE_MODE_3(true, 0, 1, 2);
 
+        public static int INSTANCE_SIZE = ClassLayout.parseClass(DecimalBlockState.class).instanceSize();
         private final boolean isSimple;
         private final int int2Pos;
         private final int int1Pos;
@@ -77,6 +80,10 @@ public interface SegmentedDecimalBlock {
             this.int2Pos = int2Pos;
             this.int1Pos = int1Pos;
             this.fracPos = fracPos;
+        }
+
+        public long memorySize() {
+            return INSTANCE_SIZE + FastMemoryCounter.sizeOf(name());
         }
 
         public static DecimalBlockState stateOf(Slice memorySegments, int position) {

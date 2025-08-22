@@ -30,7 +30,7 @@ import java.util.List;
 public class SqlWith extends SqlCall {
   public SqlNodeList withList;
   public SqlNode body;
-  public boolean isRecursive;
+  public SqlLiteral isRecursive;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -38,9 +38,10 @@ public class SqlWith extends SqlCall {
     super(pos);
     this.withList = withList;
     this.body = body;
+    this.isRecursive = SqlLiteral.createBoolean(false, pos);
   }
 
-  public SqlWith(SqlParserPos pos, SqlNodeList withList, SqlNode body, boolean isRecursive) {
+  public SqlWith(SqlParserPos pos, SqlNodeList withList, SqlNode body, SqlLiteral isRecursive) {
     super(pos);
     this.withList = withList;
     this.body = body;
@@ -58,7 +59,7 @@ public class SqlWith extends SqlCall {
   }
 
   public List<SqlNode> getOperandList() {
-    return ImmutableList.of(withList, body);
+    return ImmutableList.of(withList, body, isRecursive);
   }
 
   @Override public void setOperand(int i, SqlNode operand) {
@@ -68,6 +69,9 @@ public class SqlWith extends SqlCall {
       break;
     case 1:
       body = operand;
+      break;
+    case 2:
+      isRecursive = (SqlLiteral) operand;
       break;
     default:
       throw new AssertionError(i);
@@ -101,6 +105,9 @@ public class SqlWith extends SqlCall {
       final SqlWith with = (SqlWith) call;
       final SqlWriter.Frame frame =
           writer.startList(SqlWriter.FrameTypeEnum.WITH, "WITH", "");
+      if(with.isRecursive.booleanValue()) {
+        writer.keyword("RECURSIVE");
+      }
       final SqlWriter.Frame frame1 = writer.startList("", "");
       for (SqlNode node : with.withList) {
         writer.sep(",");
@@ -117,8 +124,7 @@ public class SqlWith extends SqlCall {
 
     @Override public SqlCall createCall(SqlLiteral functionQualifier,
         SqlParserPos pos, SqlNode... operands) {
-      // not support recursive transform
-      return new SqlWith(pos, (SqlNodeList) operands[0], operands[1], false);
+      return new SqlWith(pos, (SqlNodeList) operands[0], operands[1], (SqlLiteral) operands[2]);
     }
 
     @Override public void validateCall(SqlCall call,

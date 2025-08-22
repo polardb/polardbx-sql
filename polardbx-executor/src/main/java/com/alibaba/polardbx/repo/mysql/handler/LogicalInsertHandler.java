@@ -560,10 +560,15 @@ public class LogicalInsertHandler extends HandlerCommon {
                 columnNames.indexOf(data.refColumns.get(i))));
         }
         for (Pair<Integer, Integer> fkColumnNumber : fkColumnNumbers) {
-            Set<Object> refCol = new HashSet<>();
-            values.stream().forEach(value -> refCol.add(value.get(fkColumnNumber.right)));
+            Set<GroupKey> refCol = new HashSet<>();
+            values.forEach(value -> refCol.add(new GroupKey(
+                Collections.singletonList(value.get(fkColumnNumber.right)).toArray(),
+                Collections.singletonList(tableMeta.getAllColumns().get(fkColumnNumber.right)))));
             for (List<Object> value : values) {
-                if (!refCol.contains(value.get(fkColumnNumber.left))) {
+                final GroupKey leftValueGroupKey = new GroupKey(
+                    Collections.singletonList(value.get(fkColumnNumber.left)).toArray(),
+                    Collections.singletonList(tableMeta.getAllColumns().get(fkColumnNumber.left)));
+                if (!refCol.contains(leftValueGroupKey)) {
                     skipFkSameTable = false;
                     break;
                 }
@@ -656,14 +661,17 @@ public class LogicalInsertHandler extends HandlerCommon {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, executionContext);
         final int maxSqlUnionCount = executionContext.getParamManager().getInt(ConnectionParams.DML_GET_DUP_UNION_SIZE);
         final boolean useIn = executionContext.getParamManager().getBoolean(ConnectionParams.DML_GET_DUP_USING_IN);
+        final boolean useUnionEqual =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_GET_DUP_USING_UNION_EQUAL);
         final int maxSqlInCount = executionContext.getParamManager().getInt(ConnectionParams.DML_GET_DUP_IN_SIZE);
         // Use IN instead of UNION may cause more deadlocks
         // Ref: https://dev.mysql.com/doc/refman/5.7/en/innodb-locks-set.html
         // If it's select with value index, we can not use IN because each select has its own value index
 
-        selects = withValueIndex || !useIn ?
+        selects = withValueIndex || !useIn || useUnionEqual ?
             builder.buildSelectUnionAndParam(insert, ukColumnsList, tableMeta, lockMode, values, insertColumns,
-                lookUpUniqueKey, lookUpUniqueKeyIndex, selectColumns, withValueIndex, maxSqlUnionCount, fullTableScan) :
+                lookUpUniqueKey, lookUpUniqueKeyIndex, selectColumns, withValueIndex, maxSqlUnionCount, fullTableScan,
+                useUnionEqual) :
             builder.buildSelectInAndParam(insert, ukColumnsList, ukNameList, tableMeta, lockMode, values,
                 insertColumns, lookUpUniqueKey, lookUpUniqueKeyIndex, selectColumns, maxSqlInCount, fullTableScan);
 
@@ -1076,6 +1084,13 @@ public class LogicalInsertHandler extends HandlerCommon {
         //select 增加这个标记，避免select变成sequence策略，可看ExecUtils.getQueryConcurrencyPolicy
         selectEc.getExtraCmds().put(ConnectionProperties.ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION, true);
 
+        final int valuesCount = newLogicalInsert.getInsertRowType().getFieldCount();
+
+        // Update duplicate key update list if necessary
+        final Map<Integer, Integer> duplicateKeyParamMapping = new HashMap<>();
+        newLogicalInsert =
+            newLogicalInsert.updateDuplicateKeyUpdateList(new AtomicInteger(valuesCount), duplicateKeyParamMapping);
+
         try {
             selectCursor = ExecutorHelper.execute(input, selectEc, false, cacheAllOutput, asyncCacheAllOutput);
 
@@ -1085,11 +1100,6 @@ public class LogicalInsertHandler extends HandlerCommon {
 
             ExecutionContext insertEc = executionContext.copy(new Parameters(executionContext.getParamMap()));
 
-            // Update duplicate key update list if necessary
-            final Map<Integer, Integer> duplicateKeyParamMapping = new HashMap<>();
-            newLogicalInsert = newLogicalInsert
-                .updateDuplicateKeyUpdateList(newLogicalInsert.getInsertRowType().getFieldCount(),
-                    duplicateKeyParamMapping);
             // Select and insert loop
             do {
                 values =
@@ -1247,17 +1257,21 @@ public class LogicalInsertHandler extends HandlerCommon {
     protected List<RelNode> replaceSeqAndBuildPhyPlan(LogicalInsert insert, ExecutionContext executionContext,
                                                       LogicalInsert.HandlerParams handlerParams) {
         List<PhyTableInsertSharder.PhyTableShardResult> shardResults = new ArrayList<>();
+
+        // For INSERT IGNORE using returning, sequence already fetched in updateParam.
+        // Should skip update sequence
+        final boolean sequenceAlreadyFetched = handlerParams.autoIncrementUsingSeq;
         PhyTableInsertSharder insertPartitioner = new PhyTableInsertSharder(insert,
             executionContext.getParams(),
             SequenceAttribute.getAutoValueOnZero(executionContext.getSqlMode()),
-            // For INSERT IGNORE using returning, sequence already fetched in updateParam.
-            // Should skip update sequence
             handlerParams.autoIncrementUsingSeq
         );
         List<RelNode> inputs = insert.getInput(insertPartitioner, shardResults, executionContext);
-        handlerParams.usingSequence = insertPartitioner.isUsingSequence();
-        handlerParams.lastInsertId = insertPartitioner.getLastInsertId();
-        handlerParams.returnedLastInsertId = insertPartitioner.getReturnedLastInsertId();
+        if(!sequenceAlreadyFetched){
+            handlerParams.usingSequence = insertPartitioner.isUsingSequence();
+            handlerParams.lastInsertId = insertPartitioner.getLastInsertId();
+            handlerParams.returnedLastInsertId = insertPartitioner.getReturnedLastInsertId();
+        }
         return inputs;
     }
 

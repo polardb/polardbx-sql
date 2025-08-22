@@ -1,6 +1,6 @@
 package com.alibaba.polardbx.qatest.storagepool.LegacyStoragePoolTestCase;
 
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestBase;
+import com.alibaba.polardbx.qatest.ddl.datamigration.locality.LocalityTestBase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import lombok.Getter;
 import net.jcip.annotations.NotThreadSafe;

@@ -36,6 +36,7 @@ import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGro
 import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGroupReporter;
 import com.alibaba.polardbx.executor.partitionmanagement.fastchecker.AlterTableGroupFastChecker;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.AlterTableGroupBackfill;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
@@ -44,14 +45,14 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlSelect;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.calcite.util.Pair;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
 
@@ -109,6 +110,9 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
             executionContext.getParamManager().getBoolean(ConnectionParams.TABLEGROUP_REORG_CHECK_AFTER_BACKFILL)
                 && !useChangeSet;
         if (check) {
+            if (executionContext.getParamManager().getBoolean(ConnectionParams.ROLLBACK_ON_CHECKER)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " force rollback on checker!");
+            }
             final boolean useFastChecker =
                 FastChecker.isSupported(schemaName) &&
                     executionContext.getParamManager()
@@ -129,7 +133,8 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
             if (!backfill.getBroadcast()) {
                 //if is not broadcast table, we execute fastcheck normally.
                 fastCheckSucc = fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(),
-                    backfill.getSourcePhyTables(), backfill.getTargetPhyTables());
+                    backfill.getPtbGroupMap(), backfill.getSourcePhyTables(), backfill.getTargetPhyTables(),
+                    backfill.getMovePartitions());
             } else {
                 /**
                  * FastChecker only allows checking one logic table each time.
@@ -140,7 +145,7 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
                 for (Map.Entry<String, Set<String>> entry : backfill.getTargetPhyTables().entrySet()) {
                     Map<String, Set<String>> targetPhyTables = ImmutableMap.of(entry.getKey(), entry.getValue());
                     if (!fastCheck(executionContext, backfill.getSchemaName(), backfill.getLogicalTableName(),
-                        srcPhyDbAndTables, targetPhyTables)) {
+                        backfill.getPtbGroupMap(), srcPhyDbAndTables, targetPhyTables, backfill.getMovePartitions())) {
                         break;
                     } else {
                         succeedCnt++;
@@ -158,17 +163,33 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
     }
 
     boolean fastCheck(ExecutionContext executionContext,
-                      String schemaName, String logicalTable, Map<String, Set<String>> srcPhyDbAndTables,
-                      Map<String, Set<String>> dstPhyDbAndTables) {
+                      String schemaName, String logicalTable,
+                      Map<String, Pair<String, String>> ptbGroupMap,
+                      Map<String, Set<String>> srcPhyDbAndTables,
+                      Map<String, Set<String>> dstPhyDbAndTables,
+                      boolean isMirrorCopy) {
         long startTime = System.currentTimeMillis();
 
         SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
             "FastChecker for alter tablegroup, schema [{0}] logical table [{1}] start",
             schemaName, logicalTable));
-
+        Map<Pair<String, String>, List<Pair<String, String>>> srcTarPhyTableMap = null;
+        if (isMirrorCopy && GeneralUtil.isNotEmpty(ptbGroupMap)) {
+            Map<String, String> srcTargetGroupMap = new HashMap<>();
+            ptbGroupMap.forEach((ptbName, pair) -> {
+                srcTargetGroupMap.put(pair.getKey(), pair.getValue());
+            });
+            srcTarPhyTableMap =
+                ScaleOutPlanUtil.generateSrcTarPhyTableMapForMoveTable(srcPhyDbAndTables, dstPhyDbAndTables,
+                    srcTargetGroupMap);
+        }
         FastChecker fastChecker = AlterTableGroupFastChecker
-            .create(schemaName, logicalTable, srcPhyDbAndTables,
-                dstPhyDbAndTables, executionContext);
+            .create(schemaName, logicalTable,
+                srcPhyDbAndTables,
+                dstPhyDbAndTables,
+                srcTarPhyTableMap,
+                isMirrorCopy,
+                executionContext);
         boolean fastCheckResult = false;
 
         try {

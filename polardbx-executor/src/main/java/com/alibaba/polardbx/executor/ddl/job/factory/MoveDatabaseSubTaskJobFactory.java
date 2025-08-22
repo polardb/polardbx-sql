@@ -37,10 +37,7 @@ import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Created by luoyanxin.
@@ -53,14 +50,14 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
     protected final DDL ddl;
     protected final MoveDatabaseItemPreparedData preparedData;
     protected final List<PhyDdlTableOperation> phyDdlTableOperations;
-    protected final Map<String, List<List<String>>> tableTopology;
+    protected final TreeMap<String, List<List<String>>> tableTopology;
     protected final Map<String, Set<String>> targetTableTopology;
     protected final Map<String, Set<String>> sourceTableTopology;
     protected final ExecutionContext executionContext;
 
     public MoveDatabaseSubTaskJobFactory(DDL ddl, MoveDatabaseItemPreparedData preparedData,
                                          List<PhyDdlTableOperation> phyDdlTableOperations,
-                                         Map<String, List<List<String>>> tableTopology,
+                                         TreeMap<String, List<List<String>>> tableTopology,
                                          Map<String, Set<String>> targetTableTopology,
                                          Map<String, Set<String>> sourceTableTopology,
                                          ExecutionContext executionContext) {

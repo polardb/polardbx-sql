@@ -113,8 +113,8 @@ public class DriverSplitRunner implements SplitRunner {
     }
 
     @Override
-    public void runtimeStatsSupplier(Supplier<DriverContext.DriverRuntimeStatistics> supplier) {
-        DriverContext driverContext = driver.getDriverContext();
-        driverContext.setDriverRuntimeStatisticsSupplier(supplier);
+    public DriverContext.DriverRuntimeStatisticsUpdater getUpdater() {
+        return driver.getDriverContext().getUpdater();
     }
+
 }

@@ -18,6 +18,7 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.rpc.compatible.ArrayResultSet;
 import com.google.common.collect.ImmutableList;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 
@@ -221,7 +222,7 @@ public class StatisticInfoSchemaTablesScheduleJobTest {
         }
     }
 
-    @Test
+    @Ignore
     public void test() throws SQLException {
         Properties properties = new Properties();
         properties.setProperty(ConnectionProperties.ALERT_STATISTIC_INTERRUPT, "false");

@@ -40,7 +40,7 @@ public class Solution {
         this.strategy = strategy;
     }
 
-    Solution(Boolean withValidSolve, int[] targetPlace, double mu, String strategy) {
+    public Solution(Boolean withValidSolve, int[] targetPlace, double mu, String strategy) {
         this.withValidSolve = withValidSolve;
         this.targetPlace = targetPlace;
         this.mu = mu;

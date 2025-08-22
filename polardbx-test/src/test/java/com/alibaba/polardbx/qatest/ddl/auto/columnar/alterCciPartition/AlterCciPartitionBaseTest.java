@@ -234,8 +234,7 @@ public class AlterCciPartitionBaseTest extends DDLBaseNewDBTestCase {
             sqlHint =
                 "/*+TDDL({'extra':{'ENABLE_DROP_TRUNCATE_CCI_PARTITION':'TRUE','FORBID_DDL_WITH_CCI':'FALSE'}})*/";
         }
-        String ignoreErr =
-            "The DDL job has been paused or cancelled. Please use SHOW DDL";
+        String ignoreErr = "The DDL job has been cancelled or interrupted";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sqlHint + command, ignoreErrs);

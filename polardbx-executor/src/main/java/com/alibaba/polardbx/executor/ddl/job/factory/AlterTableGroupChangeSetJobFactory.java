@@ -26,7 +26,6 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.AlterTableGroupBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CloneTableDataFileTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePhyTableWithRollbackCheckTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DiscardTableSpaceDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.ImportTableSpaceDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PhysicalBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTableGroupDdlMarkTask;
@@ -56,17 +55,11 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePrepa
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
-import com.mysql.cj.polarx.protobuf.PolarxPhysicalBackfill;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_APPLY_OPTIMIZATION;
 import static com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager.ID_GENERATOR;
@@ -79,7 +72,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
     private ChangeSetApplyFinishTask changeSetApplyFinishTask;
 
     final List<PhyDdlTableOperation> discardTableSpaceOperations;
-    final Map<String, Pair<String, String>> ptbGroupMap;
+    final Map<String, org.apache.calcite.util.Pair<String, String>> ptbGroupMap;
     protected boolean usePhysicalBackfill = false;
     protected final AlterTableGroupBasePreparedData parentPrepareData;
     protected List<DdlTask> backfillTaskEdgeNodes = new ArrayList<>(2);
@@ -92,7 +85,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
     public AlterTableGroupChangeSetJobFactory(DDL ddl, AlterTableGroupBasePreparedData parentPrepareData,
                                               AlterTableGroupItemPreparedData preparedData,
                                               List<PhyDdlTableOperation> phyDdlTableOperations,
-                                              Map<String, List<List<String>>> tableTopology,
+                                              TreeMap<String, List<List<String>>> tableTopology,
                                               Map<String, Set<String>> targetTableTopology,
                                               Map<String, Set<String>> sourceTableTopology,
                                               //List<Pair<String, String>> orderedTargetTableLocations,
@@ -127,10 +120,10 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                                               AlterTableGroupItemPreparedData preparedData,
                                               List<PhyDdlTableOperation> phyDdlTableOperations,
                                               List<PhyDdlTableOperation> discardTableSpaceOperations,
-                                              Map<String, Pair<String, String>> ptbGroupMap,
+                                              Map<String, org.apache.calcite.util.Pair<String, String>> ptbGroupMap,
                                               Map<String, String> sourceAndTarDnMap,
                                               Map<String, Pair<String, String>> storageInstAndUserInfos,
-                                              Map<String, List<List<String>>> tableTopology,
+                                              TreeMap<String, List<List<String>>> tableTopology,
                                               Map<String, Set<String>> targetTableTopology,
                                               Map<String, Set<String>> sourceTableTopology,
                                               Map<String, Pair<String, String>> orderedTargetTableLocations,
@@ -204,7 +197,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
             taskList.add(phyDdlTask);
             if (usePhysicalBackfill) {
                 discardTableSpaceTasks = ScaleOutUtils.generateDiscardTableSpaceDdlTask(schemaName, tableTopology,
-                    discardTableSpaceOperations, executionContext);
+                    discardTableSpaceOperations, null, false, executionContext);
             }
         }
 
@@ -230,6 +223,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
             null,
             sourceTableTopology,
             targetTableLocations,
+            null,
             taskType,
             changeSetId
         );
@@ -255,14 +249,39 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
 
         boolean healthyCheck =
             executionContext.getParamManager().getBoolean(ConnectionParams.PHYSICAL_BACKFILL_STORAGE_HEALTHY_CHECK);
-        long totalDataSize = 0l;
+        List<String> physicalPartitions = preparedData.getOldPartitionNames();
+        long totalDataSize = 0;
+
+        boolean fallbackToLogicalBackfill = true;
+        Long tableSizeThreshold = executionContext.getParamManager()
+            .getLong(ConnectionParams.TABLE_SIZE_THRESHOLD_TO_ENABLE_PHYSICAL_BACKFILL);
+        Map<String, Long> phyTableSize = new HashMap<>();
 
         if (usePhysicalBackfill) {
+            for (Map.Entry<String, org.apache.calcite.util.Pair<String, String>> entry : ptbGroupMap.entrySet()) {
+                String phyTb = entry.getKey();
+                org.apache.calcite.util.Pair<String, String> srcTarGroup = entry.getValue();
+
+                Pair<String, String> srcDbAndGroup = Pair.of(
+                    GroupInfoUtil.buildPhysicalDbNameFromGroupName(srcTarGroup.getKey()).toLowerCase(),
+                    srcTarGroup.getKey());
+
+                long dataSize = PhysicalBackfillUtils.fetchPhysicalTableSize(schemaName,
+                    srcDbAndGroup.getValue(),
+                    srcDbAndGroup.getKey(),
+                    phyTb, sourceAndTarDnMap, storageInstAndUserInfos);
+
+                phyTableSize.put(phyTb.toLowerCase(), dataSize);
+                totalDataSize += dataSize;
+            }
+            fallbackToLogicalBackfill = (totalDataSize / Math.max(ptbGroupMap.size(), 1)) < tableSizeThreshold;
+        }
+        if (!fallbackToLogicalBackfill) {
             Set<String> sourceStorageInsts = new HashSet<>();
             Set<String> targetStorageInsts = new HashSet<>();
-            for (Map.Entry<String, Pair<String, String>> entry : ptbGroupMap.entrySet()) {
+            for (Map.Entry<String, org.apache.calcite.util.Pair<String, String>> entry : ptbGroupMap.entrySet()) {
                 String phyTb = entry.getKey();
-                Pair<String, String> srcTarGroup = entry.getValue();
+                org.apache.calcite.util.Pair<String, String> srcTarGroup = entry.getValue();
                 String sourceStorageId = sourceAndTarDnMap.computeIfAbsent(srcTarGroup.getKey(),
                     key -> DbTopologyManager.getStorageInstIdByGroupName(schemaName, srcTarGroup.getKey()));
                 String targetStorageId = sourceAndTarDnMap.computeIfAbsent(srcTarGroup.getValue(),
@@ -275,7 +294,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                     GroupInfoUtil.buildPhysicalDbNameFromGroupName(srcTarGroup.getValue()).toLowerCase(),
                     srcTarGroup.getValue());
                 Pair<String, Integer> sourceHostIpAndPort =
-                    PhysicalBackfillUtils.getMySQLOneFollowerIpAndPort(sourceStorageId);
+                    PhysicalBackfillUtils.getSrcMySQLHostForCloneTask(sourceStorageId, executionContext);
                 List<Pair<String, Integer>> targetHostsIpAndPort =
                     PhysicalBackfillUtils.getMySQLServerNodeIpAndPorts(targetStorageId, healthyCheck);
                 final long batchSize =
@@ -294,8 +313,6 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                         srcDbAndGroup.getKey(),
                         phyTb);
 
-                Pair<String, String> srcDnUserAndPasswd = storageInstAndUserInfos.computeIfAbsent(sourceStorageId,
-                    key -> PhysicalBackfillUtils.getUserPasswd(sourceStorageId));
                 Pair<String, String> userAndPasswd = storageInstAndUserInfos.computeIfAbsent(targetStorageId,
                     key -> PhysicalBackfillUtils.getUserPasswd(targetStorageId));
                 sourceStorageInsts.add(sourceStorageId);
@@ -308,16 +325,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                 } else {
                     temPhyPartNames.addAll(phyPartNames);
                 }
-                PolarxPhysicalBackfill.GetFileInfoOperator fileInfoOperator =
-                        PhysicalBackfillUtils.checkFileExistence(srcDnUserAndPasswd, srcDbAndGroup.getKey(),
-                                phyTb.toLowerCase(),
-                                temPhyPartNames,
-                                true, PhysicalBackfillUtils.getMySQLLeaderIpAndPort(sourceStorageId));
-                long dataSize = 0l;
-                for (PolarxPhysicalBackfill.FileInfo fileInfo : fileInfoOperator.getTableInfo().getFileInfoList()) {
-                    dataSize += fileInfo.getDataSize();
-                }
-
+                Long dataSize = phyTableSize.get(phyTb.toLowerCase());
                 CloneTableDataFileTask cloneTableDataFileTask =
                     new CloneTableDataFileTask(schemaName, tableName, srcDbAndGroup, tarDbAndGroup, phyTb,
                         phyPartNames, sourceStorageId, sourceHostIpAndPort, targetHostsIpAndPort, batchSize,
@@ -330,7 +338,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                     new PhysicalBackfillTask(schemaName, cloneTableDataFileTask.getTaskId(), tableName,
                         phyTb.toLowerCase(),
                         phyPartNames,
-                        srcTarGroup,
+                        Pair.of(srcTarGroup.left, srcTarGroup.right),
                         Pair.of(sourceStorageId, targetStorageId),
                         storageInstAndUserInfos,
                         batchSize,
@@ -351,7 +359,6 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                 tasks.add(physicalBackfillTask);
                 tasks.addAll(importTableSpaceTasks);
                 physicalyTaskPipeLine.add(tasks);
-                totalDataSize += dataSize;
             }
             Map<String, String> targetStorageIds = new HashMap<>();
             for (GroupDetailInfoExRecord groupDetailInfoExRecord : preparedData.getGroupDetailInfoExRecords()) {
@@ -360,13 +367,19 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
             }
 
             AlterTableGroupMovePartitionsCheckTask changeSetCheckTask =
-                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName, sourceTableTopology,
+                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName,
+                    ptbGroupMap,
+                    sourceTableTopology,
                     targetTableTopology,
-                    useApplyOpt, relatedTables, sourceStorageInsts, targetStorageInsts, totalDataSize);
+                    useApplyOpt, relatedTables, sourceStorageInsts, targetStorageInsts, totalDataSize, tableGroupName,
+                    physicalPartitions, null);
             AlterTableGroupMovePartitionsCheckTask changeSetCheckTwiceTask =
-                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName, sourceTableTopology,
+                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName,
+                    ptbGroupMap,
+                    sourceTableTopology,
                     targetTableTopology,
-                    false, relatedTables, sourceStorageInsts, targetStorageInsts, totalDataSize);
+                    false, relatedTables, sourceStorageInsts, targetStorageInsts, totalDataSize, tableGroupName,
+                    physicalPartitions, null);
 
             movePartitionTasks = ChangeSetUtils.genChangeSetOnlineSchemaChangeTasks(
                 schemaName, tableName,
@@ -382,16 +395,21 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                 executionContext);
         } else {
             AlterTableGroupMovePartitionsCheckTask changeSetCheckTask =
-                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName, sourceTableTopology,
+                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName,
+                    ptbGroupMap,
+                    sourceTableTopology,
                     targetTableTopology,
-                    useApplyOpt, relatedTables, null, null, totalDataSize);
+                    useApplyOpt, relatedTables, null, null, totalDataSize, tableGroupName, physicalPartitions, null);
             AlterTableGroupMovePartitionsCheckTask changeSetCheckTwiceTask =
-                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName, sourceTableTopology,
+                new AlterTableGroupMovePartitionsCheckTask(schemaName, tableName,
+                    ptbGroupMap,
+                    sourceTableTopology,
                     targetTableTopology,
-                    false, relatedTables, null, null, totalDataSize);
+                    false, relatedTables, null, null, totalDataSize, tableGroupName, physicalPartitions, null);
 
             AlterTableGroupBackFillTask alterTableGroupBackFillTask =
-                new AlterTableGroupBackFillTask(schemaName, tableName, sourceTableTopology, targetTableTopology,
+                new AlterTableGroupBackFillTask(schemaName, tableName, ptbGroupMap, sourceTableTopology,
+                    targetTableTopology,
                     isBroadcast(),
                     ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION == taskType, true, false);
             movePartitionTasks = ChangeSetUtils.genChangeSetOnlineSchemaChangeTasks(
@@ -411,7 +429,7 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
         taskList.addAll(movePartitionTasks);
         executableDdlJob.addSequentialTasks(taskList);
 
-        if (usePhysicalBackfill) {
+        if (!fallbackToLogicalBackfill) {
             executableDdlJob.removeTaskRelationship(CreateTablePhyDdlTask, movePartitionTasks.get(0));
             for (DdlTask discardTask : discardTableSpaceTasks) {
                 executableDdlJob.addTaskRelationship(CreateTablePhyDdlTask, discardTask);
@@ -440,14 +458,17 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
         return executableDdlJob;
     }
 
+    @Override
     public AlterTableGroupBasePreparedData getParentPrepareData() {
         return parentPrepareData;
     }
 
+    @Override
     public List<DdlTask> getBackfillTaskEdgeNodes() {
         return backfillTaskEdgeNodes;
     }
 
+    @Override
     public List<List<DdlTask>> getPhysicalyTaskPipeLine() {
         return physicalyTaskPipeLine;
     }

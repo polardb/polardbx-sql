@@ -1450,6 +1450,10 @@ public class SQLSelectParser extends SQLParser {
                 join.setCondition(joinOn);
 
                 while (lexer.token == Token.ON) {
+                    if (onDuplicateKeyUpdateSuffix(lexer)) {
+                        break;
+                    }
+
                     lexer.nextToken();
 
                     SQLExpr joinOn2 = expr();
@@ -1489,6 +1493,38 @@ public class SQLSelectParser extends SQLParser {
         }
 
         return tableSource;
+    }
+
+    /**
+     * ON DUPLICATE KEY UPDATE ...
+     */
+    private boolean onDuplicateKeyUpdateSuffix(Lexer lexer) {
+        if (lexer.token() == Token.ON) {
+            Lexer.SavePoint mark = lexer.mark();
+            lexer.nextToken();
+
+            if (!lexer.identifierEquals("DUPLICATE")) {
+                lexer.reset(mark);
+                return false;
+            }
+            lexer.nextToken();
+
+            if (lexer.token() != Token.KEY) {
+                lexer.reset(mark);
+                return false;
+            }
+            lexer.nextToken();
+
+            if (lexer.token() != Token.UPDATE) {
+                lexer.reset(mark);
+                return false;
+            }
+
+            lexer.reset(mark);
+            return true;
+        }
+
+        return false;
     }
 
     public SQLExpr expr() {

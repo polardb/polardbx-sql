@@ -65,9 +65,9 @@ public class DropTableJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         DropTableValidateTask validateTask = new DropTableValidateTask(schemaName, logicalTableName);
-        DropTableRemoveMetaTask removeMetaTask = new DropTableRemoveMetaTask(schemaName, logicalTableName);
+        DropTableRemoveMetaTask removeMetaTask = new DropTableRemoveMetaTask(schemaName, logicalTableName, true);
         StoreTableLocalityTask storeTableLocalityTask =
-            new StoreTableLocalityTask(schemaName, logicalTableName, "", false);
+            new StoreTableLocalityTask(schemaName, logicalTableName, "", true);
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
         DropTablePhyDdlTask phyDdlTask = new DropTablePhyDdlTask(schemaName, physicalPlanData);
         DropEntitySecurityAttrTask desaTask = createDESATask();

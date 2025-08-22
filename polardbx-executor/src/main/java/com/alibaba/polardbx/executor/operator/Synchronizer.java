@@ -23,6 +23,8 @@ import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.TaskExecutor;
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
+import com.alibaba.polardbx.executor.operator.util.ConcurrentBitSet;
+import com.alibaba.polardbx.executor.operator.util.ConcurrentBitSetImpl;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawDirectHashTable;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
@@ -38,6 +40,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -83,11 +87,14 @@ public class Synchronizer {
     // exception during initializing hash table (e.g. MemoryNotEnoughException)
     volatile Throwable initException;
 
-    BitSet joinNullRowBitSet;
-    int maxIndex = -1;
-    int nextIndexId = 0;
+    volatile ConcurrentBitSet joinNullRowBitSet;
+    Object isBitSetInitialized = new Object();
 
-    final Set<Integer> operatorIds = new HashSet<>();
+    int maxIndex = -1;
+    AtomicInteger nextIndexId = new AtomicInteger(0);
+
+    // To Record if an executor in thread have been finished.
+    final ConcurrentHashMap<Integer, Object> operatorIdBitmap = new ConcurrentHashMap<>();
 
     ConcurrentRawDirectHashTable matchedPosition;
 
@@ -286,43 +293,57 @@ public class Synchronizer {
         antJoinOutputRowId = matchedPosition.getNotMarkedPosition();
     }
 
-    public synchronized void recordOperatorIds(int operatorId) {
-        this.operatorIds.add(operatorId);
+    // No lock is needed here because it executes only during the operator creation.
+    public void recordOperatorIds(int operatorId) {
+        this.operatorIdBitmap.put(operatorId, new Object());
     }
 
-    public synchronized boolean consumeInputIsFinish(int operatorId) {
-        this.operatorIds.remove(operatorId);
-        return this.operatorIds.isEmpty();
+    // This section does not require locking because each operator has a different operatorId,
+    // and the container itself is thread-safe
+    public boolean consumeInputIsFinish(int operatorId) {
+        this.operatorIdBitmap.remove(operatorId);
+        return this.operatorIdBitmap.isEmpty();
     }
 
-    public synchronized void buildNullBitSets(int buildSize) {
+    public void buildNullBitSets(int buildSize) {
         if (joinNullRowBitSet == null) {
-            joinNullRowBitSet = new BitSet(buildSize);
-            maxIndex = buildSize;
+            synchronized (isBitSetInitialized) {
+                if (joinNullRowBitSet == null) {
+                    joinNullRowBitSet = new ConcurrentBitSetImpl(buildSize);
+                    maxIndex = buildSize;
+                }
+            }
         }
     }
 
-    public synchronized void markUsedKeys(int matchedPosition) {
+    public void markUsedKeys(int matchedPosition) {
         joinNullRowBitSet.set(matchedPosition);
     }
 
-    public synchronized int nextUnmatchedPosition() {
-        if (maxIndex > nextIndexId) {
-            int unmatchedPosition = joinNullRowBitSet.nextClearBit(nextIndexId);
-            nextIndexId = unmatchedPosition + 1;
-            if (maxIndex > unmatchedPosition) {
-                return unmatchedPosition;
+    public int nextUnmatchedPosition() {
+        synchronized (joinNullRowBitSet) {
+            final int currentIndexId = nextIndexId.get();
+            if (maxIndex > currentIndexId) {
+
+                // Each thread retrieves the next unmarked position as nextIndexId,
+                // which must be ensured to be monotonically increasing and unique.
+                int unmatchedPosition = joinNullRowBitSet.nextClearBit(currentIndexId);
+                nextIndexId.set(unmatchedPosition + 1);
+
+                if (maxIndex > unmatchedPosition) {
+                    return unmatchedPosition;
+                } else {
+                    return -1;
+                }
+
             } else {
                 return -1;
             }
-
-        } else {
-            return -1;
         }
     }
 
-    public synchronized boolean finishIterator() {
-        return nextIndexId >= maxIndex;
+    public boolean finishIterator() {
+        return nextIndexId.get() >= maxIndex;
     }
 
     @VisibleForTesting

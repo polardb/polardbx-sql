@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
@@ -33,7 +34,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 
 /**
  * For PolarDB-X only.
@@ -43,9 +43,7 @@ public class TablesMetaChangeCrossDBPreemptiveSyncAction implements ISyncAction 
 
     private List<String> multiSchemas;
     private List<List<String>> logicalTables;
-    private Long initWait;
-    private Long interval;
-    private TimeUnit timeUnit;
+    private PreemptiveTime preemptiveTime;
 
     public TablesMetaChangeCrossDBPreemptiveSyncAction() {
 
@@ -53,13 +51,11 @@ public class TablesMetaChangeCrossDBPreemptiveSyncAction implements ISyncAction 
 
     public TablesMetaChangeCrossDBPreemptiveSyncAction(String schemaName, List<String> schemas,
                                                        List<List<String>> logicalTables,
-                                                       Long initWait, Long interval, TimeUnit timeUnit) {
+                                                       PreemptiveTime preemptiveTime) {
         this.schemaName = schemaName;
         this.multiSchemas = schemas;
         this.logicalTables = logicalTables;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
     }
 
     @Override
@@ -133,12 +129,12 @@ public class TablesMetaChangeCrossDBPreemptiveSyncAction implements ISyncAction 
             // Insert mdl barrier
             for (Map.Entry<String, MdlInfo> entry : mdlInfoMap.entrySet()) {
                 GmsTableMetaManager oldSchemaManager = (GmsTableMetaManager) entry.getValue().oldSchemaManager;
-                oldSchemaManager.mdlCriticalSection(true, initWait, interval, timeUnit, -1,
+                oldSchemaManager.mdlCriticalSection(true, preemptiveTime, null,
                     oldSchemaManager, entry.getValue().staleTables.keySet(),
                     DbInfoManager.getInstance().isNewPartitionDb(entry.getKey()), false, (x) -> {
                         oldSchemaManager.expire();
                         return null;
-                    });
+                    },1L);
             }
             return;
         }
@@ -184,27 +180,4 @@ public class TablesMetaChangeCrossDBPreemptiveSyncAction implements ISyncAction 
         return logicalTables;
     }
 
-    public Long getInitWait() {
-        return initWait;
-    }
-
-    public void setInitWait(Long initWait) {
-        this.initWait = initWait;
-    }
-
-    public Long getInterval() {
-        return interval;
-    }
-
-    public void setInterval(Long interval) {
-        this.interval = interval;
-    }
-
-    public TimeUnit getTimeUnit() {
-        return timeUnit;
-    }
-
-    public void setTimeUnit(TimeUnit timeUnit) {
-        this.timeUnit = timeUnit;
-    }
 }

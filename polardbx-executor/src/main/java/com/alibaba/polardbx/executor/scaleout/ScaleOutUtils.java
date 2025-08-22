@@ -36,6 +36,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.DiscardTableSpaceDdlTask
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
@@ -76,11 +77,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -379,7 +376,7 @@ public class ScaleOutUtils {
         long parallelism = ec.getParamManager().getLong(param);
         int numComputeNode = GsiUtils.getAvaliableNodeNum(null, null,
             ec);
-        if (parallelism > 0 && numComputeNode < 2) {
+        if ((parallelism > 0 && numComputeNode < 2) || parallelism > 32) {
             return (int) parallelism;
         }
         int numCpuCores = ThreadCpuStatUtil.NUM_CORES;
@@ -391,7 +388,8 @@ public class ScaleOutUtils {
         numStorageNodes = Math.max(1, numStorageNodes);
         final int minParallelism = 10;
         final int maxParallelism = 16;
-        return Math.min(Math.max(numCpuCores, minParallelism), maxParallelism) * Math.max(numComputeNode, numStorageNodes);
+        return Math.min(Math.max(numCpuCores, minParallelism), maxParallelism) * Math.max(numComputeNode,
+            numStorageNodes);
     }
 
     public static int getTaskPipelineSize(ExecutionContext ec) {
@@ -405,14 +403,17 @@ public class ScaleOutUtils {
     public static List<DdlTask> generateDiscardTableSpaceDdlTask(String schemaName,
                                                                  Map<String, List<List<String>>> tableTopology,
                                                                  List<PhyDdlTableOperation> discardTableSpaceOperations,
+                                                                 Map<String, String> tarGroupAndStorageIds,
+                                                                 boolean drdsMode,
                                                                  ExecutionContext executionContext) {
         List<DdlTask> tasks = new ArrayList<>();
         Map<String, String> groupNameToStorageInstMap = DbTopologyManager.getGroupNameToStorageInstIdMap(schemaName);
         for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
             String groupName = entry.getKey();
-            String storageInst = groupNameToStorageInstMap.get(groupName);
+            String storageInst =
+                drdsMode ? tarGroupAndStorageIds.get(groupName) : groupNameToStorageInstMap.get(groupName);
             List<List<String>> physicalTbs = entry.getValue();
-            Map<String, List<List<String>>> newTableTopology = new HashMap<>();
+            TreeMap<String, List<List<String>>> newTableTopology = new TreeMap<>();
             newTableTopology.put(groupName, physicalTbs);
             List<PhyDdlTableOperation> newDiscardTableSpaceOperations =
                 discardTableSpaceOperations.stream().filter(o -> o.getDbIndex().equalsIgnoreCase(groupName)).collect(
@@ -420,9 +421,13 @@ public class ScaleOutUtils {
             PhysicalPlanData physicalPlanData =
                 DdlJobDataConverter.convertToPhysicalPlanData(newTableTopology, newDiscardTableSpaceOperations,
                     executionContext);
+            List<Pair<String, Integer>> hostsIpAndPort = new ArrayList<>();
+            List<Pair<String, Integer>> thisHostsIpAndPort =
+                PhysicalBackfillUtils.getMySQLServerNodeIpAndPorts(storageInst, false);
+            hostsIpAndPort.addAll(thisHostsIpAndPort);
             DdlTask phyDdlTask =
                 new DiscardTableSpaceDdlTask(schemaName, physicalPlanData.getLogicalTableName(), storageInst,
-                    physicalPlanData);
+                    physicalPlanData, hostsIpAndPort);
             tasks.add(phyDdlTask);
         }
         return tasks;

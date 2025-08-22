@@ -43,6 +43,8 @@ import java.net.URLDecoder;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,13 +161,20 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     @Override
     public TGroupDirectConnection getConnection(MasterSlave masterSlave) throws SQLException {
+        // give empty but not null writes, to makes wait in get connection work correctly when smooth switchover
+        TGroupDirectConnection.threadParam.set(null);
+        return getConnection(masterSlave, Collections.emptyList());
+    }
 
+    @Override
+    public TGroupDirectConnection getConnection(MasterSlave masterSlave, Collection<IConnection> allocated)
+        throws SQLException {
         if (!isInited() && url != null) {// 没有经过正常参数启动且URL不为空时，则尝试使用URL启动
             parseUrl(url);
             init();
         }
 
-        TGroupDirectConnection connection = new TGroupDirectConnection(this, masterSlave);
+        TGroupDirectConnection connection = new TGroupDirectConnection(this, masterSlave, allocated);
         connection.setStressTestValid(stressTestValid);
         return connection;
     }
@@ -234,7 +243,7 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             init();
         }
 
-        TGroupDirectConnection connection = new TGroupDirectConnection(this, master, username, password);
+        TGroupDirectConnection connection = new TGroupDirectConnection(this, master, username, password, null);
         connection.setStressTestValid(stressTestValid);
         return connection;
     }

@@ -275,6 +275,11 @@ public abstract class BaseTransaction implements ITransaction {
     }
 
     @Override
+    public void releaseDirtyReadConnections() {
+        // do nothing
+    }
+
+    @Override
     public boolean isUnderCommitting() {
         return underCommitting;
     }

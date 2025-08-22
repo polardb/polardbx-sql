@@ -18,29 +18,19 @@ package com.alibaba.polardbx.executor.gms;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.columnar.DeletionFileReader;
-import com.alibaba.polardbx.executor.operator.spill.MemorySpillerFactory;
-import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesRecord;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.memory.MemoryManager;
-import com.alibaba.polardbx.optimizer.memory.MemoryPool;
-import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
-import com.alibaba.polardbx.optimizer.spill.SpillSpaceManager;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.cache.RemovalListener;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
-import org.jetbrains.annotations.NotNull;
 import org.roaringbitmap.RoaringBitmap;
 
 import java.io.Closeable;
@@ -48,12 +38,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.SortedMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.stream.Collectors;
-
-import static com.alibaba.polardbx.executor.gms.DynamicColumnarManager.MAXIMUM_FILE_META_COUNT;
 
 /**
  * Version management of columnar store.
@@ -88,6 +75,9 @@ public class FileVersionStorage implements Closeable, Purgeable {
     private final AtomicLong hitCount = new AtomicLong(0);
     private final AtomicLong missCount = new AtomicLong(0);
     private final AtomicLong openedIncrementFileCount = new AtomicLong(0);
+    private final AtomicLong csvCacheSizeInBytes = new AtomicLong(0);
+    private final AtomicLong delCacheSizeInBytes = new AtomicLong(0);
+    private volatile int csvCacheSize = DynamicConfig.getInstance().getCsvCacheSize();
 
     public FileVersionStorage(DynamicColumnarManager columnarManager) {
         this.columnarManager = columnarManager;
@@ -96,34 +86,31 @@ public class FileVersionStorage implements Closeable, Purgeable {
     public void open() {
         // TODO(siyun): memory management
 
-        this.csvDataMap = CacheBuilder.newBuilder()
-            .maximumSize(MAXIMUM_FILE_META_COUNT)
-            // TODO(siyun): support spill to disk while being evicted
-            .build(new CacheLoader<String, MultiVersionCsvData>() {
-                @Override
-                public MultiVersionCsvData load(@NotNull String key) {
-                    return new MultiVersionCsvData(key, openedIncrementFileCount);
+        this.csvDataMap = Caffeine.newBuilder()
+            .maximumSize(csvCacheSize)
+            .removalListener((key, value, cause) -> {
+                if (value != null) {
+                    csvCacheSizeInBytes.addAndGet(
+                    -((MultiVersionCsvData) value).getCurrentMemoryUsed());
                 }
-            });
+            })
+            // TODO(siyun): support spill to disk while being evicted
+            .build(key -> new MultiVersionCsvData(key, openedIncrementFileCount, csvCacheSizeInBytes));
 
-        this.delDataMap = CacheBuilder.newBuilder()
+        this.delDataMap = Caffeine.newBuilder()
             // The deletion bitmap could NOT be directly invalidated, which may lead to inconsistency
             // This cache can be invalidated by purge if the whole file is invisible at minTso
-            .build(new CacheLoader<String, MultiVersionDelData>() {
-                @Override
-                public MultiVersionDelData load(@NotNull String key) {
-                    return new MultiVersionDelData();
+            .removalListener((key, value, cause) -> {
+                if (value != null) {
+                    delCacheSizeInBytes.addAndGet(
+                    -((MultiVersionDelData) value).getCurrentMemoryUsed());
                 }
-            });
+            })
+            .build(key -> new MultiVersionDelData(delCacheSizeInBytes));
 
-        this.delDataTsoMap = CacheBuilder.newBuilder()
+        this.delDataTsoMap = Caffeine.newBuilder()
             // This cache can only be invalidated if the CCI is removed
-            .build((new CacheLoader<PartitionId, MultiVersionDelPartitionInfo>() {
-                @Override
-                public MultiVersionDelPartitionInfo load(@NotNull PartitionId key) throws Exception {
-                    return new MultiVersionDelPartitionInfo();
-                }
-            }));
+            .build((key -> new MultiVersionDelPartitionInfo()));
     }
 
     public void purge(long tso, String logicalTable, String partName) {
@@ -152,22 +139,32 @@ public class FileVersionStorage implements Closeable, Purgeable {
         csvDataMap.invalidate(fileName);
     }
 
+    public boolean isCsvPositionLoaded(String csvFileName, long tso) {
+        MultiVersionCsvData data;
+        data = csvDataMap.get(csvFileName);
+        if (data == null) {
+            csvDataMap.invalidate(csvFileName);
+            return false;
+        } else {
+            return data.isCsvPositionLoaded(tso);
+        }
+    }
+
     /**
-     * @param tso this tso must be taken from columnar_appended_files
+     * @param csvCheckpointTso this tso must be taken from columnar_appended_files
      */
-    public List<Chunk> csvData(long tso, String csvFileName) {
+    public List<Chunk> csvData(long csvCheckpointTso, long readTso, String csvFileName) {
         MultiVersionCsvData data;
 
-        try {
-            data = csvDataMap.get(csvFileName);
-        } catch (ExecutionException e) {
+        data = csvDataMap.get(csvFileName);
+        if (data == null) {
             csvDataMap.invalidate(csvFileName);
-            throw new TddlRuntimeException(ErrorCode.ERR_LOAD_CSV_FILE, e.getCause(),
-                String.format("Failed to load csv file, filename: %s, tso: %d", csvFileName, tso));
+            throw new TddlRuntimeException(ErrorCode.ERR_LOAD_CSV_FILE,
+                String.format("Failed to load csv file, filename: %s, tso: %d", csvFileName, readTso));
         }
 
         // find csv cache whose tso <= given tso
-        SortedMap<Long, Pair<Long, List<Chunk>>> chunkSortedMap = data.getChunksWithTso(tso);
+        SortedMap<Long, Pair<Long, List<Chunk>>> chunkSortedMap = data.getChunksWithTso(csvCheckpointTso, readTso);
 
         if (chunkSortedMap != null && !chunkSortedMap.isEmpty()) {
             hitCount.getAndIncrement();
@@ -180,9 +177,9 @@ public class FileVersionStorage implements Closeable, Purgeable {
         Lock writeLock = data.getLock();
         writeLock.lock();
         try {
-            data.loadUntilTso(columnarManager.getMinTso(), tso);
+            data.loadUntilTso(columnarManager.getMinTso(), csvCheckpointTso);
 
-            return Objects.requireNonNull(data.getChunksWithTso(tso)).values().stream()
+            return Objects.requireNonNull(data.getChunksWithTso(csvCheckpointTso, readTso)).values().stream()
                 .flatMap(part -> part.getValue().stream()).collect(Collectors.toList());
         } finally {
             writeLock.unlock();
@@ -194,7 +191,7 @@ public class FileVersionStorage implements Closeable, Purgeable {
     public int fillSelection(String fileName, long tso, int[] selection, LongColumnVector longColumnVector,
                              int batchSize) {
         try {
-            RoaringBitmap bitmap = delDataMap.get(fileName).buildDeleteBitMap(tso);
+            RoaringBitmap bitmap = Objects.requireNonNull(delDataMap.get(fileName)).buildDeleteBitMap(tso);
 
             int selSize = 0;
             for (int index = 0;
@@ -213,7 +210,7 @@ public class FileVersionStorage implements Closeable, Purgeable {
             }
 
             return selSize;
-        } catch (ExecutionException e) {
+        } catch (NullPointerException e) {
             throw GeneralUtil.nestedException(e);
         }
 
@@ -223,7 +220,7 @@ public class FileVersionStorage implements Closeable, Purgeable {
     @Deprecated
     public int fillSelection(String fileName, long tso, int[] selection, LongBlock positionBlock) {
         try {
-            RoaringBitmap bitmap = delDataMap.get(fileName).buildDeleteBitMap(tso);
+            RoaringBitmap bitmap = Objects.requireNonNull(delDataMap.get(fileName)).buildDeleteBitMap(tso);
 
             int selSize = 0;
             for (int index = 0;
@@ -239,7 +236,7 @@ public class FileVersionStorage implements Closeable, Purgeable {
             }
 
             return selSize;
-        } catch (ExecutionException e) {
+        } catch (NullPointerException e) {
             throw GeneralUtil.nestedException(e);
         }
 
@@ -247,8 +244,8 @@ public class FileVersionStorage implements Closeable, Purgeable {
 
     private RoaringBitmap buildDeleteBitMap(String fileName, long tso) {
         try {
-            return delDataMap.get(fileName).buildDeleteBitMap(tso);
-        } catch (ExecutionException e) {
+            return Objects.requireNonNull(delDataMap.get(fileName)).buildDeleteBitMap(tso);
+        } catch (NullPointerException e) {
             delDataMap.invalidate(fileName);
             throw new TddlRuntimeException(ErrorCode.ERR_LOAD_DEL_FILE, e.getCause(),
                 String.format("Failed to load delete bitmap of certain file , file name: %s, tso: %d", fileName, tso));
@@ -267,8 +264,8 @@ public class FileVersionStorage implements Closeable, Purgeable {
                     record.logicalSchema, Long.parseLong(record.logicalTable), record.partName, fileId)
                 .ifPresent(deletedFileName -> {
                     try {
-                        delDataMap.get(deletedFileName).putNewTsoBitMap(delTso, bitmap);
-                    } catch (ExecutionException e) {
+                        Objects.requireNonNull(delDataMap.get(deletedFileName)).putNewTsoBitMap(delTso, bitmap);
+                    } catch (NullPointerException e) {
                         throw new TddlRuntimeException(ErrorCode.ERR_LOAD_DEL_FILE, e,
                             String.format("Failed to load delete bitmap file, filename: %s, fileId: %d, tso: %d",
                                 record.fileName, fileId, delTso));
@@ -283,11 +280,10 @@ public class FileVersionStorage implements Closeable, Purgeable {
             fileMeta.getPartitionName(),
             fileMeta.getLogicalTableSchema(),
             Long.valueOf(fileMeta.getLogicalTableName()));
-        try {
-            delInfo = this.delDataTsoMap.get(partitionId);
-        } catch (ExecutionException e) {
+        delInfo = this.delDataTsoMap.get(partitionId);
+        if (delInfo == null) {
             this.delDataTsoMap.invalidate(partitionId);
-            throw new TddlRuntimeException(ErrorCode.ERR_LOAD_DEL_FILE, e.getCause(),
+            throw new TddlRuntimeException(ErrorCode.ERR_LOAD_DEL_FILE,
                 String.format(
                     "Failed to load delete bitmap of certain partition, partition name: %s, schema name: %s, table name: %s, tso: %d",
                     partitionId.getPartName(), partitionId.getLogicalSchema(), partitionId.getTableId(), tso));
@@ -317,6 +313,13 @@ public class FileVersionStorage implements Closeable, Purgeable {
             return buildDeleteBitMap(fileMeta.getFileName(), tso);
         } finally {
             writeLock.unlock();
+        }
+    }
+
+    public synchronized void resetCsvCacheSize(int newCacheSize) {
+        if (csvCacheSize != newCacheSize && newCacheSize > 0) {
+            csvCacheSize = newCacheSize;
+            csvDataMap.policy().eviction().ifPresent(eviction -> eviction.setMaximum(newCacheSize));
         }
     }
 
@@ -353,10 +356,10 @@ public class FileVersionStorage implements Closeable, Purgeable {
     public long getMaxCacheSize() {
         long total = 0;
         if (csvDataMap != null) {
-            total += csvDataMap.size();
+            total += csvDataMap.estimatedSize();
         }
         if (delDataMap != null) {
-            total += delDataMap.size();
+            total += delDataMap.estimatedSize();
         }
         return total;
     }
@@ -364,10 +367,10 @@ public class FileVersionStorage implements Closeable, Purgeable {
     public long getUsedCacheSize() {
         long total = 0;
         if (csvDataMap != null) {
-            total += csvDataMap.size();
+            total += csvDataMap.estimatedSize();
         }
         if (delDataMap != null) {
-            total += delDataMap.size();
+            total += delDataMap.estimatedSize();
         }
         return total;
     }
@@ -382,5 +385,13 @@ public class FileVersionStorage implements Closeable, Purgeable {
 
     public long getOpenedIncrementFileCount() {
         return openedIncrementFileCount.get();
+    }
+
+    public long getCsvCacheSizeInBytes() {
+        return csvCacheSizeInBytes.get();
+    }
+
+    public long getDelCacheSizeInBytes() {
+        return delCacheSizeInBytes.get();
     }
 }

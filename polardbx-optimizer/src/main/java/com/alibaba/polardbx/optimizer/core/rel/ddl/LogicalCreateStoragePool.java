@@ -52,7 +52,7 @@ public class LogicalCreateStoragePool extends BaseDdlOperation {
 
     public void prepareData() {
         CreateStoragePoolPrepareData preparedData = new CreateStoragePoolPrepareData();
-        preparedData.setStoragePoolName(createStoragePool.getStoragePoolName().toString());
+        preparedData.setStoragePoolName(createStoragePool.getStoragePoolName().toString().toLowerCase());
         preparedData.setSchemaName(DEFAULT_DB_NAME);
         StoragePoolManager storagePoolManager = StoragePoolManager.getInstance();
         if (storagePoolManager.storagePoolCacheByName.containsKey(preparedData.getStoragePoolName())) {
@@ -60,7 +60,7 @@ public class LogicalCreateStoragePool extends BaseDdlOperation {
                 String.format("duplicate storage pool name '%s' found! ", preparedData.getStoragePoolName()));
         }
         if (createStoragePool.getDnList() != null) {
-            String dnList = createStoragePool.getDnList().toString().replaceAll("^\"|\"$|^'|'$", "");
+            String dnList = createStoragePool.getDnList().toString().toLowerCase().replaceAll("^\"|\"$|^'|'$", "");
             String[] dnIds = dnList.split(",");
             preparedData.setDnIds(Arrays.stream(dnIds).collect(Collectors.toList()));
             String undeletableDnId = dnIds[0];

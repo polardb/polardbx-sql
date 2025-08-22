@@ -16,18 +16,23 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
+import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
 import it.unimi.dsi.fastutil.booleans.BooleanArrays;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrays;
+import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 public interface BatchedArrayList<T> {
 
     void add(T array, int[] selection, int offsetInSelection, int positionCount);
 
-    class BatchLongArrayList extends LongArrayList implements BatchedArrayList<long[]> {
+    class BatchLongArrayList extends LongArrayList implements BatchedArrayList<long[]>, MemoryCountable {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BatchLongArrayList.class).instanceSize();
         public BatchLongArrayList(int capacity) {
             super(capacity);
         }
@@ -41,9 +46,15 @@ public interface BatchedArrayList<T> {
                 this.a[this.size++] = array[j];
             }
         }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
     }
 
-    class BatchIntArrayList extends IntArrayList implements BatchedArrayList<int[]> {
+    class BatchIntArrayList extends IntArrayList implements BatchedArrayList<int[]>, MemoryCountable {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BatchIntArrayList.class).instanceSize();
         public BatchIntArrayList(int capacity) {
             super(capacity);
         }
@@ -57,9 +68,15 @@ public interface BatchedArrayList<T> {
                 this.a[this.size++] = array[j];
             }
         }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
     }
 
-    class BatchBooleanArrayList extends BooleanArrayList implements BatchedArrayList<boolean[]> {
+    class BatchBooleanArrayList extends BooleanArrayList implements BatchedArrayList<boolean[]>, MemoryCountable {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BatchBooleanArrayList.class).instanceSize();
         public BatchBooleanArrayList(int capacity) {
             super(capacity);
         }
@@ -78,6 +95,11 @@ public interface BatchedArrayList<T> {
             for (int i = 0; i < positionCount; i++) {
                 this.a[this.size++] = booleanValue;
             }
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
         }
     }
 }

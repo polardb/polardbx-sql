@@ -116,6 +116,9 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_AUTO_FORCE_INDEX, enableAutoForceIndex);
         executionContext.getExtraCmds().putAll(configMaps);
+        if (configMaps.containsKey("SQL_MODE")) {
+            executionContext.setSqlMode((String) configMaps.get("SQL_MODE"));
+        }
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName,
             executionContext.getExtraCmds(),
             executionContext.getGroupHint());

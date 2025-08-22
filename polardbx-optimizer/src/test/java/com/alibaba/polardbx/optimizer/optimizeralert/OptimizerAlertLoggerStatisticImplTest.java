@@ -14,14 +14,12 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.IntegerType;
-import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertManager;
-import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertType;
-import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.planner.common.BasePlannerTest;
 import com.clearspring.analytics.util.Lists;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -38,18 +36,67 @@ import static com.alibaba.polardbx.gms.topology.SystemDbHelper.INFO_SCHEMA_DB_NA
  */
 public class OptimizerAlertLoggerStatisticImplTest {
 
+
+    @Test
+    public void testStatisticMissMinRowCount() {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+        String testSchema = "testDb";
+        String testTbl = "testTb";
+
+        OptimizerContext oc = BasePlannerTest.initOptiContext(testSchema, 4, true, false);
+        OptimizerContext.setContext(oc);
+        String colName = "col_test";
+        List<String> colList = Lists.newArrayList();
+        colList.add(colName);
+        oc.getLatestSchemaManager().putTable(testTbl, mockTableMeta(testSchema, testTbl, colList, SqlTypeName.INTEGER));
+        StatisticManager.CacheLine c = new StatisticManager.CacheLine();
+
+        // test alert
+        c.setRowCount(1000L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, 1000);
+        Assert.assertTrue(1L == getStatisticAlertNum());
+
+        // test rowcount == 0, sampleSize = 1000
+        c.setRowCount(0L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, 1000);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test rowcount == 5, sampleSize = 1000
+        c.setRowCount(5L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, 1000);
+        Assert.assertTrue(1L == getStatisticAlertNum());
+
+
+        // test rowcount == 5, sampleSize = 0
+        c.setRowCount(5L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, 0);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test rowcount == 5, sampleSize = 5
+        c.setRowCount(5L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, 5);
+        Assert.assertTrue(1L == getStatisticAlertNum());
+
+        // test rowcount == 1000, sampleSize = 0
+        c.setRowCount(1000L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, 0);
+        Assert.assertTrue(1L == getStatisticAlertNum());
+
+    }
+
     @Test
     public void testStatisticAlertTest() {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
 
         String testSchema = "testDb";
         String testTbl = "testTb";
+        int sampleRowSize = 1000;
 
         // test built-in schema
-        OptimizerAlertUtil.statisticsAlert(INFO_SCHEMA_DB_NAME, testTbl, null);
-        OptimizerAlertUtil.statisticsAlert(CDC_DB_NAME, testTbl, null);
-        OptimizerAlertUtil.statisticsAlert(DEFAULT_DB_NAME, testTbl, null);
-        OptimizerAlertUtil.statisticsAlert(DEFAULT_META_DB_NAME, testTbl, null);
+        OptimizerAlertUtil.checkStatisticsMiss(INFO_SCHEMA_DB_NAME, testTbl, null, sampleRowSize);
+        OptimizerAlertUtil.checkStatisticsMiss(CDC_DB_NAME, testTbl, null, sampleRowSize);
+        OptimizerAlertUtil.checkStatisticsMiss(DEFAULT_DB_NAME, testTbl, null, sampleRowSize);
+        OptimizerAlertUtil.checkStatisticsMiss(DEFAULT_META_DB_NAME, testTbl, null, sampleRowSize);
         Assert.assertTrue(0L == getStatisticAlertNum());
 
         OptimizerContext oc = BasePlannerTest.initOptiContext(testSchema, 4, true, false);
@@ -58,25 +105,25 @@ public class OptimizerAlertLoggerStatisticImplTest {
         // test rowcount == 0
         StatisticManager.CacheLine c = new StatisticManager.CacheLine();
         c.setRowCount(0L);
-        OptimizerAlertUtil.statisticsAlert(testSchema, testTbl, c);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
         Assert.assertTrue(0L == getStatisticAlertNum());
 
         // test cols is null or empty
         c.setRowCount(1000L);
-        OptimizerAlertUtil.statisticsAlert(testSchema, testTbl, c);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
         Assert.assertTrue(0L == getStatisticAlertNum());
 
         // test histogram is null
         String colName = "col_test";
         List<String> colList = Lists.newArrayList();
         colList.add(colName);
-        oc.getLatestSchemaManager().putTable(testTbl, mockTableMeta(testSchema, testTbl, colList));
-        OptimizerAlertUtil.statisticsAlert(testSchema, testTbl, c);
+        oc.getLatestSchemaManager().putTable(testTbl, mockTableMeta(testSchema, testTbl, colList, SqlTypeName.INTEGER));
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
         Assert.assertTrue(1L == getStatisticAlertNum());
 
         // test topn is not null and histogram is null
         c.setTopN(colName, new TopN(DataTypes.StringType, 1.0));
-        OptimizerAlertUtil.statisticsAlert(testSchema, testTbl, c);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
         Assert.assertTrue(0L == getStatisticAlertNum());
 
         // test topn is null and histogram is not null
@@ -85,27 +132,90 @@ public class OptimizerAlertLoggerStatisticImplTest {
         Histogram h = new Histogram(7, new IntegerType(), 1);
         h.getBuckets().add(new Histogram.Bucket());
         c.getHistogramMap().put(colName, h);
-        OptimizerAlertUtil.statisticsAlert(testSchema, testTbl, c);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
         Assert.assertTrue(0L == getStatisticAlertNum());
 
         // test both topn and histogram missing
         c.getHistogramMap().put(colName, null);
-        OptimizerAlertUtil.statisticsAlert(testSchema, testTbl, c);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
         Assert.assertTrue(1L == getStatisticAlertNum());
 
         // test full null case
         c.getAllNullCols().add(colName);
-        OptimizerAlertUtil.statisticsAlert(testSchema, testTbl, c);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
         Assert.assertTrue(0L == getStatisticAlertNum());
     }
 
-    private TableMeta mockTableMeta(String schemaName, String tableName, List<String> colList) {
+
+    @Test
+    public void testStatisticAlertTestForVarcharColumn() {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+
+        String testSchema = "testDb";
+        String testTbl = "testTb";
+        int sampleRowSize = 1000;
+
+        // test built-in schema
+        OptimizerAlertUtil.checkStatisticsMiss(INFO_SCHEMA_DB_NAME, testTbl, null, sampleRowSize);
+        OptimizerAlertUtil.checkStatisticsMiss(CDC_DB_NAME, testTbl, null, sampleRowSize);
+        OptimizerAlertUtil.checkStatisticsMiss(DEFAULT_DB_NAME, testTbl, null, sampleRowSize);
+        OptimizerAlertUtil.checkStatisticsMiss(DEFAULT_META_DB_NAME, testTbl, null, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        OptimizerContext oc = BasePlannerTest.initOptiContext(testSchema, 4, true, false);
+        OptimizerContext.setContext(oc);
+
+        // test rowcount == 0
+        StatisticManager.CacheLine c = new StatisticManager.CacheLine();
+        c.setRowCount(0L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test cols is null or empty
+        c.setRowCount(1000L);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test histogram is null
+        String colName = "col_test";
+        List<String> colList = Lists.newArrayList();
+        colList.add(colName);
+        oc.getLatestSchemaManager().putTable(testTbl, mockTableMeta(testSchema, testTbl, colList, SqlTypeName.VARCHAR));
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test topn is not null and histogram is null
+        c.setTopN(colName, new TopN(DataTypes.StringType, 1.0));
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test topn is null and histogram is not null
+        c.setTopN(colName, null);
+        c.setHistogramMap(new HashMap<>());
+        Histogram h = new Histogram(7, new IntegerType(), 1);
+        h.getBuckets().add(new Histogram.Bucket());
+        c.getHistogramMap().put(colName, h);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test both topn and histogram missing
+        c.getHistogramMap().put(colName, null);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+
+        // test full null case
+        c.getAllNullCols().add(colName);
+        OptimizerAlertUtil.checkStatisticsMiss(testSchema, testTbl, c, sampleRowSize);
+        Assert.assertTrue(0L == getStatisticAlertNum());
+    }
+
+    private TableMeta mockTableMeta(String schemaName, String tableName, List<String> colList, SqlTypeName typeName) {
         List<ColumnMeta> columnMetas = new ArrayList<ColumnMeta>();
         SqlTypeFactoryImpl typeFactory = new SqlTypeFactoryImpl(RelDataTypeSystem.DEFAULT);
 
         for (String col : colList) {
             columnMetas.add(new ColumnMeta(tableName, col, col, new Field(tableName, col, typeFactory.createSqlType(
-                SqlTypeName.VARCHAR), false, false)));
+                typeName), false, false)));
         }
         TableMeta tm =
             new TableMeta(schemaName, tableName, columnMetas, null, new ArrayList<IndexMeta>(), false,

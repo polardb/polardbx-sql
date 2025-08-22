@@ -234,6 +234,7 @@ public class DefaultScanPreProcessor implements ScanPreProcessor {
                 int stripeNum = 0;
                 int rgNum = 0;
                 int pruneRgLeft = 0;
+                int orcFileNum = 0;
                 try {
                     // rex+pc -> distribution segment condition + indexes merge tree
                     ColumnPredicatePruningInf columnPredicate =
@@ -249,6 +250,7 @@ public class DefaultScanPreProcessor implements ScanPreProcessor {
 
                         // only preheat orc file meta
                         if (filePath.getName().toUpperCase().endsWith(ColumnarFileType.ORC.name())) {
+                            orcFileNum++;
                             // preheat all meta from orc file.
                             PreheatFileMeta preheat =
                                 PREHEATED_CACHE.get(filePath, () -> preheat(filePath));
@@ -311,7 +313,7 @@ public class DefaultScanPreProcessor implements ScanPreProcessor {
                     if (tracer != null && columnPredicate != null) {
                         tracer.tracePruneResult(logicalTableName,
                             PruneUtils.display(columnPredicate, columns, indexPruneContext),
-                            filePaths.size(),
+                            orcFileNum,
                             stripeNum, rgNum, pruneRgLeft);
                     }
                     if (logger.isDebugEnabled() && columnPredicate != null) {
@@ -437,4 +439,7 @@ public class DefaultScanPreProcessor implements ScanPreProcessor {
         return results;
     }
 
+    public static long getCacheSize() {
+        return PREHEATED_CACHE.size();
+    }
 }

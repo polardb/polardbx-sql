@@ -40,16 +40,16 @@ import java.util.Map;
  */
 public class BuildInsertValuesVisitor extends SqlShuttle {
 
-    private boolean isBatch;
+    protected boolean isBatch;
     // the global params
-    private Parameters parameters;
-    private boolean inUpdateList = false;
-    private int curValueIndex = -1;
+    protected Parameters parameters;
+    protected boolean inUpdateList = false;
+    protected int curValueIndex = -1;
 
     // null stands for all values
-    private List<Integer> valueIndices;
+    protected List<Integer> valueIndices;
     // built params for current insert
-    private Map<Integer, ParameterContext> outputParams;
+    protected Map<Integer, ParameterContext> outputParams;
 
     public BuildInsertValuesVisitor(List<Integer> valueIndices, Parameters parameters,
                                     Map<Integer, ParameterContext> outputParams) {
@@ -109,7 +109,7 @@ public class BuildInsertValuesVisitor extends SqlShuttle {
     /**
      * Copy sharded rows by their indices.
      */
-    private SqlBasicCall buildSqlValues(SqlBasicCall call) {
+    protected SqlBasicCall buildSqlValues(SqlBasicCall call) {
         SqlNode[] oldRows = call.getOperands();
         SqlNode[] valuesOperands;
 
@@ -137,7 +137,7 @@ public class BuildInsertValuesVisitor extends SqlShuttle {
             call.getFunctionQuantifier());
     }
 
-    private SqlNode buildSqlRow(SqlBasicCall call) {
+    protected SqlNode buildSqlRow(SqlBasicCall call) {
         SqlNode[] operands = call.getOperands();
         SqlNode[] newOperands = new SqlNode[operands.length];
         for (int i = 0; i < operands.length; i++) {

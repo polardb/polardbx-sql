@@ -40,6 +40,7 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeMapChoicer;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -290,6 +291,87 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
                 sqlKind == null ? "" : sqlKind,
                 versionId == null ? "" : versionId,
                 jobId == null ? "" : jobId);
+            logger.error(errorMsg, t);
+            MetaDbLogUtil.META_DB_LOG.error(errorMsg, t);
+            throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC, t, t.getMessage());
+        }
+    }
+
+    @Override
+    public void syncToLeaderMarkDdl(CdcDDLContext cdcDDLContext) {
+        String schemaName = cdcDDLContext.getSchemaName();
+        String tableName = cdcDDLContext.getTableName();
+        String ddlSql = cdcDDLContext.getDdlSql();
+        String sqlKind = cdcDDLContext.getSqlKind();
+        CdcDdlMarkVisibility visibility = cdcDDLContext.getVisibility();
+        Map<String, Object> extendParams = cdcDDLContext.getExtendParams();
+        boolean isGSI = isDdlOnGsi(cdcDDLContext, extendParams);
+        extendParams.put(CDC_IS_GSI, isGSI);
+        boolean isCCI = isDdlOnCci(cdcDDLContext, extendParams);
+        extendParams.put(CDC_IS_CCI, isCCI);
+        Future<?> future = managerCoreExecutor.submit(() -> {
+            synchronized (CdcManager.this) {
+                int retry = 0;
+                while (true) {
+                    if (Thread.interrupted()) {
+                        throw new RuntimeException("cdc ddl mark is interrupted");
+                    }
+                    try {
+                        DDLExtInfo extInfo = buildExtInfo(schemaName, tableName, ddlSql, cdcDDLContext, extendParams);
+                        boolean recordCommitTso = false;
+                        if (extendParams.containsKey(CDC_MARK_RECORD_COMMIT_TSO)) {
+                            recordCommitTso = Boolean.parseBoolean(extendParams.get(CDC_MARK_RECORD_COMMIT_TSO).toString());
+                        }
+                        CdcDdlMarkSyncAction syncAction = new CdcDdlMarkSyncAction(
+                            getJobId(cdcDDLContext), sqlKind, schemaName, tableName, ddlSql,
+                            buildMetaInfo(cdcDDLContext.isRefreshTableMetaInfo(),
+                                schemaName,
+                                tableName,
+                                sqlKind,
+                                extendParams,
+                                cdcDDLContext.getNewTableTopology(),
+                                cdcDDLContext.getTablesExtInfoPair()),
+                            visibility, JSONObject.toJSONString(extInfo), recordCommitTso);
+                        String leaderKey = ExecUtils.getMasterLeaderKey();
+                        List<Map<String, Object>> result =
+                            SyncManagerHelper.sync(syncAction, SystemDbHelper.CDC_DB_NAME, leaderKey);
+                        if (result != null && !result.isEmpty()) {
+                            Object object = result.get(0).get("COMMIT_TSO");
+                            if (object != null) {
+                                Long commitTso = (Long) object;
+                                cdcDDLContext.setCommitTso(commitTso);
+                            }
+                        }
+                        break;
+                    } catch (Throwable t) {
+                        if (retry < 3) {
+                            try {
+                                Thread.sleep(1000);
+                                retry++;
+                            } catch (InterruptedException ignore) {
+                            }
+                        } else {
+                            throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC, t, t.getMessage());
+                        }
+                    }
+                }
+            }
+        });
+
+        try {
+            future.get();
+        } catch (Throwable t) {
+            future.cancel(true);
+            String errorMsg = String.format("notify ddl error , the detail info as below : \n"
+                    + " schemaName is : %s \n"
+                    + " tableName is : %s \n"
+                    + " sqlKind is : %s \n "
+                    + " visibility is : %s \n"
+                    + " ddlSql is : %s \n "
+                    + " job is : %s \n "
+                    + " extendParams is : %s", schemaName, tableName, sqlKind, visibility, ddlSql,
+                cdcDDLContext.getJobId() == null ? "" : cdcDDLContext.getJobId(),
+                JSONObject.toJSONString(extendParams));
             logger.error(errorMsg, t);
             MetaDbLogUtil.META_DB_LOG.error(errorMsg, t);
             throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC, t, t.getMessage());
@@ -619,11 +701,12 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
         if (extendParams.containsKey(CDC_GROUP_NAME)) {
             extInfo.setGroupName(extendParams.get(CDC_GROUP_NAME).toString());
         }
-        if (extendParams.containsKey(FOREIGN_KEYS_DDL)) {
-            extInfo.setForeignKeysDdl(Boolean.parseBoolean(extendParams.get(FOREIGN_KEYS_DDL).toString()));
-        }
         if (extendParams.containsKey(DDL_ID)) {
             extInfo.setDdlId(Long.parseLong(extendParams.get(DDL_ID).toString()));
+        }
+
+        if (extendParams.containsKey(CDC_ARCHIVE_DROP_PARTITION)) {
+            extInfo.setArchiveDropPart(Boolean.parseBoolean(extendParams.get(CDC_ARCHIVE_DROP_PARTITION).toString()));
         }
 
         StringBuilder flags2Builder = new StringBuilder();

@@ -1,0 +1,211 @@
+CREATE TABLE `omc_clustered_t1` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `idx_b`(`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`) PARTITIONS 3
+ALTER TABLE omc_clustered_t1
+	ADD UNIQUE CLUSTERED INDEX idx_omc_clustered_c (c) PARTITION BY KEY (c)
+ALTER TABLE omc_clustered_t1
+	ADD CLUSTERED INDEX idx_omc_clustered_d (d) PARTITION BY KEY (d)
+ALTER TABLE omc_clustered_t1
+	ADD LOCAL INDEX idx_e (e)
+SHOW CREATE TABLE omc_clustered_t1
+Table,Create Table
+omc_clustered_t1,CREATE TABLE `omc_clustered_t1` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE CLUSTERED INDEX `idx_omc_clustered_c` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	CLUSTERED INDEX `idx_omc_clustered_d` (`d`)
+		PARTITION BY KEY(`d`)
+		PARTITIONS 3,
+	KEY `idx_b` (`b`),
+	KEY `idx_e` (`e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SHOW CREATE TABLE idx_omc_clustered_c
+Table,Create Table
+idx_omc_clustered_c_$,CREATE TABLE `idx_omc_clustered_c_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `idx_b` (`b`),
+	KEY `idx_e` (`e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE idx_omc_clustered_d
+Table,Create Table
+idx_omc_clustered_d_$,CREATE TABLE `idx_omc_clustered_d_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(10) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `idx_b` (`b`),
+	KEY `auto_shard_key_d` USING BTREE (`d`),
+	KEY `idx_e` (`e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE omc_clustered_t1
+	MODIFY COLUMN b varchar(20),
+	ALGORITHM = omc
+SHOW CREATE TABLE omc_clustered_t1
+Table,Create Table
+omc_clustered_t1,CREATE TABLE `omc_clustered_t1` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE CLUSTERED INDEX `idx_omc_clustered_c` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	CLUSTERED INDEX `idx_omc_clustered_d` (`d`)
+		PARTITION BY KEY(`d`)
+		PARTITIONS 3,
+	KEY `idx_b` (`b`),
+	KEY `idx_e` (`e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SHOW CREATE TABLE idx_omc_clustered_c
+Table,Create Table
+idx_omc_clustered_c_$,CREATE TABLE `idx_omc_clustered_c_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `idx_b` (`b`),
+	KEY `idx_e` (`e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE idx_omc_clustered_d
+Table,Create Table
+idx_omc_clustered_d_$,CREATE TABLE `idx_omc_clustered_d_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `idx_b` (`b`),
+	KEY `idx_e` (`e`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE omc_clustered_t1
+	REMOVE PARTITIONING
+SHOW CREATE TABLE omc_clustered_t1
+Table,Create Table
+omc_clustered_t1,CREATE TABLE `omc_clustered_t1` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `idx_b` (`b`),
+	INDEX `idx_e` (`e`),
+	UNIQUE CLUSTERED INDEX `idx_omc_clustered_c` (`c`),
+	CLUSTERED INDEX `idx_omc_clustered_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW CREATE TABLE idx_omc_clustered_c
+Table,Create Table
+idx_omc_clustered_c_$,CREATE TABLE `idx_omc_clustered_c_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `idx_b` (`b`),
+	KEY `idx_e` (`e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE idx_omc_clustered_d
+Table,Create Table
+idx_omc_clustered_d_$,CREATE TABLE `idx_omc_clustered_d_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `idx_b` (`b`),
+	KEY `idx_e` (`e`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 3
+ALTER TABLE omc_clustered_t1
+	PARTITIONS 5
+SHOW CREATE TABLE omc_clustered_t1
+Table,Create Table
+omc_clustered_t1,CREATE TABLE `omc_clustered_t1` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `idx_b` (`b`),
+	INDEX `idx_e` (`e`),
+	UNIQUE CLUSTERED INDEX `idx_omc_clustered_c` (`c`),
+	CLUSTERED INDEX `idx_omc_clustered_d` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW CREATE TABLE idx_omc_clustered_c
+Table,Create Table
+idx_omc_clustered_c_$,CREATE TABLE `idx_omc_clustered_c_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_local_idx_b` (`b`),
+	KEY `_local_idx_e` (`e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 5
+SHOW CREATE TABLE idx_omc_clustered_d
+Table,Create Table
+idx_omc_clustered_d_$,CREATE TABLE `idx_omc_clustered_d_$` (
+	`a` bigint(20) NOT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	`e` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `_local_idx_b` (`b`),
+	KEY `_local_idx_e` (`e`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`d`)
+PARTITIONS 5

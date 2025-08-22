@@ -21,7 +21,7 @@ public class FinishCleaningUpAndLogTask extends AbstractTtlJobTask {
     protected void fetchTtlJobContextFromPreviousTask() {
         TtlJobContext jobContext = TtlJobUtil.fetchTtlJobContextFromPreviousTaskByTaskName(
             getJobId(),
-            PrepareCleanupIntervalTask.class,
+            PreparingFormattedCurrDatetimeTask.class,
             getSchemaName(),
             this.logicalTableName
         );

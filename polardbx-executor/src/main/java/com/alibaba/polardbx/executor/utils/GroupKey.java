@@ -161,10 +161,13 @@ public class GroupKey implements Comparable {
                     thisObject = columns.get(i).getDataType().convertFrom(thisObject); // Force to string.
                 }
             }
-            if (thisObject instanceof String && that.groupKeys[i] instanceof String
+            // both of them are string or null, compared by string comparing
+            if ((null == thisObject || thisObject instanceof String) &&
+                (null == that.groupKeys[i] || that.groupKeys[i] instanceof String)
                 // we should not compare string when type is json
                 && (checkJsonByStringCompare || !(dataType instanceof JsonType))) {
-                if (!thisObject.equals(that.groupKeys[i])) {
+                if ((thisObject != null && !thisObject.equals(that.groupKeys[i])) ||
+                    (that.groupKeys[i] != null && !that.groupKeys[i].equals(thisObject))) {
                     return false;
                 }
                 // or continue check others

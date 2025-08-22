@@ -1,28 +1,46 @@
 package com.alibaba.polardbx.executor.ddl.job.task.ttl;
 
-import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.MDC;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.exception.TtlJobInterruptedException;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.CleanupExpiredDataLogInfo;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.TtlLoggerUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.scheduler.TtlScheduledJobStatManager;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
-import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableTask;
 import com.alibaba.polardbx.executor.utils.PartitionMetaUtil;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.rel.Gather;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
+import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
+import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.util.PartCondExprRouter;
 import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;
 import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import lombok.Data;
 import lombok.Getter;
+import org.apache.calcite.rel.RelNode;
 import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -31,12 +49,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
-import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
 /**
  * @author chenghui.lch
@@ -44,6 +61,7 @@ import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 @Getter
 @TaskName(name = "CleanAndPrepareExpiredDataTask")
 public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
+    private static final Logger log = LoggerFactory.getLogger(CleanAndPrepareExpiredDataTask.class);
 
     /**
      * <pre>
@@ -90,7 +108,7 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
         CleanupExpiredDataLogInfo logInfo = new CleanupExpiredDataLogInfo();
         logInfo.taskBeginTs = System.currentTimeMillis();
         logInfo.taskBeginTsNano = System.nanoTime();
-        logInfo.needPerformArchiving = this.jobContext.getTtlInfo().needPerformExpiredDataArchivingByOssTbl();
+        logInfo.needPerformArchiving = this.jobContext.getTtlInfo().needPerformExpiredDataArchiving();
         logInfo.arcTmpTblSchema = this.jobContext.getTtlInfo().getTmpTableSchema();
         logInfo.arcTmpTblName = this.jobContext.getTtlInfo().getTmpTableName();
         logInfo.jobId = getJobId();
@@ -104,7 +122,7 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
         TtlScheduledJobStatManager.TtlJobStatInfo statInfo =
             TtlScheduledJobStatManager.getInstance().getTtlJobStatInfo(this.schemaName, this.logicalTableName);
         if (statInfo != null) {
-            logInfo.ttlJobStatInfo = statInfo;
+            logInfo.jobStatInfo = statInfo;
         }
 
         DataCleanupTaskSubmitter dataCleanupTaskSubmitter =
@@ -173,15 +191,7 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
         }
 
         protected List<TtlIntraTaskRunner> buildPhyPartDataArchivingTasksForOneLogicalTbl() {
-
-            TtlDefinitionInfo ttlInfo = ttlJobContext.getTtlInfo();
-
-            String tblSchema = ttlInfo.getTtlInfoRecord().getTableSchema();
-            String tblName = ttlInfo.getTtlInfoRecord().getTableName();
-            TableMeta tblMeta = ec.getSchemaManager(tblSchema).getTable(tblName);
-            PartitionInfo partInfo = tblMeta.getPartitionInfo();
-
-            PhyPartSpecIterator phyPartItor = new PhyPartSpecIterator(partInfo);
+            PhyPartSpecIterator phyPartItor = buildPhyPartIteratorByDeleteWhereCondExpr(ec);
             List<TtlIntraTaskRunner> taskList = new ArrayList<>();
             while (phyPartItor.hasNext()) {
                 PartitionMetaUtil.PartitionMetaRecord partMeta = phyPartItor.next();
@@ -190,6 +200,46 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
                 taskList.add(dataArcTask);
             }
             return taskList;
+        }
+
+        protected PhyPartSpecIterator buildPhyPartIteratorByDeleteWhereCondExpr(ExecutionContext ec) {
+
+            TtlDefinitionInfo ttlInfo = ttlJobContext.getTtlInfo();
+            String ttlTblSchema = ttlInfo.getTtlInfoRecord().getTableSchema();
+            String ttlTblName = ttlInfo.getTtlInfoRecord().getTableName();
+            TableMeta ttlTblMeta = ec.getSchemaManager(ttlTblSchema).getTableWithNull(ttlTblName);
+            PartitionInfo partInfo = ttlTblMeta.getPartitionInfo();
+            String cleanupLowerBound = ttlJobContext.getCleanUpLowerBound();
+
+            Set<String> targetPhyPartNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            try {
+                String whereCondExpr = TtlTaskSqlBuilder.buildDeleteWhereCondExpr(ec, ttlInfo, cleanupLowerBound);
+                PartCondExprRouter condExprRouter = new PartCondExprRouter(partInfo, ec, whereCondExpr);
+                condExprRouter.init();
+                PartPrunedResult prunedResult = condExprRouter.route();
+                if (prunedResult != null) {
+                    List<PhysicalPartitionInfo> phyPartInfos = prunedResult.getPrunedPartitions();
+                    for (int i = 0; i < phyPartInfos.size(); i++) {
+                        PhysicalPartitionInfo phyInfo = phyPartInfos.get(i);
+                        String phyPartName = phyInfo.getPartName();
+                        targetPhyPartNameSet.add(phyPartName);
+                    }
+                }
+            } catch (Throwable ex) {
+                TtlLoggerUtil.TTL_TASK_LOGGER.warn(String.format(
+                    "Failed to optimize the phyPartitions for deleting of cleanup expired data, err is %s",
+                    ex.getMessage()), ex);
+                targetPhyPartNameSet.clear();
+            }
+
+            PhyPartSpecIterator phyPartItor = null;
+            if (targetPhyPartNameSet.isEmpty()) {
+                phyPartItor = new PhyPartSpecIterator(partInfo);
+            } else {
+                phyPartItor = new PhyPartSpecIterator(partInfo, targetPhyPartNameSet);
+            }
+
+            return phyPartItor;
         }
 
         protected List<TtlIntraTaskRunner> filerTaskRunnersForFinishedPhyPart(
@@ -255,7 +305,7 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
             /**
              * Check if a ttl table need do perform oss archiving
              */
-            this.needPerformArchiving = jobContext.getTtlInfo().needPerformExpiredDataArchivingByOssTbl();
+            this.needPerformArchiving = jobContext.getTtlInfo().needPerformExpiredDataArchiving();
             this.logInfo = logInfo;
         }
 
@@ -442,41 +492,68 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
             }
         }
 
-        protected String buildInsertSelectForExpiredDataArchiving(int dmlBatchSize) {
-
-            TtlDefinitionInfo ttlInfo = this.jobContext.getTtlInfo();
-
-            String phyPartName = this.phyPartData.getPartName();
-            String minBoundToCleanup = this.jobContext.getCleanUpLowerBound();
-            String partBoundOfPartOfTtlMinVal = this.jobContext.getPreviousPartBoundOfTtlColMinVal();
-            boolean needAddIntervalLowerBound = !StringUtils.isEmpty(partBoundOfPartOfTtlMinVal);
-            String queryHintForInsert = TtlConfigUtil.getQueryHintForInsertExpiredData();
-            String insertSelectSqlTemp =
-                TtlTaskSqlBuilder.buildInsertSelectTemplate(ttlInfo, needAddIntervalLowerBound, queryHintForInsert);
-            String insertSelectSql = "";
-            if (needAddIntervalLowerBound) {
-                insertSelectSql =
-                    String.format(insertSelectSqlTemp, phyPartName, minBoundToCleanup, partBoundOfPartOfTtlMinVal,
-                        dmlBatchSize);
-            } else {
-                insertSelectSql = String.format(insertSelectSqlTemp, phyPartName, minBoundToCleanup, dmlBatchSize);
-            }
-
-            return insertSelectSql;
-        }
+//        protected String buildInsertSelectForExpiredDataArchiving(int dmlBatchSize) {
+//
+//            TtlDefinitionInfo ttlInfo = this.jobContext.getTtlInfo();
+//
+//            String phyPartName = this.phyPartData.getPartName();
+//            String minBoundToCleanup = this.jobContext.getCleanUpLowerBound();
+//            String partBoundOfPartOfTtlMinVal = this.jobContext.getPreviousPartBoundOfTtlColMinVal();
+//            boolean needAddIntervalLowerBound = !StringUtils.isEmpty(partBoundOfPartOfTtlMinVal);
+//            String queryHintForInsert = TtlConfigUtil.getQueryHintForInsertExpiredData();
+//            String insertSelectSqlTemp =
+//                TtlTaskSqlBuilder.buildInsertSelectTemplate(ttlInfo, needAddIntervalLowerBound, queryHintForInsert);
+//            String insertSelectSql = "";
+//            if (needAddIntervalLowerBound) {
+//                insertSelectSql =
+//                    String.format(insertSelectSqlTemp, phyPartName, minBoundToCleanup, partBoundOfPartOfTtlMinVal,
+//                        dmlBatchSize);
+//            } else {
+//                insertSelectSql = String.format(insertSelectSqlTemp, phyPartName, minBoundToCleanup, dmlBatchSize);
+//            }
+//
+//            return insertSelectSql;
+//        }
 
         protected String buildDeleteSelectForExpiredDataArchiving(int dmlBatchSize) {
 
             TtlDefinitionInfo ttlInfo = this.jobContext.getTtlInfo();
             String previousPartBoundOfPartOfTtlMinVal = this.jobContext.getPreviousPartBoundOfTtlColMinVal();
             boolean needAddIntervalLowerBound = !StringUtils.isEmpty(previousPartBoundOfPartOfTtlMinVal);
-            String phyPartName = this.phyPartData.getPartName();
+            String phyPartName = this.phyPartData.getSubPartName();
+            if (StringUtils.isEmpty(phyPartName)) {
+                phyPartName = this.phyPartData.getPartName();
+            }
+
             String minBoundToCleanup = this.jobContext.getCleanUpLowerBound();
             String forceIndexExpr = this.jobContext.getTtlColForceIndexExpr();
             String queryHintForDelete = TtlConfigUtil.getQueryHintForDeleteExpiredData();
             String deleteSqlTemp =
                 TtlTaskSqlBuilder.buildDeleteTemplate(ttlInfo, needAddIntervalLowerBound, queryHintForDelete,
                     forceIndexExpr);
+
+            boolean ttlColUseFuncExpr = ttlInfo.isTtlColUseFuncExpr();
+            if (ttlColUseFuncExpr) {
+                ColumnMeta ttlColMeta = ttlInfo.getTtlColMeta(ec);
+                PartKeyLevel partKeyLevel = PartKeyLevel.PARTITION_KEY;
+                boolean usePartFunc = false;
+
+                if (!StringUtils.isEmpty(minBoundToCleanup)) {
+                    TtlPartitionUtil.TtlColBoundValue minBoundToCleanupOnTtlColBndVal =
+                        new TtlPartitionUtil.TtlColBoundValue(minBoundToCleanup, ttlColMeta, partKeyLevel, usePartFunc,
+                            ttlInfo);
+                    minBoundToCleanup =
+                        minBoundToCleanupOnTtlColBndVal.getPartBoundValueStringByOriginalPartColDataType();
+                }
+
+                if (!StringUtils.isEmpty(previousPartBoundOfPartOfTtlMinVal)) {
+                    TtlPartitionUtil.TtlColBoundValue minBoundToCleanupOnTtlColBndVal =
+                        new TtlPartitionUtil.TtlColBoundValue(previousPartBoundOfPartOfTtlMinVal, ttlColMeta,
+                            partKeyLevel, usePartFunc, ttlInfo);
+                    previousPartBoundOfPartOfTtlMinVal =
+                        minBoundToCleanupOnTtlColBndVal.getPartBoundValueStringByOriginalPartColDataType();
+                }
+            }
 
             String deleteSql = "";
             if (needAddIntervalLowerBound) {
@@ -515,9 +592,9 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
                     TtlDataCleanupRateLimiter.getInstance()
                         .tryAcquire(rwDnId, permitsVal, waitPeriods, TimeUnit.MILLISECONDS);
                 long waitPermitsEndTs = System.nanoTime();
-                this.logInfo.ttlJobStatInfo.getWaitPermitsTimeCostNano()
+                this.logInfo.jobStatInfo.getWaitPermitsTimeCostNano()
                     .addAndGet((waitPermitsEndTs - waitPermitsBeginTs));
-                this.logInfo.ttlJobStatInfo.getAcquirePermitsCount().incrementAndGet();
+                this.logInfo.jobStatInfo.getAcquirePermitsCount().incrementAndGet();
             } catch (Throwable ex) {
                 TtlLoggerUtil.TTL_TASK_LOGGER.warn(
                     String.format("Failed to acquire rows speeds permits from dn[%s]", rwDnId), ex);
@@ -559,7 +636,7 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
             boolean isIntraTaskFinish,
             IntraTaskStatInfo oneIntraTaskStatInfo) {
 
-            TtlScheduledJobStatManager.TtlJobStatInfo jobStatInfo = this.logInfo.ttlJobStatInfo;
+            TtlScheduledJobStatManager.TtlJobStatInfo jobStatInfo = this.logInfo.jobStatInfo;
             TtlScheduledJobStatManager.GlobalTtlJobStatInfo globalStatInfo = TtlScheduledJobStatManager.getInstance()
                 .getGlobalTtlJobStatInfo();
 
@@ -673,7 +750,7 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
         @Override
         public boolean checkNeedStop() {
             boolean needStop = false;
-            if (!this.jobContext.getTtlInfo().needPerformExpiredDataArchivingByOssTbl()) {
+            if (!this.jobContext.getTtlInfo().needPerformExpiredDataArchiving()) {
                 return needStop;
             }
 //            long arcTmpTblDataLength = TtlJobUtil.fetchArcTmlTableDataLength(ec, this.jobContext, null);
@@ -821,131 +898,9 @@ public class CleanAndPrepareExpiredDataTask extends AbstractTtlJobTask {
         this.jobContext = jobContext;
     }
 
-    public static class CleanupExpiredDataLogInfo {
-        protected TtlScheduledJobStatManager.TtlJobStatInfo ttlJobStatInfo;
-        protected Long jobId;
-        protected Long taskId;
-        protected Long taskBeginTsNano;
-        protected Long taskBeginTs;
-        protected Long taskEndTs;
-
-        protected boolean needPerformArchiving = false;
-        protected String arcTmpTblSchema = "";
-        protected String arcTmpTblName = "";
-
-        protected String ttlColMinValStr = "";
-        protected String firstLevelPartNameOfTtlColMinVal = "";
-        protected String cleanupLowerBound = "";
-        protected String firstLevelPartNameOfCleanupLowerBound = "";
-        protected String previousPartBoundOfTtlColMinVal = "";
-
-        protected boolean isInterrupted = false;
-        protected boolean isTaskEnd = false;
-        protected boolean isAllIntraTaskFinished = false;
-        protected boolean stopByMaintainTime = false;
-
-        protected boolean needStopCleanup = false;
-        protected long arcTmpTblDataLength = 0;
-        protected long arcTmpTblDataLengthLimit = 0;
-
-        protected long waitCleanupTaskRunningLoopRound = 0;
-
-        protected long deleteAvgRt = 0;
-        protected long deleteRowsSpeed = 0;
-        protected long deleteSqlCnt = 0;
-        protected long deleteRows = 0;
-        protected long deleteTimeCost = 0;
-        protected String deleteSqlTemp = "";
-
-        protected long cleanupSpeed = 0;
-        protected long cleanupRowsSpeed = 0;
-        protected long cleanupRows = 0;
-        protected long cleanupTimeCost = 0;
-        protected long waitPermitsTimeCost = 0;
-    }
-
     protected static void logTaskExecResult(DdlTask ddlTask,
                                             TtlJobContext jobContext,
                                             CleanupExpiredDataLogInfo logInfo) {
-
-        try {
-
-            if (logInfo.stopByMaintainTime) {
-                logInfo.ttlJobStatInfo.setCurrJobStopByMaintainWindow(logInfo.stopByMaintainTime);
-                logInfo.ttlJobStatInfo.setCurrJobStage("stoppedByMaintainWindow");
-            }
-
-            String logMsg = "";
-            String msgPrefix = TtlLoggerUtil.buildTaskLogRowMsgPrefix(ddlTask.getJobId(), ddlTask.getTaskId(),
-                "CleanupExpiredData");
-
-            logMsg += msgPrefix;
-            logMsg += String.format("needArc: %s, arcTmpTblSchema: %s, arcTmpTblName: %s\n",
-                logInfo.needPerformArchiving,
-                logInfo.arcTmpTblSchema,
-                logInfo.arcTmpTblName);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("allTaskFinished: %s, interrupted: %s, loopRound: %s\n",
-                logInfo.isAllIntraTaskFinished,
-                logInfo.isInterrupted,
-                logInfo.waitCleanupTaskRunningLoopRound);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("stopByMaintainTime: %s, beginTs: %s, totalTimeCost(ms): %s\n",
-                logInfo.stopByMaintainTime,
-                logInfo.taskBeginTs,
-                System.currentTimeMillis() - logInfo.taskBeginTs);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("needStopCleanup: %s, exceedDelta: %s, arcTmpTblLen: %s, lenLimit: %s, \n",
-                logInfo.needStopCleanup,
-                logInfo.arcTmpTblDataLength - logInfo.arcTmpTblDataLengthLimit,
-                logInfo.arcTmpTblDataLength,
-                logInfo.arcTmpTblDataLengthLimit);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("minVal: %s, partOfMinVal: %s\n",
-                logInfo.ttlColMinValStr,
-                logInfo.firstLevelPartNameOfTtlColMinVal);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("lowerBndVal: %s, partOfLowerBndVal: %s\n",
-                logInfo.cleanupLowerBound,
-                logInfo.firstLevelPartNameOfCleanupLowerBound);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("previousPartBndOfMinVal: %s, cleanupInterval: ['%s','%s']\n",
-                logInfo.previousPartBoundOfTtlColMinVal,
-                logInfo.previousPartBoundOfTtlColMinVal,
-                logInfo.cleanupLowerBound);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("cleanupRowsSpeed(r/s): %s, cleanupSpeed(B/s): %s\n", logInfo.cleanupRowsSpeed,
-                logInfo.cleanupSpeed);
-
-            logMsg += msgPrefix;
-            logMsg +=
-                String.format("cleanupRows: %s, cleanupTimeCost: %s, waitPermitsTimeCost: %s\n", logInfo.cleanupRows,
-                    logInfo.cleanupTimeCost, logInfo.waitPermitsTimeCost);
-
-            logMsg += msgPrefix;
-            logMsg +=
-                String.format("deleteRowsSpeed(r/s): %s, deleteRows: %s\n",
-                    logInfo.deleteRowsSpeed, logInfo.deleteRows);
-            logMsg += msgPrefix;
-            logMsg += String.format("deleteAvgRt(ms): %s, deleteSqlCnt: %s, deleteTimeCost(ms): %s\n",
-                logInfo.deleteAvgRt, logInfo.deleteSqlCnt, logInfo.deleteTimeCost);
-            logMsg += msgPrefix;
-            logMsg += String.format("deleteSqlTemp: %s\n", logInfo.deleteSqlTemp);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("cleanupTaskFinish: %s\n", logInfo.isTaskEnd);
-
-            TtlLoggerUtil.logTaskMsg(ddlTask, jobContext, logMsg);
-
-        } catch (Throwable ex) {
-            TtlLoggerUtil.TTL_TASK_LOGGER.warn(ex);
-        }
+        logInfo.logTaskExecResult(ddlTask, jobContext);
     }
 }

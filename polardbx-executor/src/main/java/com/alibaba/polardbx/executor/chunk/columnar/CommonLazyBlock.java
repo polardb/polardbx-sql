@@ -646,4 +646,10 @@ public class CommonLazyBlock implements LazyBlock {
         return block.mightContainsLong(totalPartitionCount, RFBloomFilters, bitmap, isPartitionConsistent,
             isConjunctive);
     }
+
+    @Override
+    public long getMemoryUsage() {
+        load();
+        return block.getMemoryUsage();
+    }
 }

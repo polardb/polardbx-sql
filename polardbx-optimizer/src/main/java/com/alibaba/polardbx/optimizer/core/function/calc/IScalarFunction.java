@@ -24,4 +24,6 @@ public interface IScalarFunction {
     Object compute(Object[] args, ExecutionContext ec);
 
     DataType getReturnType();
+
+    String[] getFunctionNames();
 }

@@ -96,6 +96,11 @@ public abstract class AbstractBatchBlockBuilder implements BlockBuilder {
     }
 
     @Override
+    public long getMemoryUsage() {
+        return getElementUsedBytes();
+    }
+
+    @Override
     public long hashCodeUseXxhash(int pos) {
         throw new UnsupportedOperationException();
     }

@@ -175,4 +175,8 @@ public interface DdlJob {
 
     List<String> getExplainInfo();
 
+    void setDdlJobFactoryName(String ddlJobFactoryName);
+
+    String getDdlJobFactoryName();
+
 }

@@ -21,7 +21,6 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
@@ -47,7 +46,7 @@ public class ConstantFoldRule extends RelOptRule {
     }
 
     public static final ConstantFoldRule INSTANCE = new ConstantFoldRule(
-        operand(Filter.class, RelOptRule.any()), "constant_fold");
+        operand(Filter.class, RelOptRule.any()), "CONSTANT_FOLD");
 
     @Override
     public boolean matches(RelOptRuleCall call) {

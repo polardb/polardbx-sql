@@ -71,7 +71,7 @@ public class LogicalCancelReplicaCheckTableHandler extends HandlerCommon {
         try {
             res = PooledHttpHelper.doPost(url, ContentType.APPLICATION_JSON, JSON.toJSONString(params), 10000);
         } catch (Exception e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e, e.getMessage());
         }
 
         ResultCode<?> httpResult = JSON.parseObject(res, ResultCode.class);

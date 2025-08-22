@@ -25,19 +25,22 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
+import com.alibaba.polardbx.executor.gms.util.StatisticFullProcessUtils;
 import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
-import com.alibaba.polardbx.executor.scheduler.executor.SchedulerExecutor;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
+import com.alibaba.polardbx.gms.module.StatisticModuleLogUtil;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertType;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
@@ -72,7 +75,7 @@ import static com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType.STATIS
  *
  * @author fangwu
  */
-public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
+public class StatisticSampleCollectionScheduledJob extends StatisticScheduleJob {
     public static final String CHECK_SQL = "select count(distinct schema_name, table_name, column_name, table_rows, "
         + "ndv, ndv_source, topn, histogram, sample_rate) as count from information_schema.statistics_data";
     public static final String GROUP_BY = " group by host";
@@ -85,7 +88,12 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
     }
 
     @Override
-    public boolean execute() {
+    public OptimizerAlertType getAlertType() {
+        return OptimizerAlertType.STATISTIC_SCHEDULE_JOB_SAMPLE_FAIL;
+    }
+
+    @Override
+    public boolean doExecute() {
         long scheduleId = executableScheduledJob.getScheduleId();
         long fireTime = executableScheduledJob.getFireTime();
         long startTime = ZonedDateTime.now().toEpochSecond();
@@ -96,32 +104,21 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
             // test code
             boolean interruptedTest = InstConfUtil.getBool(ConnectionParams.ALERT_STATISTIC_INTERRUPT);
             if (interruptedTest) {
-                throw new TddlRuntimeException(ErrorCode.ERR_STATISTIC_JOB_INTERRUPTED,
-                    "statistic job is interrupted by alert test");
+                throw new TddlRuntimeException(ErrorCode.ERR_STATISTIC_JOB_INTERRUPTED, "statistic job is interrupted by alert test");
             }
-            boolean enableStatisticBackground =
-                InstConfUtil.getBool(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION);
+            boolean enableStatisticBackground = InstConfUtil.getBool(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION);
             if (!enableStatisticBackground) {
                 remark = "statistic background collection task not enabled";
-                ModuleLogInfo.getInstance()
-                    .logRecord(
-                        Module.STATISTICS,
-                        NOT_ENABLED,
-                        new String[] {
-                            ConnectionProperties.ENABLE_BACKGROUND_STATISTIC_COLLECTION,
-                            STATISTIC_SAMPLE_SKETCH + "," + fireTime + " exit"
-                        },
-                        NORMAL);
+                StatisticModuleLogUtil.logNormal(NOT_ENABLED, new String[] {
+                        ConnectionProperties.ENABLE_BACKGROUND_STATISTIC_COLLECTION, STATISTIC_SAMPLE_SKETCH + "," + fireTime + " exit"});
                 return succeedExit(scheduleId, fireTime, remark);
             }
 
             if (fromScheduleJob) {
                 //mark as RUNNING
-                boolean casSuccess =
-                    ScheduledJobsManager.casStateWithStartTime(scheduleId, fireTime, QUEUED, RUNNING, startTime);
+                boolean casSuccess = ScheduledJobsManager.casStateWithStartTime(scheduleId, fireTime, QUEUED, RUNNING, startTime);
                 if (!casSuccess && fromScheduleJob) {
-                    ModuleLogInfo.getInstance()
-                        .logRecord(
+                    ModuleLogInfo.getInstance().logRecord(
                             Module.SCHEDULE_JOB,
                             STATE_CHANGE_FAIL,
                             new String[] {STATISTIC_SAMPLE_SKETCH + "," + fireTime, QUEUED.name(), RUNNING.name()},
@@ -131,19 +128,12 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
             }
 
             schemas = DbInfoManager.getInstance().getDbList();
-            ModuleLogInfo.getInstance()
-                .logRecord(
-                    Module.STATISTICS,
-                    PROCESS_START,
-                    new String[] {
-                        STATISTIC_SAMPLE_SKETCH.name(),
-                        "schemas:" + schemas
-                    },
-                    NORMAL);
+            StatisticModuleLogUtil.logNormal(PROCESS_START, new String[] {STATISTIC_SAMPLE_SKETCH.name(), "schemas:" + schemas});
             List<Throwable> criticalExceptions = new ArrayList<>();
             boolean statisticInconsistentTest = InstConfUtil.getBool(ConnectionParams.ALERT_STATISTIC_INCONSISTENT);
 
             if (!statisticInconsistentTest) {
+                sample_loop:
                 for (String schema : schemas) {
                     if (SystemDbHelper.isDBBuildIn(schema)) {
                         continue;
@@ -178,78 +168,52 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
 
                             Pair<Boolean, String> pair = needInterrupted();
                             if (pair.getKey()) {
-                                ModuleLogInfo.getInstance()
-                                    .logRecord(
-                                        Module.STATISTICS,
-                                        INTERRUPTED,
-                                        new String[] {
-                                            STATISTIC_SAMPLE_SKETCH + "," + fireTime,
-                                            pair.getValue()
-                                        },
-                                        NORMAL);
+                                StatisticModuleLogUtil.logNormal(INTERRUPTED, new String[] { STATISTIC_SAMPLE_SKETCH + "," + fireTime, pair.getValue()});
                                 return succeedExit(scheduleId, fireTime, "being interrupted");
                             }
                             long startPerTable = System.currentTimeMillis();
-                            StatisticManager.CacheLine c =
-                                StatisticManager.getInstance().getCacheLine(schema, logicalTableName);
+                            StatisticManager.CacheLine c = StatisticManager.getInstance().getCacheLine(schema, logicalTableName);
                             if (c.hasExpireForCollection() || testSamplePointCheck()) {
                                 // sample
-                                StatisticUtils.sampleOneTable(schema, logicalTableName);
-                                OptimizerAlertUtil.statisticsAlert(schema, logicalTableName,
-                                    StatisticManager.getInstance().getCacheLine(schema, logicalTableName));
+                                boolean success = StatisticFullProcessUtils.sampleOneTable(schema, logicalTableName);
+                                if (!success && FailPoint.isKeyEnable(FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL)){
+                                    break sample_loop;
+                                }
                             }
 
                             long endPerTable = System.currentTimeMillis();
-                            ModuleLogInfo.getInstance()
-                                .logRecord(
-                                    Module.STATISTICS,
-                                    PROCESS_END,
-                                    new String[] {
-                                        "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + schema + ","
-                                            + logicalTableName,
-                                        " consuming " + (endPerTable - startPerTable) / 1000.0 + " seconds"
-                                    },
-                                    NORMAL);
+                            StatisticModuleLogUtil.logNormal(PROCESS_END, new String[] {
+                                    "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + schema + "," + logicalTableName,
+                                    " consuming " + (endPerTable - startPerTable) / 1000.0 + " seconds"});
                         } catch (Throwable t) {
                             criticalExceptions.add(new TddlNestableRuntimeException(
                                 String.format("%s.%s failed to finish sample job", schema, logicalTableName), t));
+                            if (FailPoint.isKeyEnable(FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL)){
+                                break sample_loop;
+                            }
                         }
                     }
                     // remove table statistic info if not exists
                     StatisticManager.getInstance().removeLogicalTableList(schema, toRemoveList);
 
                     long end = System.currentTimeMillis();
-                    ModuleLogInfo.getInstance()
-                        .logRecord(
-                            Module.STATISTICS,
-                            PROCESS_END,
-                            new String[] {
-                                "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + schema + ",table size "
-                                    + logicalTableSet.size(),
-                                " consuming " + (end - start) / 1000.0 + " seconds"
-                            },
-                            NORMAL);
+                    StatisticModuleLogUtil.logNormal(PROCESS_END, new String[] {
+                            "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + schema + ",table size " + logicalTableSet.size(),
+                            " consuming " + (end - start) / 1000.0 + " seconds"});
                 }
             }
 
             if (!criticalExceptions.isEmpty()) {
                 throw GeneralUtil.mergeException(criticalExceptions);
             }
-            checkStatisticConsistent();
+            if (!FailPoint.isKeyEnable(FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL)){
+                checkStatisticConsistent();
+            }
             return succeedExit(scheduleId, fireTime, remark);
         } catch (Throwable t) {
-            ModuleLogInfo.getInstance()
-                .logRecord(
-                    Module.STATISTICS,
-                    UNEXPECTED,
-                    new String[] {
-                        "auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + fireTime,
-                        t.getMessage()
-                    },
-                    CRITICAL,
-                    t);
+            StatisticModuleLogUtil.logCritical(UNEXPECTED, new String[] {"auto analyze " + STATISTIC_SAMPLE_SKETCH + "," + fireTime, t.getMessage()}, t);
             errorExit(scheduleId, fireTime, t.getMessage());
-            return false;
+            throw t;
         }
     }
 

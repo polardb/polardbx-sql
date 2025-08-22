@@ -1,0 +1,52 @@
+## DISABLE_FAST_SQL_PARSER
+
+set @sql_mode_tmp1 = @@sql_mode;
+set sql_mode='';
+
+drop table if exists omc_with_prefix_idx_t1;
+
+create table omc_with_prefix_idx_t1 (
+a int,
+b bigint,
+c varchar(30),
+d varchar(100),
+index idx_bcd(b,c(20),d),
+index idx_bcd_prefix(b,c(10),d(20)),
+global index gsi_dbc(b,c(20),d) partition by key(b),
+primary key(a)
+) engine = InnoDB
+partition by key(a);
+
+alter table omc_with_prefix_idx_t1 modify column b varchar(100), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c varbinary(40), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c varbinary(50), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c blob, ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c longblob, modify column d int after c, ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c varbinary(15), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c varbinary(5), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column b bigint, ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+set sql_mode = @sql_mode_tmp1;

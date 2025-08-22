@@ -49,14 +49,7 @@ import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -69,7 +62,7 @@ public class AlterTableModifyPartitionJobFactory extends AlterTableGroupBaseJobF
     public AlterTableModifyPartitionJobFactory(DDL ddl, AlterTableGroupModifyPartitionPreparedData preparedData,
                                                Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                                Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                               Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                               Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                                Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                                Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -310,7 +303,7 @@ public class AlterTableModifyPartitionJobFactory extends AlterTableGroupBaseJobF
                                           ExecutionContext executionContext) {
         AlterTableModifyPartitionBuilder alterTableModifyPartitionBuilder =
             new AlterTableModifyPartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableModifyPartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableModifyPartitionBuilder.getTargetTablesTopology();

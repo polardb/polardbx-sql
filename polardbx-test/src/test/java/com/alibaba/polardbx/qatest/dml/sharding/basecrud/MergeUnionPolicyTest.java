@@ -106,7 +106,8 @@ public class MergeUnionPolicyTest extends ReadBaseTestCase {
         final int minUnionSize = 2;
         final int maxUnionSize = 3;
         int traceCount = getTraceCount(
-            String.format("/*+ TDDL: workload_type=TP MIN_MERGE_UNION_SIZE=%d MIN_MERGE_UNION_SIZE=%d*/", minUnionSize, maxUnionSize) +
+            String.format("/*+ TDDL: workload_type=TP MIN_MERGE_UNION_SIZE=%d MAX_MERGE_UNION_SIZE=%d*/", minUnionSize,
+                maxUnionSize) +
                 TP_QUERY_TEMPLATE);
         checkTraceCount(maxUnionSize, traceCount);
     }

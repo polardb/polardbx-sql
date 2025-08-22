@@ -33,6 +33,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DrdsToAutoTableCreationSqlUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -45,7 +46,6 @@ import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.executor.utils.DrdsToAutoTableCreationSqlUtil;
 import com.alibaba.polardbx.optimizer.utils.KeyWordsUtil;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -53,11 +53,8 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCreateDatabase;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlShowCreateTable;
-import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -114,7 +111,7 @@ public class LogicalShowConvertTableHandler extends HandlerCommon {
             try {
                 String creationSqlInAuto =
                     DrdsToAutoTableCreationSqlUtil.convertDrdsModeCreateTableSqlToAutoModeSql(sqlCreationInDrds, false,
-                        maxPhyPartitionNum, maxPartitionColumnNum);
+                        maxPhyPartitionNum, maxPartitionColumnNum, executionContext);
                 tableCreationInAutoMode.put(entry.getKey(), creationSqlInAuto);
             } catch (Throwable e) {
                 tableCreationInAutoMode.put(entry.getKey(), failedSql);

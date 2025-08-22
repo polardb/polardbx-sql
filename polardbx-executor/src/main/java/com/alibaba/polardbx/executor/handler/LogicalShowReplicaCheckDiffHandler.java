@@ -97,7 +97,7 @@ public class LogicalShowReplicaCheckDiffHandler extends HandlerCommon {
             return result;
         } catch (SQLException ex) {
             logger.error("get replica diff failed!", ex);
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, ex);
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, ex, ex.getMessage());
         }
     }
 }

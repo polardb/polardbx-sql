@@ -22,6 +22,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.metadb.table.BaselineInfoRecord;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -47,7 +48,9 @@ import java.util.stream.Stream;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_OLD_PLAN_CHOOSE_COUNT_LEVEL;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
-import static com.alibaba.polardbx.optimizer.planmanager.PlanInfo.INVAILD_HASH_CODE;
+import static com.alibaba.polardbx.gms.module.LogPattern.REMOVE;
+import static com.alibaba.polardbx.gms.module.Module.SPM;
+import static com.alibaba.polardbx.optimizer.planmanager.PlanInfo.REBUILD_PLAN_HASH_CODE;
 
 public class BaselineInfo {
     public static final String EXTEND_POINT_SET = "POINT_SET";
@@ -73,7 +76,7 @@ public class BaselineInfo {
     // use for evolution fail plan, just use hashCode to save memory
     private Set<Integer> evolutionFailPlanHashSet = ConcurrentHashMap.newKeySet();
 
-    private boolean dirty = false;
+    private volatile boolean dirty = false;
 
     // whether the baseline used to evolve hot gsi
     private volatile boolean hotEvolution = false;
@@ -219,6 +222,7 @@ public class BaselineInfo {
 
         baselineInfoJson.put("unacceptedPlans", unacceptedPlansMap);
         baselineInfoJson.put("extend", baselineInfo.encodeExtend());
+        baselineInfoJson.put("dirty", baselineInfo.isDirty());
 
         return baselineInfoJson.toJSONString();
     }
@@ -246,6 +250,10 @@ public class BaselineInfo {
         }
         baselineInfo.unacceptedPlans = unacceptedPlans;
         baselineInfo.extend = baselineInfoJson.getString("extend");
+        Boolean dirty = baselineInfoJson.getBoolean("dirty");
+        if (Boolean.TRUE.equals(dirty)) {
+            baselineInfo.setDirty(true);
+        }
         baselineInfo.decodeExtend();
         return baselineInfo;
     }
@@ -307,6 +315,25 @@ public class BaselineInfo {
         }
 
         return rebuildAtLoadPlan;
+    }
+
+    /**
+     * Resets the rebuild at load plan if the given hash does not match.
+     *
+     * @param providedHash The hash value to compare against.
+     */
+    public void resetRebuildAtLoadPlanIfMismatched(int providedHash) {
+        // If the rebuild at load plan is already null, just return
+        if (rebuildAtLoadPlan == null) {
+            return;
+        }
+
+        int currentTableHashCode = rebuildAtLoadPlan.getTablesHashCode();
+
+        // If the current hash code does not match the provided hash, clear the rebuild at load plan
+        if (currentTableHashCode != providedHash) {
+            rebuildAtLoadPlan = null;
+        }
     }
 
     public PlanInfo getRebuildAtLoadPlan() {
@@ -383,6 +410,9 @@ public class BaselineInfo {
             // remove plan expired[1 week] or was unable to match the table version
             for (PlanInfo p : acceptedPlans.values()) {
                 if (isNeedRemove(schema, p)) {
+                    ModuleLogInfo.getInstance()
+                        .logInfo(SPM, REMOVE, new String[] {
+                            "BASELINE REMOVE", schema + "," + id + "," + p.getId() + "," + p.getLastExecuteTime()});
                     toRemoveList.add(p.getId());
                 }
             }
@@ -451,7 +481,7 @@ public class BaselineInfo {
             if (!planInfo.isFixed()) {
                 invalidatePlanInfo.add(planInfo);
             } else {
-                planInfo.setTablesHashCode(INVAILD_HASH_CODE);
+                planInfo.setTablesHashCode(REBUILD_PLAN_HASH_CODE);
             }
         }
         for (PlanInfo planInfo : invalidatePlanInfo) {
@@ -501,6 +531,14 @@ public class BaselineInfo {
         }
         final JsonBuilder jsonBuilder = new JsonBuilder();
         return jsonBuilder.toJsonString(extendMap);
+    }
+
+    public static boolean hotEvolution(String extend) {
+        if (StringUtils.isEmpty(extend)) {
+            return false;
+        }
+        Map<String, Object> extendMap = JSON.parseObject(extend);
+        return Boolean.parseBoolean(extendMap.getOrDefault(EXTEND_HOT_EVOLVED, false).toString());
     }
 
     public BaselineInfoRecord buildBaselineRecord(String schemaName, String instId) {

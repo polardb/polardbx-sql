@@ -43,6 +43,11 @@ public class PartClauseInfo {
     protected SqlKind opKind;
 
     /**
+     * The rel row type of plan which is referred by constExpr and input
+     */
+    protected RelDataType planRelRowType;
+
+    /**
      * the input of part predicate
      */
     protected RexNode input;
@@ -255,5 +260,13 @@ public class PartClauseInfo {
 
     public void setAnyValueEqCond(boolean anyValueEqCond) {
         isAnyValueEqCond = anyValueEqCond;
+    }
+
+    public RelDataType getPlanRelRowType() {
+        return planRelRowType;
+    }
+
+    public void setPlanRelRowType(RelDataType planRelRowType) {
+        this.planRelRowType = planRelRowType;
     }
 }

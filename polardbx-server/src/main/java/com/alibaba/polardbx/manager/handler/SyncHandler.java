@@ -21,11 +21,14 @@ import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequestSyncAction;
+import com.alibaba.polardbx.executor.sync.ddl.RemoteDdlTaskSyncAction;
 import com.alibaba.polardbx.executor.sync.ddl.RemoteDdlTaskSyncAction;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager.MetaDbConfigSyncAction;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
@@ -50,6 +53,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * @since 5.1.19
  */
 public class SyncHandler {
+
+    private final static Logger logger = LoggerFactory.getLogger(SyncHandler.class);
 
     public static void handle(String sql, ManagerConnection c, int offset) {
         String str = sql.substring(offset).trim();
@@ -85,15 +90,8 @@ public class SyncHandler {
                 c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + schema + "'");
                 return;
             }
-
-            TDataSource dataSource = schemaConfig.getDataSource();
-            // 如果为授权相关的同步action需要显示的初始化数据源
-            if (isAuthorizeRelatedSyncAction(action) || isDdlJobRequest(action)) {
-                if (dataSource != null) {
-                    TDataSourceInitUtils.initDataSource(dataSource);
-                }
-            }
-            if ((dataSource.isInited() || dataSource.isDefaultDb()) && !actionDone) {
+            TDataSource dataSource = initDataSourceForSyncIfNeed(schemaConfig, schema);
+            if (dataSource != null && (dataSource.isInited() || dataSource.isDefaultDb()) && !actionDone) {
                 // 如果当前server已经启动了这个dataSource
                 ExecutorContext.setContext(schema, dataSource.getConfigHolder().getExecutorContext());
                 OptimizerContext.setContext(dataSource.getConfigHolder().getOptimizerContext());
@@ -125,6 +123,41 @@ public class SyncHandler {
         } else {
             c.writeErrMessage(ErrorCode.ER_YES, "Unsupported statement : " + data);
         }
+    }
+
+    public static TDataSource initDataSourceForSyncIfNeed(SchemaConfig schemaConfig, String schema) {
+        boolean isDropped = schemaConfig.isDropped();
+        TDataSource dataSource = null;
+        if (!isDropped) {
+            dataSource = schemaConfig.getDataSource();
+            // 如果为授权相关的同步action需要显示的初始化数据源
+//                if (isAuthorizeRelatedSyncAction(action) || isDdlJobRequest(action)) {
+//                    if (dataSource != null) {
+//                        TDataSourceInitUtils.initDataSource(dataSource);
+//                    }
+//                }
+
+            /**
+             * Some execution of some sync action of ddl, like TableMetaChangeSyncAction,
+             * despond on init of TDataSource, so here need init tdatasource
+             */
+            if (dataSource != null) {
+                Throwable ex = TDataSourceInitUtils.initDataSource(dataSource);
+                if (ex != null ) {
+                    logger.warn(String.format("Failed to init datasource for db[%s] before sync action execution, err is %s",
+                        schema, ex.getMessage()), ex);
+                } else {
+                    logger.info(String.format("Successful to init database for db[%s] before sync action execution",
+                        schema));
+                }
+            } else {
+                logger.warn(String.format("Failed to init datasource for db[%s] before sync action execution because its datasource is null", schema));
+            }
+        } else {
+            logger.warn(String.format("Failed to init datasource for db[%s] before sync action execution because its datasource has been dropped", schema));
+        }
+
+        return dataSource;
     }
 
     /**

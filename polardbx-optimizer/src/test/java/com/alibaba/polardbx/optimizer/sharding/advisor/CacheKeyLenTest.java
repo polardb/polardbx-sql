@@ -53,7 +53,7 @@ public class CacheKeyLenTest extends PlanTestCommon {
             ByteString.from(testSql), currentParameter, executionContext, false);
 
         PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(appName, sqlParameterized, null, null, true, true,
-            true);
+            true, ec);
         if (cacheKey.getParameters() == null) {
             return "not record";
         } else {

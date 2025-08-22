@@ -24,6 +24,8 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -39,6 +41,8 @@ public class ColumnarDuplicatesAccessor extends AbstractAccessor {
         + " (`engine`, `logical_schema`, `logical_table`, `partition_name`, `long_pk`, `bytes_pk`, `type`,"
         + " `before_file_id`, `before_pos`, `after_file_id`, `after_pos`, `extra`)"
         + " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    private static final String COUNT = "select count(*) from " + COLUMNAR_DUPLICATES_TABLE
+        + " where `logical_table` = ?";
 
     public void insert(Collection<ColumnarDuplicatesRecord> records) {
         try {
@@ -96,6 +100,26 @@ public class ColumnarDuplicatesAccessor extends AbstractAccessor {
             for (int insert : inserts) {
                 if (insert != 1) {
                     throw new RuntimeException("ColumnarDuplicates partly inserts.");
+                }
+            }
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public long countDuplicates(long tableId) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tableId);
+            try (final PreparedStatement ps = connection.prepareStatement(COUNT)) {
+                for (ParameterContext param : params.values()) {
+                    param.getParameterMethod().setParameter(ps, param.getArgs());
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getLong(1);
+                    }
+                    return 0;
                 }
             }
         } catch (Exception e) {

@@ -31,11 +31,15 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.truth.StandardSubjectBuilder;
+import com.google.common.truth.Truth;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.RandomUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.hamcrest.Matcher;
+import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -63,10 +67,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getConnectionProperties;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectStringContentSameAssert;
 import static com.google.common.truth.Truth.assertWithMessage;
 
 @RunWith(CommonCaseRunner.class)
@@ -734,14 +740,73 @@ public class BaseTestCase implements BaseTestMode {
         return JdbcUtil.getStringResult(rs, false);
     }
 
-    public static void checkTraceRowCount(int rowCount, Connection conn) {
-        final List<List<String>> traceUpdate = getTrace(conn);
-        assertWithMessage(Optional
-            .ofNullable(traceUpdate)
+    protected List<List<String>> checkTraceRowCountIs(int expectedTraceCount, Connection conn) {
+        return checkTraceRowCount(Matchers.is(expectedTraceCount), conn);
+    }
+
+    protected List<List<String>> checkTraceRowCount(Matcher<Integer> matcher, Connection conn) {
+        final List<List<String>> trace = getTrace(conn);
+
+        Assert.assertThat("Unexpected trace count: \n" + Optional
+            .of(trace)
             .map(tu -> tu.stream().map(r -> String.join(", ", r)).collect(Collectors.joining("\n")))
-            .orElse("show trace result is null"))
-            .that(traceUpdate)
-            .hasSize(rowCount);
+            .orElse("show trace result is null"), trace.size(), matcher);
+
+        return trace;
+    }
+
+    public static void checkTraceRowCount(int rowCount, Connection conn) {
+        checkTrace(conn, Matchers.is(rowCount), (trace, assertThat) -> {
+        });
+    }
+
+    public static void checkTrace(Connection conn,
+                                  Matcher<Integer> traceRowCountMatcher,
+                                  BiConsumer<List<List<String>>, StandardSubjectBuilder> checker) {
+        final List<List<String>> trace = getTrace(conn);
+        final String errMsg = Optional
+            .ofNullable(trace)
+            .map(tu -> tu.stream().map(r -> String.join("| ", r)).collect(Collectors.joining("\n")))
+            .orElse("show trace result is null");
+
+        Assert.assertThat(errMsg, trace.size(), traceRowCountMatcher);
+        checker.accept(trace, assertWithMessage(errMsg));
+    }
+
+    protected List<String> getGsiTableNames(Connection tddlConnection, String tableName) {
+        List<String> GsiNames = new ArrayList<>();
+        String sql = "show global index from " + tableName + ";";
+        try {
+            ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+            while (rs.next()) {
+                String data = rs.getString("KEY_NAME");
+                GsiNames.add(data);
+            }
+        } catch (SQLException ex) {
+            assertWithMessage("语句并未按照预期执行成功:" + ex.getMessage()).fail();
+        }
+        return GsiNames;
+    }
+
+    protected void gsiIntegrityCheck(Connection polardbxConnection, String tableName, String indexName) {
+        final String CHECK_HINT =
+            "/*+TDDL: cmd_extra(GSI_CHECK_PARALLELISM=4, GSI_CHECK_BATCH_SIZE=1024, GSI_CHECK_SPEED_LIMITATION=-1)*/";
+
+        final List<String> gsiTableNames = getGsiTableNames(polardbxConnection, tableName);
+        Truth.assertWithMessage("Global index `" + indexName + "` not exists").that(gsiTableNames.size()).isAtLeast(1);
+
+        final Optional<String> gsiName = gsiTableNames.stream().filter(n -> n.startsWith(indexName + "_$")).findFirst();
+        Truth.assertWithMessage("Global index `" + indexName + "` not exists").that(gsiName.isPresent()).isTrue();
+
+        final ResultSet rs = JdbcUtil
+            .executeQuery(CHECK_HINT + "check global index `" + gsiName.get() + "` on `" + tableName + "`",
+                polardbxConnection);
+        List<String> result = JdbcUtil.getStringResult(rs, false)
+            .stream()
+            .map(row -> row.get(row.size() - 1))
+            .collect(Collectors.toList());
+        System.out.println("Checker: " + result.get(result.size() - 1));
+        Assert.assertTrue(result.get(result.size() - 1).contains("OK"));
     }
 
     public void setSqlMode(String mode, Connection conn) {
@@ -984,6 +1049,40 @@ public class BaseTestCase implements BaseTestMode {
                 );
             }
         }
+    }
+
+    public static void checkBroadcastTableDataIntegrity(String tableName, Connection tddlConnection) {
+        final String physicalTableName = JdbcUtil.getTopology(tddlConnection, tableName).get(0).getValue();
+        final String firstSql = "/*TDDL:node=0*/ select * from " + physicalTableName;
+        final int nodeCount = getNodeNum(tddlConnection);
+
+        for (int i = 1; i < nodeCount; i++) {
+            String secondSql = String.format("/*TDDL:node=%s*/ select * from %s", i, physicalTableName);
+            selectStringContentSameAssert(
+                firstSql,
+                secondSql,
+                null,
+                tddlConnection,
+                tddlConnection,
+                true,
+                true
+            );
+        }
+    }
+
+    public static void checkColumnDataSame(String tableName, Connection tddlConnection, String thisColumn,
+                                           String thatColumn, List<String> selectColumns) {
+        final String sql =
+            String.format("select %s from %s where %s != %s", String.join(",", selectColumns), tableName, thisColumn,
+                thatColumn);
+
+        final ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        final List<List<String>> queryResult = JdbcUtil.getStringResult(rs, false);
+        Truth.assertWithMessage("Value of column with dynamic implicit default not same: \n"
+            + queryResult.stream()
+            .map(l -> "|" + String.join("|", l) + "|")
+            .collect(Collectors.joining("\n"))
+        ).that(queryResult).isEmpty();
     }
 
     public void runWithPurgeTrans(int repeat_time, Runnable task) throws Exception {

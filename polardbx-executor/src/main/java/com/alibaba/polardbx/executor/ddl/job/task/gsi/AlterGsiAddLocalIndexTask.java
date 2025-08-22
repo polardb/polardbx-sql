@@ -12,6 +12,7 @@ import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.spec.AlterTableRollbacker;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -45,7 +46,7 @@ public class AlterGsiAddLocalIndexTask extends AlterTablePhyDdlTask {
         super(schemaName, indexTableName, physicalPlanData);
         this.logicalTableName = logicalTableName;
         this.indexTableName = indexTableName;
-        String sql = substitueQuestionToTableName(physicalPlanData.getSqlTemplate());
+        String sql = substitueQuestionToTableName(physicalPlanData.getSqlTemplate(), indexTableName);
         this.setSourceSql(sql);
         onExceptionTryRecoveryThenRollback();
     }
@@ -69,13 +70,13 @@ public class AlterGsiAddLocalIndexTask extends AlterTablePhyDdlTask {
 
     @Override
     protected List<RelNode> genRollbackPhysicalPlans(ExecutionContext executionContext) {
-        String sql = substitueQuestionToTableName(physicalPlanData.getSqlTemplate());
+        String sql = substitueQuestionToTableName(physicalPlanData.getSqlTemplate(), indexTableName);
         SQLAlterTableStatement alterTableStmt = (SQLAlterTableStatement) FastsqlUtils.parseSql(sql).get(0);
         String reversedSql = genReversedAlterTableStmt(alterTableStmt);
         return genReversedPhysicalPlans(reversedSql, executionContext);
     }
 
-    private String substitueQuestionToTableName(String sql) {
+    public static String substitueQuestionToTableName(String sql, String logicalTableName) {
         // this is very evil, but there are no better way and it's absolutely right on this scene.
         // don't refer to it unless you know what you are doing like me.
         return sql.replace("ALTER TABLE ?", "ALTER TABLE " + SqlIdentifier.surroundWithBacktick(logicalTableName));

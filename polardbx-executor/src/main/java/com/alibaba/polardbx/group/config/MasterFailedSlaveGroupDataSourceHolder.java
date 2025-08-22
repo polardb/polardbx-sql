@@ -18,11 +18,16 @@ package com.alibaba.polardbx.group.config;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.rpc.compatible.XDataSource;
 
 /**
  * The slaves is down, then throw exception for SLAVE_ONLY&LOW_DELAY_SLAVE_ONLY
  */
 public class MasterFailedSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
+    private static final Logger logger = LoggerFactory.getLogger(MasterFailedSlaveGroupDataSourceHolder.class);
 
     private final TAtomDataSource masterDataSource;
 
@@ -43,5 +48,19 @@ public class MasterFailedSlaveGroupDataSourceHolder implements GroupDataSourceHo
             throw new RuntimeException("all slave is failed, so can't continue use slave connection!");
         }
         return masterDataSource;
+    }
+
+    @Override
+    public Pair<Boolean, XDataSource> isChangingLeader(MasterSlave masterSlave) {
+        try {
+            if (masterDataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                final XDataSource unwrap = masterDataSource.getDataSource().unwrap(XDataSource.class);
+                return Pair.of(unwrap.getClientPool().isChangingLeader(), unwrap);
+            }
+            return Pair.of(false, null);
+        } catch (Exception e) {
+            logger.error("get isChangingLeader error", e);
+            return Pair.of(false, null);
+        }
     }
 }

@@ -33,6 +33,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIgnoreIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPagingForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUseIndexHint;
@@ -154,6 +155,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTabl
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterUserStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAnalyzeStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlBinlogStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCheckTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCheckTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChecksumTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlClearPartitionsHeatmapCacheStatement;
@@ -205,6 +207,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowAutho
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinLogEventsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinaryLogsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinaryStreamsStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinlogDumpStatusStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBroadcastsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowCharacterSetStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowClusterNameStatement;
@@ -1220,6 +1223,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     }
 
     @Override
+    public boolean visit(MySqlShowBinlogDumpStatusStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(MySqlShowBinlogDumpStatusStatement x) {
+
+    }
+
+    @Override
     public boolean visit(MySqlShowCharacterSetStatement x) {
         return true;
     }
@@ -1785,6 +1798,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     @Override
     public void endVisit(MySqlForceIndexHint x) {
+
+    }
+
+    @Override
+    public boolean visit(MySqlPagingForceIndexHint x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(MySqlPagingForceIndexHint x) {
 
     }
 
@@ -2543,6 +2566,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     @Override
     public void endVisit(MySqlCheckTableStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(MySqlCheckTableGroupStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(MySqlCheckTableGroupStatement x) {
 
     }
 

@@ -77,4 +77,13 @@ public class TimeToTso extends AbstractScalarFunction {
     public String[] getFunctionNames() {
         return new String[] {"TIME_TO_TSO"};
     }
+
+    public int getScale() {
+        return 0;
+
+    }
+
+    public int getPrecision() {
+        return 0;
+    }
 }

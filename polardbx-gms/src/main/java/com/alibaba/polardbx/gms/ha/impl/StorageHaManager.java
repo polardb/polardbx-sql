@@ -57,6 +57,7 @@ import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.rpc.XConfig;
+import com.alibaba.polardbx.rpc.perf.SwitchoverPerfCollection;
 import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import com.google.common.collect.Sets;
 import lombok.val;
@@ -144,7 +145,7 @@ public class StorageHaManager extends AbstractLifecycle {
 
     protected HaSwitcher metaDbHaSwitcher;
     protected final static int MAX_QUEUE_LEN = 10000;
-    protected volatile int checkStorageTaskPeriod = 2000; // 5s
+    protected volatile int checkStorageTaskPeriod = DynamicConfig.storageHaTaskPeriodDefault; // 2s
 
     protected int refreshStorageInfoOfMetaDbTaskIntervalDelay = checkStorageTaskPeriod * 3; // 15s
     protected int refreshStorageInfoOfMetaDbTaskInterval = checkStorageTaskPeriod * 12; // 60s
@@ -306,7 +307,7 @@ public class StorageHaManager extends AbstractLifecycle {
         checkStorageHaTaskExecutor =
             Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("CheckStorageHaTaskExecutor", true));
 
-        checkStorageHaTaskExecutor = initStorageHaCheckTaskExecutor(checkStorageTaskPeriod, checkStorageHaTask);
+        checkStorageHaTaskExecutor = initStorageHaCheckTaskExecutor(checkStorageHaTask);
 
         groupHaTaskExecutor =
             ExecutorUtil.createBufferedExecutor("GroupHaTaskExecutor", groupHaTaskExecutorPoolSize,
@@ -344,46 +345,20 @@ public class StorageHaManager extends AbstractLifecycle {
             new StorageInfoConfigListener());
     }
 
-    public void adjustStorageHaTaskPeriod(int newPeriod) {
-
-        if (this.checkStorageHaTaskExecutor != null && (newPeriod == this.checkStorageTaskPeriod)) {
-            return;
-        }
-        try {
-            /**
-             * try to wait 5 min to shutdown original haTask to finish. 
-             */
-            int maxAwaitTermination = 300;
-            if (this.checkStorageHaTaskExecutor != null) {
-                this.checkStorageHaTaskExecutor.shutdown();
-                try {
-                    this.checkStorageHaTaskExecutor.awaitTermination(maxAwaitTermination, TimeUnit.SECONDS);
-                } catch (Throwable ex) {
-                    // ignore
-                    MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.warn("Failed to shutdown old checkStorageHaTaskExecutor", ex);
-                }
-            }
-            this.checkStorageHaTaskExecutor = initStorageHaCheckTaskExecutor(newPeriod, this.checkStorageHaTask);
-            this.checkStorageTaskPeriod = newPeriod;
-            MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.info(String
-                .format("Successful to adjust the HA task period, old period/new period is %s/%s",
-                    this.checkStorageTaskPeriod, newPeriod));
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.error(String
-                .format("Failed to adjust the HA task period, old period/new period is %s/%s",
-                    this.checkStorageTaskPeriod, newPeriod), ex);
-        }
-
+    public synchronized void adjustStorageHaTaskPeriod(int newPeriod) {
+        MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.info(String
+            .format("Successful to adjust the HA task period, old period/new period is %s/%s",
+                this.checkStorageTaskPeriod, newPeriod));
+        this.checkStorageTaskPeriod = newPeriod;
     }
 
-    protected ScheduledExecutorService initStorageHaCheckTaskExecutor(int checkStorageTaskPeriod,
-                                                                      Runnable checkStorageHaTask) {
+    protected ScheduledExecutorService initStorageHaCheckTaskExecutor(Runnable checkStorageHaTask) {
         ScheduledExecutorService checkStorageHaTaskExecutor =
             Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("CheckStorageHaTaskExecutor", true));
         checkStorageHaTaskExecutor.scheduleAtFixedRate(
             checkStorageHaTask,
-            checkStorageTaskPeriod,
-            checkStorageTaskPeriod,
+            100,
+            100,
             TimeUnit.MILLISECONDS);
         return checkStorageHaTaskExecutor;
     }
@@ -1333,6 +1308,16 @@ public class StorageHaManager extends AbstractLifecycle {
                     doStorageInstHaLog(success, this.allGrpListToBeSwitched.size(), this.switchTaskCount,
                         startTs, switchEndTs, this.oldAddress, this.newAvailableAddr, this.newIsVip, this.newXport);
                 }
+
+                // record smooth switchover events
+                if (success && DynamicConfig.getInstance().isEnableSmoothSwitchover()) {
+                    final SwitchoverPerfCollection collector =
+                        XConnectionManager.getInstance().getSwitchoverPerfCollector(storageInstId);
+                    if (collector != null) {
+                        EventLogger.log(EventType.SMOOTH_SWITCHOVER_SUMMARY,
+                            storageInstId + ',' + oldAddress + ',' + newAvailableAddrEncPasswd + ',' + collector);
+                    }
+                }
             } catch (Throwable ex) {
                 MetaDbLogUtil.META_DB_LOG.error(ex);
             }
@@ -1696,10 +1681,6 @@ public class StorageHaManager extends AbstractLifecycle {
                     targetDnIdList.add(instance);
                 }
             }
-            if (targetDnIdList.size() > 1) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                    String.format("find more than one rw-storage for node[%s]", address));
-            }
             if (targetDnIdList.size() == 0) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                     String.format("no found target rw-storage for node[%s]", address));
@@ -1986,6 +1967,7 @@ public class StorageHaManager extends AbstractLifecycle {
         // do HA async or sync ?
         private boolean doHaAsync = true;
         protected StorageHaManager storageHaManager;
+        protected long lastCheckTime = 0;
 
         public CheckStorageHaTask(StorageHaManager storageHaManager) {
             this.storageHaManager = storageHaManager;
@@ -1993,7 +1975,22 @@ public class StorageHaManager extends AbstractLifecycle {
 
         @Override
         public void run() {
-            runInner();
+            final long now = System.currentTimeMillis();
+            if (now - lastCheckTime >= storageHaManager.checkStorageTaskPeriod) {
+                lastCheckTime = now;
+                runInner();
+            }
+
+            // check and reset interval if no changing leader
+            if (DynamicConfig.getInstance().isEnableSmoothSwitchover()) {
+                if (storageHaManager.checkStorageTaskPeriod != DynamicConfig.getInstance().getStorageHaTaskPeriod()) {
+                    // fast check, switch to normal check when on node in changing
+                    if (!XConnectionManager.getInstance().isAnyOneChangingLeader()) {
+                        storageHaManager.adjustStorageHaTaskPeriod(
+                            DynamicConfig.getInstance().getStorageHaTaskPeriod());
+                    }
+                }
+            }
         }
 
         public void setDoHaAsync(boolean async) {

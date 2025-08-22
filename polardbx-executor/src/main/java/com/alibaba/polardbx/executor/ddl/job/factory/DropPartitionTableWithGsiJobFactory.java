@@ -47,12 +47,7 @@ import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import org.apache.calcite.rel.core.DDL;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 /**
  * @author guxu
@@ -60,7 +55,7 @@ import java.util.TreeSet;
 public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
 
     final private DropTableWithGsiPreparedData preparedData;
-    final private Map<String, List<List<String>>> primaryTableTopology;
+    final private TreeMap<String, List<List<String>>> primaryTableTopology;
     final private List<PhyDdlTableOperation> primaryTablePhysicalPlans;
     final private Map<String, Map<String, List<List<String>>>> indexTableTopologyMap;
     final private ExecutionContext executionContext;
@@ -79,7 +74,7 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
 
         dropTableWithGsiBuilder.build();
 
-        Map<String, List<List<String>>> primaryTableTopology = dropTableWithGsiBuilder.getPrimaryTableTopology();
+        TreeMap<String, List<List<String>>> primaryTableTopology = dropTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = dropTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
 
         Map<String, Map<String, List<List<String>>>> indexTableTopologyMap =
@@ -205,7 +200,7 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
         if (dropTtlTblWithArcCci) {
             TableMeta ttlTblMeta = executionContext.getSchemaManager(this.schemaName).getTable(this.primaryTableName);
             TtlDefinitionInfo ttlInfo = ttlTblMeta.getTtlDefinitionInfo();
-            if (ttlInfo != null && ttlInfo.needPerformExpiredDataArchivingByCci()) {
+            if (ttlInfo != null && ttlInfo.needPerformExpiredDataArchiving()) {
                 String arcTblSchema = ttlInfo.getArchiveTableSchema();
                 String arcTblName = ttlInfo.getArchiveTableName();
                 String dropViewSqlForArcTbl =

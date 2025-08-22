@@ -6,6 +6,7 @@ import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillManager;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.gms.partition.PhysicalBackfillDetailInfoFieldJSON;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
@@ -104,10 +105,11 @@ public class PhysicalBackfillTaskTest {
         DbInfoManager dbInfoManager = mock(DbInfoManager.class);
         try (MockedStatic<PhysicalBackfillUtils> mockedPhysicalBackfillUtils = Mockito.mockStatic(
             PhysicalBackfillUtils.class);
-            MockedConstruction<PhysicalBackfillManager> mocked = Mockito.mockConstruction(PhysicalBackfillManager.class,
+             MockedStatic<ScaleOutPlanUtil> mockedScaleOutPlanUtil = Mockito.mockStatic(ScaleOutPlanUtil.class);
+            MockedConstruction<PhysicalBackfillManager> mockedPhysicalBackfillManager = Mockito.mockConstruction(PhysicalBackfillManager.class,
                 (mock, context) -> {
                     Mockito.when(mock.loadBackfillMeta(anyLong(), anyString(), anyString(), anyString(), anyString()))
-                        .thenReturn(mockBackfillBean(inited));
+                        .thenReturn(mockBackfillBean(inited)).thenReturn(mockBackfillBean(inited));
                 }); MockedStatic<OptimizerContext> mockedOptimizerContext = Mockito.mockStatic(OptimizerContext.class)
             ; MockedStatic<DbInfoManager> mockedDbInfoManager = Mockito.mockStatic(DbInfoManager.class);
             MockedConstruction<FutureTask> mockedFuture = Mockito.mockConstruction(FutureTask.class);) {
@@ -152,6 +154,12 @@ public class PhysicalBackfillTaskTest {
             task.foreachPhysicalFile(Pair.of("srcDb", "srcGroup"), Pair.of("tarDb", "tarGroup"), "partition1",
                 consumerMock,
                 ecMock);
+
+            when(ecMock.getParamManager()).thenReturn(mock(ParamManager.class));
+            DbGroupInfoRecord sourceTargetGroup = mock(DbGroupInfoRecord.class);
+            sourceTargetGroup.phyDbName = "db1";
+            mockedScaleOutPlanUtil.when(() -> ScaleOutPlanUtil.getDbGroupInfoByGroupName(anyString())).thenReturn(sourceTargetGroup);
+            task.rollbackImpl(ecMock);
         }
     }
 

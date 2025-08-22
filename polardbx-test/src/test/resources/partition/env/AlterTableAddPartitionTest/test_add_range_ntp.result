@@ -1,0 +1,1456 @@
+## DISABLE_FAST_SQL_PARSER
+## r_h_ntp
+drop table if exists r_h_ntp1
+drop table if exists r_h_ntp2
+create table if not exists r_h_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by hash (a,b)
+(
+ partition p1 values less than ( to_days('2020-01-01') ) subpartitions 2,
+ partition p2 values less than ( to_days('2041-01-01') ) subpartitions 3
+)
+create table if not exists r_h_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by hash (a,b)
+(
+partition p1 values less than ( to_days('2020-01-01') ) subpartitions 2,
+partition p2 values less than ( to_days('2041-01-01') ) subpartitions 3
+)
+insert into r_h_ntp1 values (1,2,'2010-01-01','a','b')
+insert into r_h_ntp1 values (2,2,'2020-01-01','a','b')
+insert into r_h_ntp1 values (3,2,'2040-01-01','a','b')
+alter table r_h_ntp1 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+alter table r_h_ntp1 add partition(partition p4 values less than ( to_days('2060-01-01') ) subpartitions 3)
+insert into r_h_ntp1 values (4,2,'2010-01-01','a','b')
+insert into r_h_ntp1 values (5,2,'2049-01-01','a','b')
+insert into r_h_ntp1 values (6,2,'2050-01-01','a','b')
+insert into r_h_ntp2 values (1,2,'2010-01-01','a','b')
+insert into r_h_ntp2 values (2,2,'2020-01-01','a','b')
+insert into r_h_ntp2 values (3,2,'2040-01-01','a','b')
+alter table r_h_ntp2 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+alter table r_h_ntp2 add partition(partition p4 values less than ( to_days('2060-01-01') ) subpartitions 3)
+insert into r_h_ntp2 values (4,2,'2050-01-01','a','b')
+insert into r_h_ntp2 values (5,2,'2051-01-01','a','b')
+insert into r_h_ntp2 values (6,2,'2012-01-01','a','b')
+show full create table r_h_ntp1
+Table,Create Table
+r_h_ntp1,CREATE TABLE `r_h_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (745461)
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (752400)
+ (SUBPARTITION p4sp1 ENGINE = InnoDB,
+  SUBPARTITION p4sp2 ENGINE = InnoDB,
+  SUBPARTITION p4sp3 ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table r_h_ntp2
+Table,Create Table
+r_h_ntp2,CREATE TABLE `r_h_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (745461)
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (752400)
+ (SUBPARTITION p4sp1 ENGINE = InnoDB,
+  SUBPARTITION p4sp2 ENGINE = InnoDB,
+  SUBPARTITION p4sp3 ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from r_h_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,a,b
+2,2,2020-01-01 00:00:00.0,a,b
+3,2,2040-01-01 00:00:00.0,a,b
+4,2,2010-01-01 00:00:00.0,a,b
+5,2,2049-01-01 00:00:00.0,a,b
+6,2,2050-01-01 00:00:00.0,a,b
+select * from r_h_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,a,b
+2,2,2020-01-01 00:00:00.0,a,b
+3,2,2040-01-01 00:00:00.0,a,b
+4,2,2050-01-01 00:00:00.0,a,b
+5,2,2051-01-01 00:00:00.0,a,b
+6,2,2012-01-01 00:00:00.0,a,b
+## r_k_ntp
+drop table if exists r_k_ntp1
+drop table if exists r_k_ntp2
+create table if not exists r_k_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by key (a,b)
+(
+partition p1 values less than ( to_days('2020-01-01') ) subpartitions 2,
+partition p2 values less than ( to_days('2041-01-01') ) subpartitions 3
+)
+create table if not exists r_k_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by key (a,b)
+(
+partition p1 values less than ( to_days('2020-01-01') ) subpartitions 2,
+partition p2 values less than ( to_days('2041-01-01') ) subpartitions 3
+)
+insert into r_k_ntp1 values (1,2,'2010-01-01','a','b')
+insert into r_k_ntp1 values (2,2,'2020-01-01','a','b')
+insert into r_k_ntp1 values (3,2,'2040-01-01','a','b')
+alter table r_k_ntp1 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+insert into r_h_ntp1 values (4,2,'2010-01-01','a','b')
+insert into r_h_ntp1 values (5,2,'2041-01-01','a','b')
+insert into r_h_ntp1 values (6,2,'2032-01-01','a','b')
+alter table r_k_ntp2 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+insert into r_k_ntp2 values (1,2,'2010-01-01','a','b')
+insert into r_k_ntp2 values (2,2,'2020-01-01','a','b')
+insert into r_k_ntp2 values (3,2,'2042-01-01','a','b')
+alter table r_k_ntp2 drop partition p2
+insert into r_h_ntp2 values (4,2,'2010-01-01','a','b')
+insert into r_h_ntp2 values (5,2,'2011-01-01','a','b')
+insert into r_k_ntp2 values (6,2,'2012-01-01','a','b')
+show full create table r_k_ntp1
+Table,Create Table
+r_k_ntp1,CREATE TABLE `r_k_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (745461)
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table r_k_ntp2
+Table,Create Table
+r_k_ntp2,CREATE TABLE `r_k_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from r_h_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,a,b
+2,2,2020-01-01 00:00:00.0,a,b
+3,2,2040-01-01 00:00:00.0,a,b
+4,2,2010-01-01 00:00:00.0,a,b
+4,2,2010-01-01 00:00:00.0,a,b
+5,2,2041-01-01 00:00:00.0,a,b
+5,2,2049-01-01 00:00:00.0,a,b
+6,2,2032-01-01 00:00:00.0,a,b
+6,2,2050-01-01 00:00:00.0,a,b
+select * from r_k_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,a,b
+3,2,2042-01-01 00:00:00.0,a,b
+6,2,2012-01-01 00:00:00.0,a,b
+## r_r_ntp
+drop table if exists r_r_ntp1
+drop table if exists r_r_ntp2
+create table if not exists r_r_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range (a)
+(
+partition p1 values less than ( to_days('2020-01-01') )
+(
+subpartition p1sp1 values less than ( 1000 ),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2 values less than ( to_days('2022-01-01') )
+(
+subpartition p2sp1 values less than ( 1000 ),
+subpartition p2sp2 values less than ( maxvalue )
+),
+partition p3 values less than ( to_days('2041-01-01') )
+(
+subpartition p3sp1 values less than ( 1000 ),
+subpartition p3sp2 values less than ( 2000 ),
+subpartition p3sp3 values less than ( maxvalue )
+)
+)
+create table if not exists r_r_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range (a)
+(
+partition p1 values less than ( to_days('2020-01-01') )
+(
+subpartition p1sp1 values less than ( 1000 ),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2 values less than ( to_days('2022-01-01') )
+(
+subpartition p2sp1 values less than ( 1000 ),
+subpartition p2sp2 values less than ( maxvalue )
+),
+partition p3 values less than ( to_days('2041-01-01') )
+(
+subpartition p3sp1 values less than ( 1000 ),
+subpartition p3sp2 values less than ( 2000 ),
+subpartition p3sp3 values less than ( maxvalue )
+)
+)
+insert into r_r_ntp1 values (1000,2,'2010-01-01','a','b')
+insert into r_r_ntp1 values (2000,2,'2020-01-01','a','b')
+insert into r_r_ntp1 values (3000,2,'2040-01-01','a','b')
+alter table r_r_ntp1 add partition(partition p4 values less than ( to_days('2050-01-01') ))
+insert into r_r_ntp1 values (400,2,'2010-01-01','a','b')
+insert into r_r_ntp1 values (1500,2,'2020-01-01','a','b')
+insert into r_r_ntp1 values (6000,2,'2049-01-01','a','b')
+insert into r_r_ntp2 values (1000,2,'2010-01-01','a','b')
+insert into r_r_ntp2 values (2000,2,'2020-01-01','a','b')
+insert into r_r_ntp2 values (3000,2,'2040-01-01','a','b')
+alter table r_r_ntp2 add partition(partition p4 values less than ( to_days('2050-01-01') ))
+alter table r_r_ntp2 add partition(partition p5 values less than ( to_days('2060-01-01') ))
+insert into r_r_ntp2 values (400,2,'2010-01-01','a','b')
+insert into r_r_ntp2 values (1500,2,'2055-01-01','a','b')
+insert into r_r_ntp2 values (6000,2,'2042-01-01','a','b')
+alter table r_r_ntp2 drop subpartition p2sp1,p3sp2
+insert into r_r_ntp2 values (500,2,'2010-01-01','a','b')
+insert into r_r_ntp2 values (1600,2,'2020-01-01','a','b')
+insert into r_r_ntp2 values (7000,2,'2040-01-01','a','b')
+show full create table r_r_ntp1
+Table,Create Table
+r_r_ntp1,CREATE TABLE `r_r_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (738521)
+ (SUBPARTITION p2sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (745461)
+ (SUBPARTITION p3sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES LESS THAN (2000) ENGINE = InnoDB,
+  SUBPARTITION p3sp3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (748748)
+ (SUBPARTITION p4sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table r_r_ntp2
+Table,Create Table
+r_r_ntp2,CREATE TABLE `r_r_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (738521)
+ (SUBPARTITION p2sp2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (745461)
+ (SUBPARTITION p3sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p3sp3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (748748)
+ (SUBPARTITION p4sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p5 VALUES LESS THAN (752400)
+ (SUBPARTITION p5sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from r_r_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+400,2,2010-01-01 00:00:00.0,a,b
+1000,2,2010-01-01 00:00:00.0,a,b
+1500,2,2020-01-01 00:00:00.0,a,b
+2000,2,2020-01-01 00:00:00.0,a,b
+3000,2,2040-01-01 00:00:00.0,a,b
+6000,2,2049-01-01 00:00:00.0,a,b
+select * from r_r_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+400,2,2010-01-01 00:00:00.0,a,b
+500,2,2010-01-01 00:00:00.0,a,b
+1000,2,2010-01-01 00:00:00.0,a,b
+1500,2,2055-01-01 00:00:00.0,a,b
+1600,2,2020-01-01 00:00:00.0,a,b
+2000,2,2020-01-01 00:00:00.0,a,b
+3000,2,2040-01-01 00:00:00.0,a,b
+6000,2,2042-01-01 00:00:00.0,a,b
+7000,2,2040-01-01 00:00:00.0,a,b
+## r_rc_ntp
+drop table if exists r_rc_ntp1
+drop table if exists r_rc_ntp2
+create table if not exists r_rc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range columns (a,b)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values less than ( 1000, 10000),
+subpartition p1sp2 values less than ( maxvalue, maxvalue )
+),
+partition p2 values less than ( to_days('2022-01-01') ) (
+subpartition p2sp1 values less than ( 1000, 10000),
+subpartition p2sp2 values less than ( maxvalue, maxvalue )
+),
+partition p3 values less than ( to_days('2041-01-01') ) (
+subpartition p3sp1 values less than ( 1000, 10000),
+subpartition p3sp2 values less than ( 2000, 10000),
+subpartition p3sp3 values less than ( maxvalue, maxvalue )
+)
+)
+create table if not exists r_rc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range columns (a,b)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values less than ( 1000, 10000),
+subpartition p1sp2 values less than ( maxvalue, maxvalue )
+),
+partition p2 values less than ( to_days('2022-01-01') ) (
+subpartition p2sp1 values less than ( 1000, 10000),
+subpartition p2sp2 values less than ( maxvalue, maxvalue )
+),
+partition p3 values less than ( to_days('2041-01-01') ) (
+subpartition p3sp1 values less than ( 1000, 10000),
+subpartition p3sp2 values less than ( 2000, 10000),
+subpartition p3sp3 values less than ( maxvalue, maxvalue )
+)
+)
+insert into r_rc_ntp1 values (1000,2,'2010-01-01','a','b')
+insert into r_rc_ntp1 values (2000,2,'2020-01-01','a','b')
+insert into r_rc_ntp1 values (3000,2,'2040-01-01','a','b')
+alter table r_rc_ntp1 add partition(partition p4 values less than ( to_days('2050-01-01') ))
+insert into r_rc_ntp1 values (400,2,'2010-01-01','a','b')
+insert into r_rc_ntp1 values (1500,2,'2020-01-01','a','b')
+insert into r_rc_ntp1 values (6000,2,'2044-01-01','a','b')
+alter table r_rc_ntp1 add partition(partition p5 values less than ( to_days('2060-01-01') ))
+insert into r_rc_ntp1 values (500,2,'2010-01-01','a','b')
+insert into r_rc_ntp1 values (1600,2,'2020-01-01','a','b')
+insert into r_rc_ntp1 values (7000,2,'2055-01-01','a','b')
+insert into r_rc_ntp2 values (1000,2,'2010-01-01','a','b')
+insert into r_rc_ntp2 values (2000,2,'2020-01-01','a','b')
+insert into r_rc_ntp2 values (3000,2,'2040-01-01','a','b')
+alter table r_rc_ntp2 add partition(partition p4 values less than ( to_days('2050-01-01') ))
+insert into r_rc_ntp2 values (400,2,'2010-01-01','a','b')
+insert into r_rc_ntp2 values (1500,2,'2020-01-01','a','b')
+insert into r_rc_ntp2 values (6000,2,'2046-01-01','a','b')
+alter table r_rc_ntp2 drop subpartition p2sp1,p3sp2
+insert into r_rc_ntp2 values (500,2,'2010-01-01','a','b')
+insert into r_rc_ntp2 values (1600,2,'2020-01-01','a','b')
+insert into r_rc_ntp2 values (7000,2,'2040-01-01','a','b')
+show full create table r_rc_ntp1
+Table,Create Table
+r_rc_ntp1,CREATE TABLE `r_rc_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES LESS THAN (1000,10000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (738521)
+ (SUBPARTITION p2sp1 VALUES LESS THAN (1000,10000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (745461)
+ (SUBPARTITION p3sp1 VALUES LESS THAN (1000,10000) ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES LESS THAN (2000,10000) ENGINE = InnoDB,
+  SUBPARTITION p3sp3 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (748748)
+ (SUBPARTITION p4sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p5 VALUES LESS THAN (752400)
+ (SUBPARTITION p5sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table r_rc_ntp2
+Table,Create Table
+r_rc_ntp2,CREATE TABLE `r_rc_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES LESS THAN (1000,10000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (738521)
+ (SUBPARTITION p2sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (745461)
+ (SUBPARTITION p3sp1 VALUES LESS THAN (1000,10000) ENGINE = InnoDB,
+  SUBPARTITION p3sp3 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (748748)
+ (SUBPARTITION p4sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from r_rc_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+400,2,2010-01-01 00:00:00.0,a,b
+500,2,2010-01-01 00:00:00.0,a,b
+1000,2,2010-01-01 00:00:00.0,a,b
+1500,2,2020-01-01 00:00:00.0,a,b
+1600,2,2020-01-01 00:00:00.0,a,b
+2000,2,2020-01-01 00:00:00.0,a,b
+3000,2,2040-01-01 00:00:00.0,a,b
+6000,2,2044-01-01 00:00:00.0,a,b
+7000,2,2055-01-01 00:00:00.0,a,b
+select * from r_rc_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+400,2,2010-01-01 00:00:00.0,a,b
+500,2,2010-01-01 00:00:00.0,a,b
+1000,2,2010-01-01 00:00:00.0,a,b
+1500,2,2020-01-01 00:00:00.0,a,b
+1600,2,2020-01-01 00:00:00.0,a,b
+2000,2,2020-01-01 00:00:00.0,a,b
+3000,2,2040-01-01 00:00:00.0,a,b
+6000,2,2046-01-01 00:00:00.0,a,b
+7000,2,2040-01-01 00:00:00.0,a,b
+## r_l_ntp
+drop table if exists r_l_ntp1
+drop table if exists r_l_ntp2
+create table if not exists r_l_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values in ( 1000, 2000),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( to_days('2041-01-01') ) (
+subpartition p2sp1 values in ( 1000, 2000),
+subpartition p2sp2 values in ( 3000, 4000),
+subpartition p2sp3 values in ( default )
+)
+)
+create table if not exists r_l_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values in ( 1000, 2000),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( to_days('2041-01-01') ) (
+subpartition p2sp1 values in ( 1000, 2000),
+subpartition p2sp2 values in ( 3000, 4000),
+subpartition p2sp3 values in ( default )
+)
+)
+insert into r_l_ntp1 values (1000,2,'2010-01-01','a','b')
+insert into r_l_ntp1 values (1500,2,'2020-01-01','a','b')
+insert into r_l_ntp1 values (3000,2,'2040-01-01','a','b')
+alter table r_l_ntp1 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+insert into r_l_ntp1 values (4000,2,'2010-01-01','a','b')
+insert into r_l_ntp1 values (3000,2,'2020-01-01','a','b')
+insert into r_l_ntp1 values (6000,2,'2044-01-01','a','b')
+insert into r_l_ntp2 values (1000,2,'2010-01-01','a','b')
+insert into r_l_ntp2 values (1500,2,'2020-01-01','a','b')
+insert into r_l_ntp2 values (3000,2,'2040-01-01','a','b')
+alter table r_l_ntp2 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+alter table r_l_ntp2 add partition(partition p4 values less than ( to_days('2080-01-01') ))
+insert into r_l_ntp2 values (4000,2,'2010-01-01','a','b')
+insert into r_l_ntp2 values (3000,2,'2030-01-01','a','b')
+insert into r_l_ntp2 values (3000,2,'2050-01-01','a','b')
+alter table r_l_ntp2 drop partition p2
+insert into r_l_ntp2 values (1000,2,'2010-01-01','a','b')
+insert into r_l_ntp2 values (2000,2,'2011-01-01','a','b')
+insert into r_l_ntp2 values (3000,2,'2012-01-01','a','b')
+show full create table r_l_ntp1
+Table,Create Table
+r_l_ntp1,CREATE TABLE `r_l_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST(`a`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES IN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (745461)
+ (SUBPARTITION p2sp1 VALUES IN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN (3000,4000) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table r_l_ntp2
+Table,Create Table
+r_l_ntp2,CREATE TABLE `r_l_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST(`a`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES IN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (759705)
+ (SUBPARTITION p4sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from r_l_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+1000,2,2010-01-01 00:00:00.0,a,b
+1500,2,2020-01-01 00:00:00.0,a,b
+3000,2,2020-01-01 00:00:00.0,a,b
+3000,2,2040-01-01 00:00:00.0,a,b
+4000,2,2010-01-01 00:00:00.0,a,b
+6000,2,2044-01-01 00:00:00.0,a,b
+select * from r_l_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+1000,2,2010-01-01 00:00:00.0,a,b
+1000,2,2010-01-01 00:00:00.0,a,b
+2000,2,2011-01-01 00:00:00.0,a,b
+3000,2,2012-01-01 00:00:00.0,a,b
+3000,2,2050-01-01 00:00:00.0,a,b
+4000,2,2010-01-01 00:00:00.0,a,b
+## r_lc_ntp
+drop table if exists r_lc_ntp1
+drop table if exists r_lc_ntp2
+create table if not exists r_lc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values in ( (1000, 2000) ),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( to_days('2041-01-01') ) (
+subpartition p2sp1 values in ( (1000, 2000) ),
+subpartition p2sp2 values in ( (4000, 3000) ),
+subpartition p2sp3 values in ( default )
+)
+)
+create table if not exists r_lc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values in ( (1000, 2000) ),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( to_days('2041-01-01') ) (
+subpartition p2sp1 values in ( (1000, 2000) ),
+subpartition p2sp2 values in ( (4000, 3000) ),
+subpartition p2sp3 values in ( default )
+)
+)
+insert into r_lc_ntp1 values (1000,2000,'2010-01-01','a','b')
+insert into r_lc_ntp1 values (4000,3000,'2020-01-01','a','b')
+insert into r_lc_ntp1 values (3000,2,'2040-01-01','a','b')
+alter table r_lc_ntp1 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+insert into r_lc_ntp1 values (5000,2,'2010-01-01','a','b')
+insert into r_lc_ntp1 values (1000,2000,'2025-01-01','a','b')
+insert into r_lc_ntp1 values (6000,2,'2049-01-01','a','b')
+insert into r_lc_ntp2 values (1000,2000,'2010-01-01','a','b')
+insert into r_lc_ntp2 values (4000,3000,'2020-01-01','a','b')
+insert into r_lc_ntp2 values (3000,2,'2040-01-01','a','b')
+alter table r_lc_ntp2 add partition(partition p3 values less than ( to_days('2050-01-01') ))
+insert into r_lc_ntp2 values (4000,3000,'2010-01-01','a','b')
+insert into r_lc_ntp2 values (4000,3000,'2020-01-01','a','b')
+insert into r_lc_ntp2 values (4000,3000,'2049-01-01','a','b')
+alter table r_lc_ntp2 drop partition p2
+insert into r_lc_ntp2 values (1000,2000,'2010-01-01','a','b')
+insert into r_lc_ntp2 values (2000,2,'2011-01-01','a','b')
+insert into r_lc_ntp2 values (3000,2,'2012-01-01','a','b')
+show full create table r_lc_ntp1
+Table,Create Table
+r_lc_ntp1,CREATE TABLE `r_lc_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (745461)
+ (SUBPARTITION p2sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ((4000,3000)) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table r_lc_ntp2
+Table,Create Table
+r_lc_ntp2,CREATE TABLE `r_lc_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN (737790)
+ (SUBPARTITION p1sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (748748)
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from r_lc_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+1000,2000,2010-01-01 00:00:00.0,a,b
+1000,2000,2025-01-01 00:00:00.0,a,b
+3000,2,2040-01-01 00:00:00.0,a,b
+4000,3000,2020-01-01 00:00:00.0,a,b
+5000,2,2010-01-01 00:00:00.0,a,b
+6000,2,2049-01-01 00:00:00.0,a,b
+select * from r_lc_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+1000,2000,2010-01-01 00:00:00.0,a,b
+1000,2000,2010-01-01 00:00:00.0,a,b
+2000,2,2011-01-01 00:00:00.0,a,b
+3000,2,2012-01-01 00:00:00.0,a,b
+4000,3000,2010-01-01 00:00:00.0,a,b
+4000,3000,2049-01-01 00:00:00.0,a,b
+#########
+  ## rc_h_ntp
+drop table if exists rc_h_ntp1
+drop table if exists rc_h_ntp2
+create table if not exists rc_h_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) subpartitions 2,
+partition p2 values less than ( '2041-01-01','abc' ) subpartitions 3
+)
+create table if not exists rc_h_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) subpartitions 2,
+partition p2 values less than ( '2041-01-01','abc' ) subpartitions 3
+)
+insert into rc_h_ntp1 values (1000,2,'2010-01-01','abc','b')
+insert into rc_h_ntp1 values (1500,2,'2020-01-01','abc','b')
+insert into rc_h_ntp1 values (3000,2,'2040-01-01','abc','b')
+alter table rc_h_ntp1 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_h_ntp1 values (4000,2,'2010-01-01','abc','b')
+insert into rc_h_ntp1 values (3000,2,'2020-01-01','abc','b')
+insert into rc_h_ntp1 values (6000,2,'2049-01-01','abc','b')
+insert into rc_h_ntp2 values (1000,2,'2010-01-01','abc','b')
+insert into rc_h_ntp2 values (1500,2,'2020-01-01','abc','b')
+insert into rc_h_ntp2 values (3000,2,'2040-01-01','abc','b')
+alter table rc_h_ntp2 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+alter table rc_h_ntp2 add partition(partition p4 values less than ( '2080-01-01','abc' ))
+insert into rc_h_ntp2 values (4000,2,'2010-01-01','abc','b')
+insert into rc_h_ntp2 values (3000,2,'2051-01-01','abc','b')
+insert into rc_h_ntp2 values (3000,2,'2042-01-01','abc','b')
+show full create table rc_h_ntp1
+Table,Create Table
+rc_h_ntp1,CREATE TABLE `rc_h_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table rc_h_ntp2
+Table,Create Table
+rc_h_ntp2,CREATE TABLE `rc_h_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN ('2080-01-01 00:00:00','abc')
+ (SUBPARTITION p4sp1 ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from rc_h_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+1000,2,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+4000,2,2010-01-01 00:00:00.0,abc,b
+6000,2,2049-01-01 00:00:00.0,abc,b
+select * from rc_h_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+1000,2,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+3000,2,2042-01-01 00:00:00.0,abc,b
+3000,2,2051-01-01 00:00:00.0,abc,b
+4000,2,2010-01-01 00:00:00.0,abc,b
+## rc_k_ntp
+drop table if exists rc_k_ntp1
+create table if not exists rc_k_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) subpartitions 2,
+partition p2 values less than ( '2041-01-01','abc' ) subpartitions 3
+)
+insert into rc_k_ntp1 values (1000,2,'2010-01-01','abc','b')
+insert into rc_k_ntp1 values (1500,2,'2020-01-01','abc','b')
+insert into rc_k_ntp1 values (3000,2,'2040-01-01','abc','b')
+alter table rc_k_ntp1 drop partition p2
+insert into rc_k_ntp1 values (4000,2,'2010-01-01','abc','b')
+insert into rc_k_ntp1 values (3000,2,'2011-01-01','abc','b')
+insert into rc_k_ntp1 values (6000,2,'2012-01-01','abc','b')
+show full create table rc_k_ntp1
+Table,Create Table
+rc_k_ntp1,CREATE TABLE `rc_k_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY KEY(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from rc_k_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+1000,2,2010-01-01 00:00:00.0,abc,b
+3000,2,2011-01-01 00:00:00.0,abc,b
+4000,2,2010-01-01 00:00:00.0,abc,b
+6000,2,2012-01-01 00:00:00.0,abc,b
+## rc_r_ntp
+drop table if exists rc_r_ntp1
+drop table if exists rc_r_ntp2
+create table if not exists rc_r_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range (a)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values less than ( 1000),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values less than ( 1000),
+subpartition p2sp2 values less than ( 2000),
+subpartition p2sp3 values less than ( maxvalue )
+)
+)
+create table if not exists rc_r_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range (a)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values less than ( 1000),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values less than ( 1000),
+subpartition p2sp2 values less than ( 2000),
+subpartition p2sp3 values less than ( maxvalue )
+)
+)
+insert into rc_r_ntp1 values (1000,2,'2010-01-01','abc','b')
+insert into rc_r_ntp1 values (1500,2,'2020-01-01','abc','b')
+insert into rc_r_ntp1 values (3000,2,'2040-01-01','abc','b')
+alter table rc_r_ntp1 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_r_ntp1 values (400,2,'2010-01-01','abc','b')
+insert into rc_r_ntp1 values (3000,2,'2011-01-01','abc','b')
+insert into rc_r_ntp1 values (6000,2,'2049-01-01','abc','b')
+alter table rc_r_ntp1 add partition(partition p4 values less than ( '2080-01-01','abc' ))
+insert into rc_r_ntp1 values (400,2,'2010-01-01','abc','b')
+insert into rc_r_ntp1 values (3000,2,'2041-01-01','abc','b')
+insert into rc_r_ntp1 values (6000,2,'2070-01-01','abc','b')
+insert into rc_r_ntp2 values (1000,2,'2010-01-01','abc','b')
+insert into rc_r_ntp2 values (1500,2,'2020-01-01','abc','b')
+insert into rc_r_ntp2 values (3000,2,'2040-01-01','abc','b')
+alter table rc_r_ntp2 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_r_ntp2 values (400,2,'2010-01-01','abc','b')
+insert into rc_r_ntp2 values (3000,2,'2031-01-01','abc','b')
+insert into rc_r_ntp2 values (1500,2,'2048-01-01','abc','b')
+alter table rc_r_ntp2 drop subpartition p1sp1,p1sp2
+insert into rc_r_ntp2 values (400,2,'2010-01-01','abc','b')
+insert into rc_r_ntp2 values (300,2,'2011-01-01','abc','b')
+insert into rc_r_ntp2 values (1500,2,'2040-01-01','abc','b')
+show full create table rc_r_ntp1
+Table,Create Table
+rc_r_ntp1,CREATE TABLE `rc_r_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN (2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN ('2080-01-01 00:00:00','abc')
+ (SUBPARTITION p4sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table rc_r_ntp2
+Table,Create Table
+rc_r_ntp2,CREATE TABLE `rc_r_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY RANGE(`a`)
+(PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN (2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from rc_r_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+400,2,2010-01-01 00:00:00.0,abc,b
+400,2,2010-01-01 00:00:00.0,abc,b
+1000,2,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2011-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+3000,2,2041-01-01 00:00:00.0,abc,b
+6000,2,2049-01-01 00:00:00.0,abc,b
+6000,2,2070-01-01 00:00:00.0,abc,b
+select * from rc_r_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+300,2,2011-01-01 00:00:00.0,abc,b
+400,2,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+1500,2,2040-01-01 00:00:00.0,abc,b
+1500,2,2048-01-01 00:00:00.0,abc,b
+3000,2,2031-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+## rc_rc_ntp
+drop table if exists rc_rc_ntp1
+drop table if exists rc_rc_ntp2
+create table if not exists rc_rc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values less than ( 1000, 2000),
+subpartition p1sp2 values less than ( maxvalue, maxvalue )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values less than ( 1000, 2000),
+subpartition p2sp2 values less than ( 2000, 2000),
+subpartition p2sp3 values less than ( maxvalue, maxvalue )
+)
+)
+create table if not exists rc_rc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values less than ( 1000, 2000),
+subpartition p1sp2 values less than ( maxvalue, maxvalue )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values less than ( 1000, 2000),
+subpartition p2sp2 values less than ( 2000, 2000),
+subpartition p2sp3 values less than ( maxvalue, maxvalue )
+)
+)
+insert into rc_rc_ntp1 values (1000,2,'2010-01-01','abc','b')
+insert into rc_rc_ntp1 values (1500,2,'2020-01-01','abc','b')
+insert into rc_rc_ntp1 values (3000,2,'2040-01-01','abc','b')
+alter table rc_rc_ntp1 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_rc_ntp1 values (400,2,'2010-01-01','abc','b')
+insert into rc_rc_ntp1 values (3000,2,'2031-01-01','abc','b')
+insert into rc_rc_ntp1 values (6000,2,'2045-01-01','abc','b')
+insert into rc_rc_ntp2 values (1000,2,'2010-01-01','abc','b')
+insert into rc_rc_ntp2 values (1500,2,'2020-01-01','abc','b')
+insert into rc_rc_ntp2 values (3000,2,'2040-01-01','abc','b')
+alter table rc_rc_ntp2 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+alter table rc_rc_ntp2 add partition(partition p4 values less than ( '2060-01-01','abc' ))
+insert into rc_rc_ntp2 values (400,2,'2010-01-01','abc','b')
+insert into rc_rc_ntp2 values (3000,2,'2041-01-01','abc','b')
+insert into rc_rc_ntp2 values (1500,2,'2050-01-01','abc','b')
+alter table rc_rc_ntp2 drop subpartition p1sp1,p1sp2
+insert into rc_rc_ntp2 values (400,2,'2010-01-01','abc','b')
+insert into rc_rc_ntp2 values (300,2,'2011-01-01','abc','b')
+insert into rc_rc_ntp2 values (1500,2,'2040-01-01','abc','b')
+show full create table rc_rc_ntp1
+Table,Create Table
+rc_rc_ntp1,CREATE TABLE `rc_rc_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 VALUES LESS THAN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES LESS THAN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN (2000,2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table rc_rc_ntp2
+Table,Create Table
+rc_rc_ntp2,CREATE TABLE `rc_rc_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES LESS THAN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN (2000,2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN ('2060-01-01 00:00:00','abc')
+ (SUBPARTITION p4sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from rc_rc_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+400,2,2010-01-01 00:00:00.0,abc,b
+1000,2,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2031-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+6000,2,2045-01-01 00:00:00.0,abc,b
+select * from rc_rc_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+300,2,2011-01-01 00:00:00.0,abc,b
+400,2,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+1500,2,2040-01-01 00:00:00.0,abc,b
+1500,2,2050-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+3000,2,2041-01-01 00:00:00.0,abc,b
+## rc_l_ntp
+drop table if exists rc_l_ntp1
+drop table if exists rc_l_ntp2
+create table if not exists rc_l_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list (a)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( 1000, 2000),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values in ( 1000, 2000),
+subpartition p2sp2 values in ( 3000, 4000),
+subpartition p2sp3 values in ( default )
+)
+)
+create table if not exists rc_l_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list (a)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( 1000, 2000),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values in ( 1000, 2000),
+subpartition p2sp2 values in ( 3000, 4000),
+subpartition p2sp3 values in ( default )
+)
+)
+insert into rc_l_ntp1 values (1000,2,'2010-01-01','abc','b')
+insert into rc_l_ntp1 values (1500,2,'2020-01-01','abc','b')
+insert into rc_l_ntp1 values (3000,2,'2040-01-01','abc','b')
+alter table rc_l_ntp1 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_l_ntp1 values (400,2,'2010-01-01','abc','b')
+insert into rc_l_ntp1 values (3000,2,'2011-01-01','abc','b')
+insert into rc_l_ntp1 values (6000,2,'2045-01-01','abc','b')
+alter table rc_l_ntp1 add partition(partition p4 values less than ( '2060-01-01','abc' ))
+insert into rc_l_ntp1 values (400,2,'2010-01-01','abc','b')
+insert into rc_l_ntp1 values (3000,2,'2031-01-01','abc','b')
+insert into rc_l_ntp1 values (6000,2,'2045-01-01','abc','b')
+insert into rc_l_ntp2 values (1000,2,'2010-01-01','abc','b')
+insert into rc_l_ntp2 values (2000,2,'2020-01-01','abc','b')
+insert into rc_l_ntp2 values (3000,2,'2040-01-01','abc','b')
+alter table rc_l_ntp2 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_l_ntp2 values (1000,2,'2010-01-01','abc','b')
+insert into rc_l_ntp2 values (4000,2,'2020-01-01','abc','b')
+insert into rc_l_ntp2 values (3000,2,'2045-01-01','abc','b')
+show full create table rc_l_ntp1
+Table,Create Table
+rc_l_ntp1,CREATE TABLE `rc_l_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY LIST(`a`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 VALUES IN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES IN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN (3000,4000) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN ('2060-01-01 00:00:00','abc')
+ (SUBPARTITION p4sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table rc_l_ntp2
+Table,Create Table
+rc_l_ntp2,CREATE TABLE `rc_l_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY LIST(`a`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 VALUES IN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES IN (1000,2000) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN (3000,4000) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from rc_l_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+400,2,2010-01-01 00:00:00.0,abc,b
+400,2,2010-01-01 00:00:00.0,abc,b
+1000,2,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2011-01-01 00:00:00.0,abc,b
+3000,2,2031-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+6000,2,2045-01-01 00:00:00.0,abc,b
+6000,2,2045-01-01 00:00:00.0,abc,b
+select * from rc_l_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+1000,2,2010-01-01 00:00:00.0,abc,b
+1000,2,2010-01-01 00:00:00.0,abc,b
+2000,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+3000,2,2045-01-01 00:00:00.0,abc,b
+4000,2,2020-01-01 00:00:00.0,abc,b
+## rc_lc_ntp
+drop table if exists rc_lc_ntp1
+drop table if exists rc_lc_ntp2
+create table if not exists rc_lc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( (1000, 2000)),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values in ( (1000, 2000)),
+subpartition p2sp2 values in ( (2000, 2000)),
+subpartition p2sp3 values in ( default )
+)
+)
+create table if not exists rc_lc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+partition p1 values less than ( '2020-01-01','abc' ) (
+subpartition p1sp1 values in ( (1000, 2000)),
+subpartition p1sp2 values in ( default )
+),
+partition p2 values less than ( '2041-01-01','abc' ) (
+subpartition p2sp1 values in ( (1000, 2000)),
+subpartition p2sp2 values in ( (2000, 2000)),
+subpartition p2sp3 values in ( default )
+)
+)
+insert into rc_lc_ntp1 values (1000,2000,'2010-01-01','abc','b')
+insert into rc_lc_ntp1 values (1500,2,'2020-01-01','abc','b')
+insert into rc_lc_ntp1 values (3000,2,'2040-01-01','abc','b')
+alter table rc_lc_ntp1 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_lc_ntp1 values (1000,2000,'2010-01-01','abc','b')
+insert into rc_lc_ntp1 values (3000,2,'2031-01-01','abc','b')
+insert into rc_lc_ntp1 values (6000,2,'2045-01-01','abc','b')
+insert into rc_lc_ntp2 values (1000,2000,'2010-01-01','abc','b')
+insert into rc_lc_ntp2 values (1500,2,'2020-01-01','abc','b')
+insert into rc_lc_ntp2 values (3000,2,'2040-01-01','abc','b')
+alter table rc_lc_ntp2 add partition(partition p3 values less than ( '2050-01-01','abc' ))
+insert into rc_lc_ntp2 values (1000,2000,'2010-01-01','abc','b')
+insert into rc_lc_ntp2 values (2000,2000,'2029-01-01','abc','b')
+insert into rc_lc_ntp2 values (2000,2000,'2045-01-01','abc','b')
+alter table rc_lc_ntp2 drop subpartition p1sp1,p1sp2
+insert into rc_lc_ntp2 values (1000,2000,'2010-01-01','abc','b')
+insert into rc_lc_ntp2 values (2000,2000,'2020-01-01','abc','b')
+insert into rc_lc_ntp2 values (2000,2000,'2040-01-01','abc','b')
+show full create table rc_lc_ntp1
+Table,Create Table
+rc_lc_ntp1,CREATE TABLE `rc_lc_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p1sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ((2000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+show full create table rc_lc_ntp2
+Table,Create Table
+rc_lc_ntp2,CREATE TABLE `rc_lc_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p2 VALUES LESS THAN ('2041-01-01 00:00:00','abc')
+ (SUBPARTITION p2sp1 VALUES IN ((1000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN ((2000,2000)) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN ('2050-01-01 00:00:00','abc')
+ (SUBPARTITION p3sp1 VALUES IN (DEFAULT) ENGINE = InnoDB))
+/* tablegroup = `tg` */
+select * from rc_lc_ntp1 order by a,b,c,d,e
+a,b,c,d,e
+1000,2000,2010-01-01 00:00:00.0,abc,b
+1000,2000,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+3000,2,2031-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b
+6000,2,2045-01-01 00:00:00.0,abc,b
+select * from rc_lc_ntp2 order by a,b,c,d,e
+a,b,c,d,e
+1000,2000,2010-01-01 00:00:00.0,abc,b
+1500,2,2020-01-01 00:00:00.0,abc,b
+2000,2000,2020-01-01 00:00:00.0,abc,b
+2000,2000,2029-01-01 00:00:00.0,abc,b
+2000,2000,2040-01-01 00:00:00.0,abc,b
+2000,2000,2045-01-01 00:00:00.0,abc,b
+3000,2,2040-01-01 00:00:00.0,abc,b

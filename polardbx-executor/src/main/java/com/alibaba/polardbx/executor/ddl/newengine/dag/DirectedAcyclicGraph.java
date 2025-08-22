@@ -351,8 +351,9 @@ public class DirectedAcyclicGraph {
         StringBuilder dag = new StringBuilder();
         dag.append("digraph G {\n");
         for (Vertex v : vertexes) {
-            dag.append(String.format("%s [shape=record  label=\"{taskId:%s|name:%s}\"];", v.object.hashCode(),
-                v.object.getTaskId(), v.object.getName()) + "\n");
+            dag.append(
+                String.format("%s [shape=record  label=\"{taskId:%s|name:%s|hashCode:%s}\"];", v.object.hashCode(),
+                    v.object.getTaskId(), v.object.getName(), v.object.hashCode()) + "\n");
         }
         for (Edge e : edges) {
             dag.append(String.format("%s -> %s\n", e.source.hashCode(), e.target.hashCode()));

@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.optimizer.sharding.utils;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.Connection;
 
@@ -32,27 +34,28 @@ import java.sql.Connection;
 public class DrdsDefaultPartitionNumUtil {
     private static Integer dbPartitionsDefault = null;
     final private static Integer tbPartitionsDefault = 1;
+    private static Integer DN_NUM_DEFAULT = null;
 
     private DrdsDefaultPartitionNumUtil() {
     }
 
-    public static synchronized int getDrdsDefaultDbPartitionNum() {
-        if (dbPartitionsDefault != null) {
-            return dbPartitionsDefault;
-        } else {
+    public static synchronized int getDrdsDefaultDbPartitionNum(ExecutionContext ec) {
+        if (DN_NUM_DEFAULT == null) {
             try (Connection metaDbConn = MetaDbUtil.getConnection()) {
                 StorageInfoAccessor storageInfoAccessor =
                     new StorageInfoAccessor();
                 storageInfoAccessor.setConnection(metaDbConn);
-                int rwDnNum = storageInfoAccessor.getStorageIdListByInstIdAndInstKind(
+                DN_NUM_DEFAULT = storageInfoAccessor.getStorageIdListByInstIdAndInstKind(
                     ServerInstIdManager.getInstance().getMasterInstId()
                     , StorageInfoRecord.INST_KIND_MASTER).size();
-                dbPartitionsDefault = 8 * rwDnNum;
-                return dbPartitionsDefault;
             } catch (Exception e) {
                 throw new TddlNestableRuntimeException("failed to query metaDb", e);
             }
         }
+        Integer drdsToAutoDbPartitionsDefault =
+            ec.getParamManager().getInt(ConnectionParams.DRDS_TO_AUTO_DB_PARTITIONS_DEFAULT);
+        dbPartitionsDefault = drdsToAutoDbPartitionsDefault * DN_NUM_DEFAULT;
+        return dbPartitionsDefault;
     }
 
     public static synchronized int getDrdsDefaultTbPartitionNum() {

@@ -21,9 +21,7 @@ import com.alibaba.polardbx.common.oss.ColumnarFileType;
 import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
-import com.alibaba.polardbx.common.oss.filesystem.FSOSSInputStream;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
-import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystemStore;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -36,6 +34,7 @@ import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PositionedReadable;
@@ -121,10 +120,11 @@ public class FileSystemUtils {
     /**
      * Read fully file from engine.
      */
+    @Deprecated // bad performance for OSS
     public static byte[] readFullyFile(String fileName, Engine engine, boolean isColumnar) {
         FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
-        try (InputStream in = fileSystem.open(buildPath(fileSystem, fileName, isColumnar))) {
-            // TODO(siyun): migrate to use cached file system
+        Path path = buildPath(fileSystem, fileName, isColumnar);
+        try (InputStream in = fileSystem.open(path)) {
             return IOUtils.toByteArray(in);
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
@@ -151,10 +151,7 @@ public class FileSystemUtils {
             if (engine == Engine.OSS) {
                 // This will bypass cache filesystem for OSS
                 OSSFileSystem ossFileSystem = (OSSFileSystem) ((CachingFileSystem) fileSystem).getDataTier();
-                OSSFileSystemStore ossFileSystemStore = ossFileSystem.getStore();
-                String ossKeyPath = ossFileSystem.pathToKey(filePath);
-                return new FSDataInputStream(new FSOSSInputStream(ossFileSystemStore, ossKeyPath,
-                    DynamicConfig.getInstance().getOssStreamBufferSize()));
+                return ossFileSystem.open(filePath);
             } else {
                 return fileSystem.open(filePath);
             }

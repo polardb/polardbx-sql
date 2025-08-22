@@ -18,12 +18,14 @@ package com.alibaba.polardbx.optimizer.planmanager;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -40,6 +42,7 @@ import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
 import com.alibaba.polardbx.gms.node.MPPQueryMonitor;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.util.SyncUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -50,11 +53,11 @@ import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.PostPlanner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.BaseParametricQueryAdvisor;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
 import com.alibaba.polardbx.stats.metric.FeatureStats;
@@ -68,9 +71,11 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexTableInputRef;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -80,6 +85,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_BASELINE_SYNC_BYTE_SIZE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_BASELINE_SYNC_PLAN_SIZE;
@@ -89,6 +95,7 @@ import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
 import static com.alibaba.polardbx.gms.module.LogPattern.LOAD_DATA;
 import static com.alibaba.polardbx.gms.module.LogPattern.UNEXPECTED;
 import static com.alibaba.polardbx.optimizer.planmanager.BaselineInfo.EXTEND_POINT_SET;
+import static com.alibaba.polardbx.optimizer.planmanager.BaselineInfo.hotEvolution;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.PLAN_SOURCE.PLAN_CACHE;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.PLAN_SOURCE.SPM_FIX;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.PLAN_SOURCE.SPM_NEW_BUILD;
@@ -418,7 +425,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             if (plannerContext.getExpectedRowcount() == -1) {
                 // record first
                 plannerContext.setExpectedRowcount((long) runtimeRowCount[0]);
-            } else if (baselineSizeCheck(schema) &&
+            } else if (plannerContext.getBaselineInfo() == null &&
+                baselineSizeCheck(schema) &&
                 !baselineSchemaMap.containsKey(parameterizedSql) &&
                 !PlanManagerUtil.isTolerated(plannerContext.getExpectedRowcount(), runtimeRowCount[0], minorTole) &&
                 PlanManagerUtil.baselineSupported(plan)) {
@@ -518,7 +526,6 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                     ModuleLogInfo.getInstance().logRecord(Module.SPM, LogPattern.PROCESSING,
                         new String[] {"SPM removed baseline by force", removeSchema + "," + removeSql},
                         LogLevel.NORMAL);
-                    schemaMap.remove(removeSql);
                     this.deleteBaseline(removeSchema, removeSql);
                 } else {
                     BaselineInfo baselineInfo = schemaMap.get(removeSql);
@@ -535,7 +542,6 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                         ModuleLogInfo.getInstance().logRecord(Module.SPM, LogPattern.PROCESSING,
                             new String[] {"SPM removed baseline", removeSchema + "," + removeSql},
                             LogLevel.NORMAL);
-                        schemaMap.remove(removeSql);
                         this.deleteBaseline(removeSchema, removeSql);
                     } else {
                         ModuleLogInfo.getInstance().logRecord(Module.SPM, LogPattern.PROCESSING,
@@ -585,6 +591,15 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                     } else {
                         cmpSchema = cmpSchema.toLowerCase();
                     }
+                    if (OptimizerContext.getContext(cmpSchema) == null) {
+                        continue;
+                    }
+
+                    try {
+                        handleView(schema, table, baselineInfo, cmpSchema, cmpTable, toRemove);
+                    } catch (Exception e) {
+                        loggerSpm.error("handleView error:" + cmpSchema + "," + cmpTable + ", " + e.getMessage(), e);
+                    }
 
                     if (schema.equalsIgnoreCase(cmpSchema) && cmpTable.equalsIgnoreCase(table)) {
                         Set<String> removeSet = toRemove.get(schema);
@@ -600,6 +615,67 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
 
         // remove
         removeBaseline(toRemove, isForce);
+    }
+
+    /**
+     * Handles the reference relationship of tables in views and checks whether specific baseline information needs to be removed.
+     *
+     * @param targetSchema The current database schema name
+     * @param targetTable The table name
+     * @param baselineInfo The baseline info object
+     * @param comparisonSchema The comparison database schema name
+     * @param comparisonTable The comparison table name
+     * @param removalCandidates A map containing sets of strings that need to be removed as candidates
+     */
+    public static void handleView(String targetSchema, String targetTable, BaselineInfo baselineInfo,
+                                  String comparisonSchema, String comparisonTable,
+                                  Map<String, Set<String>> removalCandidates) {
+        try {
+
+            // Get the view definition of the comparison table
+            SystemTableView.Row viewRow = OptimizerContext.getContext(comparisonSchema)
+                .getViewManager()
+                .select(comparisonTable);
+
+            if (viewRow != null) {
+                String viewDefinition = viewRow.getViewDefinition();
+
+                // Create an execution context and set parameters
+                ExecutionContext executionContext = new ExecutionContext(comparisonSchema);
+                executionContext.setParams(new Parameters());
+
+                // Plan the query execution plan
+                ExecutionPlan executionPlan = Planner.getInstance().plan(viewDefinition, executionContext);
+
+                // Obtain all referenced tables
+                Set<Pair<String, String>> tableSet = executionPlan.getTableSet();
+
+                for (Pair<String, String> table : tableSet) {
+                    String referencedSchema = table.getKey();
+                    String referencedTableId = table.getValue();
+
+                    if (TStringUtil.isEmpty(referencedSchema)) {
+                        referencedSchema = comparisonSchema;
+                    }
+
+                    // If it references the specified table, record the baseline info for potential removal
+                    if (referencedSchema.equalsIgnoreCase(targetSchema) &&
+                        referencedTableId.equalsIgnoreCase(targetTable)) {
+                        Set<String> candidateRemovalSet = removalCandidates.get(referencedSchema);
+
+                        if (candidateRemovalSet == null) {
+                            candidateRemovalSet = Sets.newHashSet();
+                            removalCandidates.put(referencedSchema, candidateRemovalSet);
+                        }
+
+                        candidateRemovalSet.add(baselineInfo.getParameterSql());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Add exception handling to ensure the program does not terminate due to unexpected issues
+            loggerSpm.error("Error processing view definition: " + comparisonSchema + "," + comparisonTable, e);
+        }
     }
 
     public static String getBaselineAsJson(Map<String, Map<String, BaselineInfo>> baselineMap) {
@@ -623,6 +699,9 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             for (Map.Entry<String, BaselineInfo> e : entry.getValue().entrySet()) {
                 String sql = e.getKey();
                 BaselineInfo b = e.getValue();
+                if (b.isDirty()) {
+                    continue;
+                }
                 String bStr = BaselineInfo.serializeToJson(b, simpleMode);
                 if (fullLength > InstConfUtil.getLong(MAX_BASELINE_SYNC_BYTE_SIZE)) {
                     break;
@@ -722,7 +801,7 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         return SPM + "," + PLAN_CACHE + "," + PLAN_CACHE_CAPACITY;
     }
 
-    static class Result {
+    public static class Result {
         public final BaselineInfo baselineInfo;
         public final PlanInfo planInfo;
         public final RelNode plan;
@@ -801,29 +880,7 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
          */
         int cHashCode = PlanManagerUtil.computeTablesVersion(baselineInfo.getTableSet(), schema, ec);
         if (baselineInfo.isRebuildAtLoad()) {
-            resultPlanInfo = baselineInfo.computeRebuiltAtLoadPlanIfNotExists(() -> {
-                final String hint = Optional.ofNullable(baselineInfo.getHint()).orElse("");
-                final RelNode retPlan = Planner.getInstance()
-                    .plan(hint + " " + sqlParameterized.getSql(), ec)
-                    .getPlan();
-                int tablesVersion =
-                    PlanManagerUtil.computeTablesVersion(baselineInfo.getTableSet(), ec.getSchemaName(), ec);
-
-                return new PlanInfo(retPlan, baselineInfo.getId(), simpleCostValue(retPlan), ec.getTraceId(),
-                    PlanManagerUtil.getPlanOrigin(plan), tablesVersion);
-            });
-
-            PLAN_SOURCE planSource = SPM_FIX;
-            if (resultPlanInfo.getTablesHashCode() != cHashCode) {
-                // in case of repeated updates
-                synchronized (baselineInfo.getRebuildAtLoadPlan()) {
-                    planSource = tryUpdatePlan(resultPlanInfo, sqlParameterized, cluster, relOptSchema, cHashCode, ec);
-                }
-            }
-
-            resultPlan = resultPlanInfo.getPlan(null, null);
-
-            return new Result(baselineInfo, resultPlanInfo, resultPlan, planSource);
+            return handleRebuildAtLoadPlan(baselineInfo, plan, sqlParameterized, ec, cHashCode);
         }
 
         /*
@@ -840,7 +897,9 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                 !StringUtils.isEmpty(fixPlan.getFixHint())) {
                 // in case of repeated updates
                 synchronized (fixPlan) {
-                    planSource = tryUpdatePlan(fixPlan, sqlParameterized, cluster, relOptSchema, cHashCode, ec);
+                    if (fixPlan.getTablesHashCode() != cHashCode) {
+                        planSource = tryUpdatePlan(fixPlan, sqlParameterized, cluster, relOptSchema, cHashCode, ec);
+                    }
                 }
             }
             resultPlan = fixPlan.getPlan(cluster, relOptSchema);
@@ -912,21 +971,55 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         }
     }
 
+    @NotNull
+    public Result handleRebuildAtLoadPlan(BaselineInfo baselineInfo,
+                                          RelNode plan,
+                                          SqlParameterized sqlParameterized,
+                                          ExecutionContext ec,
+                                          int cHashCode) {
+        PlanInfo resultPlanInfo;
+        RelNode resultPlan;
+        Supplier<PlanInfo> supplier = () -> {
+            final String hint = Optional.ofNullable(baselineInfo.getHint()).orElse("");
+            final RelNode retPlan = Planner.getInstance()
+                .plan(hint + " " + sqlParameterized.getSql(), ec)
+                .getPlan();
+            int tablesVersion =
+                PlanManagerUtil.computeTablesVersion(baselineInfo.getTableSet(), ec.getSchemaName(), ec);
+
+            return new PlanInfo(retPlan, baselineInfo.getId(), simpleCostValue(retPlan), ec.getTraceId(),
+                PlanManagerUtil.getPlanOrigin(plan), tablesVersion);
+        };
+        resultPlanInfo = baselineInfo.computeRebuiltAtLoadPlanIfNotExists(supplier);
+
+        PLAN_SOURCE planSource = SPM_FIX;
+        if (resultPlanInfo.getTablesHashCode() != cHashCode) {
+            // in case of repeated updates
+            synchronized (baselineInfo.getRebuildAtLoadPlan()) {
+                baselineInfo.resetRebuildAtLoadPlanIfMismatched(cHashCode);
+                resultPlanInfo = baselineInfo.computeRebuiltAtLoadPlanIfNotExists(supplier);
+            }
+        }
+
+        resultPlan = resultPlanInfo.getPlan(null, null);
+
+        return new Result(baselineInfo, resultPlanInfo, resultPlan, planSource);
+    }
+
     /**
      * update fixed plan by record hint
      */
-    private PLAN_SOURCE tryUpdatePlan(PlanInfo planInfo,
-                                      SqlParameterized sqlParameterized,
-                                      RelOptCluster cluster,
-                                      RelOptSchema relOptSchema, int currentHashCode,
-                                      ExecutionContext executionContext) {
+    public static PLAN_SOURCE tryUpdatePlan(PlanInfo planInfo,
+                                            SqlParameterized sqlParameterized,
+                                            RelOptCluster cluster,
+                                            RelOptSchema relOptSchema, int currentHashCode,
+                                            ExecutionContext executionContext) {
         RelNode oldPlan = planInfo.getPlan(cluster, relOptSchema);
         ExecutionContext executionContextCopy = executionContext.copy();
         executionContextCopy.setUseHint(true);
         ExecutionPlan newPlan =
             Planner.getInstance()
                 .plan(planInfo.getFixHint() + " " + sqlParameterized.getSql(), executionContextCopy);
-        PlanManagerUtil.jsonToRelNode(planInfo.getPlanJsonString(), cluster, relOptSchema);
         // if row type changed(select * xxx), meaning plan should be rebuilt
         RelDataType oldRowType = oldPlan.getRowType();
         RelDataType newRowType = newPlan.getPlan().getRowType();
@@ -942,6 +1035,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                     + ", stmt:" + sqlParameterized.getSql()
                     + ", old row type:" + oldRowType.getFullTypeString()
                     + ", new row type:" + newRowType.getFullTypeString()
+                    + ", bid=" + planInfo.getBaselineId()
+                    + ", pid=" + planInfo.getId()
             );
             return PLAN_SOURCE.SPM_FIX_PLAN_UPDATE_FOR_ROW_TYPE;
         } else if (!oldPlan.isValid(IGNORE, null)) {
@@ -951,13 +1046,18 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                 "fix plan being rebuilt for plan valid check, fix hint:" + planInfo.getFixHint()
                     + ", stmt:" + sqlParameterized.getSql()
                     + ", old plan:" + oldPlan.getDigest()
+                    + ", bid=" + planInfo.getBaselineId()
+                    + ", pid=" + planInfo.getId()
             );
             return PLAN_SOURCE.SPM_FIX_PLAN_UPDATE_FOR_INVALID;
         } else {
+            planInfo.resetPlan(newPlan.getPlan());
             planInfo.setTablesHashCode(currentHashCode);
             loggerSpm.warn("fix plan reset ddl hashcode, fix hint:" + planInfo.getFixHint()
                 + ", stmt:" + sqlParameterized.getSql()
                 + ", tables:" + newPlan.getTableSet()
+                + ", bid=" + planInfo.getBaselineId()
+                + ", pid=" + planInfo.getId()
             );
             return PLAN_SOURCE.SPM_FIX_DDL_HASHCODE_UPDATE;
         }
@@ -1160,6 +1260,11 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                 ",errorCount = " + errorCount + ",executionTimeInSeconds = " + executionTimeInSeconds, ex);
             final int maxPlanInfoErrorCount = InstConfUtil.getInt(ConnectionParams.SPM_MAX_PLAN_INFO_ERROR_COUNT);
             if (errorCount >= maxPlanInfoErrorCount) {
+                // mark fixed plan need updated instead of delete it
+                if (planInfo.isFixed()) {
+                    planInfo.setTablesHashCode(PlanInfo.REBUILD_PLAN_HASH_CODE);
+                    return;
+                }
                 // planInfo errorCount larger than SPM_MAX_PLAN_INFO_ERROR_COUNT
                 // if planInfo is the only acceptedPlan. notifyDeleteBaseline
                 baselineInfo.removeUnacceptedPlan(planInfo.getId());
@@ -1227,6 +1332,9 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         if (StringUtils.isEmpty(schema)) {
             throw GeneralUtil.nestedException("empty schema name");
         }
+        if (baselineInfo.isDirty()) {
+            return null;
+        }
         schema = schema.toLowerCase(Locale.ROOT);
         if (!baselineSizeCheck(schema)) {
             return null;
@@ -1260,6 +1368,9 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                     baselineMap.computeIfAbsent(schema, k -> Maps.newConcurrentMap());
                 for (String bJson : entry.getValue()) {
                     BaselineInfo b = BaselineInfo.deserializeFromJson(bJson);
+                    if (b.isDirty()) {
+                        continue;
+                    }
                     baselineInfoMap.put(b.getParameterSql(), b);
                     if (SyncUtil.isNodeWithSmallestId()) {
                         // persist baseline
@@ -1370,7 +1481,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                     continue;
                 }
             } else {
-                if (!baselineInfoRecord.fixed && baselineSize > maxSize) {
+                boolean hotEvolution = hotEvolution(baselineInfoRecord.getExtendField());
+                if (!hotEvolution && !baselineInfoRecord.fixed && baselineSize > maxSize) {
                     continue;
                 }
                 // sql -> baseline
@@ -1476,23 +1588,19 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
      */
     @Override
     public void deleteBaseline(String schema, String parameterSql) {
-        if (StringUtils.isEmpty(schema)) {
+        if (StringUtils.isEmpty(schema) || StringUtils.isEmpty(parameterSql)) {
             return;
         }
         schema = schema.toLowerCase(Locale.ROOT);
-        if (baselineMap.get(schema) == null) {
-            return;
-        }
         Map<String, BaselineInfo> bMap = baselineMap.get(schema);
-        if (bMap == null) {
-            return;
+        if (bMap != null) {
+            BaselineInfo baselineInfo = bMap.remove(parameterSql);
+            if (baselineInfo != null) {
+                baselineInfo.setDirty(true);
+            }
         }
-        BaselineInfo baselineInfo = bMap.get(parameterSql);
-        if (baselineInfo == null) {
-            return;
-        }
-        bMap.remove(parameterSql);
-        int baselineId = baselineInfo.getId();
+
+        int baselineId = parameterSql.hashCode();
         if (SyncUtil.isNodeWithSmallestId()) {
             try (BaselineInfoAccessor baselineInfoAccessor = new BaselineInfoAccessor(true)) {
                 baselineInfoAccessor.deleteBaseline(schema, baselineId);
@@ -1539,7 +1647,13 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             return;
         }
 
-        bMap.remove(key);
+        BaselineInfo target = bMap.remove(key);
+        if (target == null) {
+            ModuleLogInfo.getInstance().logInfo(Module.SPM, LogPattern.CHECK_FAIL,
+                new String[] {"baseline delete check ", schema + "," + baselineId});
+        } else {
+            target.setDirty(true);
+        }
         if (SyncUtil.isNodeWithSmallestId()) {
             try (BaselineInfoAccessor baselineInfoAccessor = new BaselineInfoAccessor(true)) {
                 baselineInfoAccessor.deleteBaseline(schema, baselineId);

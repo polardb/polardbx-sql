@@ -32,7 +32,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.columnar.CreateCheckCciTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CreateColumnarIndexValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CreateMockColumnarIndexTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.InsertColumnarIndexMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.columnar.UpdateColumnarConfigTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.WaitColumnarTableCreationTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CciUpdateIndexStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
@@ -41,6 +40,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateColumnarIndex;
+import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
@@ -64,11 +64,11 @@ import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlPartitionBy;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -167,7 +167,7 @@ public class CreateColumnarIndexJobFactory extends DdlJobFactory {
         this.partitionInfo = indexPartitionInfo;
 
         if (engineName == null) {
-            this.engine = Engine.DEFAULT_COLUMNAR_ENGINE;
+            this.engine = FileSystemManager.getDefaultColumnarEngine();
         } else {
             this.engine = Engine.of(engineName.toString());
         }
@@ -327,6 +327,7 @@ public class CreateColumnarIndexJobFactory extends DdlJobFactory {
         // 2.4 CDC mark create columnar table
         CdcCreateColumnarIndexTask cdcCreateColumnarIndexTask = null;
         CreateMockColumnarIndexTask createMockColumnarIndexTask = null;
+        Map<String, String> columnarOptions = sqlCreateIndex.getColumnarOptions();
         if (executionContext.getParamManager().getBoolean(ConnectionParams.MOCK_COLUMNAR_INDEX)) {
             //create mock columnar index
             createMockColumnarIndexTask =
@@ -347,7 +348,7 @@ public class CreateColumnarIndexJobFactory extends DdlJobFactory {
                 // but `columnar_table_evolution` will not be updated.
                 // So use `columnar_config` to get the latest options,
                 // and use `columnar_table_evolution` to get the immutable options (like dict columns).
-                sqlCreateIndex.getColumnarOptions(),
+                columnarOptions,
                 sqlCreateIndex.toString(true),
                 versionId);
             taskList.add(cdcCreateColumnarIndexTask);
@@ -390,17 +391,6 @@ public class CreateColumnarIndexJobFactory extends DdlJobFactory {
         );
         createCheckCciTask.setExceptionAction(DdlExceptionAction.PAUSE);
         taskList.add(createCheckCciTask);
-
-        // 3.1.3 update columnar config if necessary
-        if (MapUtils.isNotEmpty(sqlCreateIndex.getColumnarOptions())) {
-            final UpdateColumnarConfigTask updateColumnarConfigTask = new UpdateColumnarConfigTask(
-                schemaName,
-                primaryTableName,
-                columnarIndexTableName,
-                sqlCreateIndex.getColumnarOptions()
-            );
-            taskList.add(updateColumnarConfigTask);
-        }
 
         // 3.2 change cci status to PUBLIC
         final CciUpdateIndexStatusTask updateCciStatusTask = (CciUpdateIndexStatusTask) new CciUpdateIndexStatusTask(

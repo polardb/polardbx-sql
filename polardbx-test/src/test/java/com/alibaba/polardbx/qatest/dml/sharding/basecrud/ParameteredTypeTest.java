@@ -86,6 +86,9 @@ public class ParameteredTypeTest extends ReadBaseTestCase {
         String updateSql1 = "update " + baseOneTableName1
             + " set `id` = 4,`catalog_name` = x'E58891E7BD9AE6B688E781ADE588B6E5BAA6', `catalog_name1` = x'D0CCB7A3CFFBC3F0D6C6B6C8', `user_id` = x'363233313364613336306232393636633230343363643234' WHERE `id` = 4 limit 1;";
         String selectSql1 = "select * from " + baseOneTableName1;
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set names utf8mb4");
+
         JdbcUtil.executeUpdateSuccess(tddlConnection, insertSql1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, updateSql1);
         ResultSet resultSet1 = JdbcUtil.executeQuery(selectSql1, tddlConnection);

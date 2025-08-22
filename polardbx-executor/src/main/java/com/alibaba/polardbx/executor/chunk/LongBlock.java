@@ -29,6 +29,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.util.BitSet;
 
@@ -729,8 +730,11 @@ public class LongBlock extends AbstractBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(values))
+            + (selection == null ? 0 : VMSupport.align((int) sizeOf(selection)));
+        estimatedSize = elementUsedBytes;
     }
 
     private int realPositionOf(int position) {

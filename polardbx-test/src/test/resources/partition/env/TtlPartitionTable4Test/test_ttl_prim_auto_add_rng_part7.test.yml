@@ -1,0 +1,119 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2025-01-08 00:00:00';
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION=true;
+
+create table auto_rng_part_tc7_t1(
+a int not null auto_increment,
+b bigint not null,
+primary key(a)
+)
+partition by range columns(b)
+(
+  partition p20200202 values less than(1580572800),
+  partition p20200303 values less than(1583164800),
+  partition p20200404 values less than(1585929600)
+)
+;
+
+show create table auto_rng_part_tc7_t1;
+
+alter table auto_rng_part_tc7_t1 modify ttl set ttl_expr= from_unixtime(`b`) expire after 2 MONTH timezone '+08:00',ttl_part_interval=interval(1,MONTH),archive_type='PARTITION', archive_table_post_allocate=2, archive_table_pre_allocate=3;
+
+set TTL_DEBUG_CURRENT_DATETIME='2022-02-08 00:00:00';
+alter table auto_rng_part_tc7_t1 cleanup expired data;
+show create table auto_rng_part_tc7_t1;
+
+set TTL_DEBUG_CURRENT_DATETIME='2022-03-08 00:00:00';
+alter table auto_rng_part_tc7_t1 cleanup expired data;
+show create table auto_rng_part_tc7_t1;
+
+create table auto_rng_part_tc7_t1_bk like auto_rng_part_tc7_t1 engine=columnar archive_mode='ttl';
+alter table auto_rng_part_tc7_t1 modify ttl set ttl_cleanup='on';
+show create table auto_rng_part_tc7_t1;
+
+set TTL_DEBUG_CURRENT_DATETIME='2022-04-08 00:00:00';
+alter table auto_rng_part_tc7_t1 cleanup expired data;
+show create table auto_rng_part_tc7_t1;
+
+set TTL_DEBUG_CURRENT_DATETIME='2022-05-08 00:00:00';
+alter table auto_rng_part_tc7_t1 cleanup expired data;
+show create table auto_rng_part_tc7_t1;
+
+show create table auto_rng_part_tc7_t1;
+alter table auto_rng_part_tc7_t1 cleanup expired data;
+show create table auto_rng_part_tc7_t1;
+drop table auto_rng_part_tc7_t1;
+
+## timezone_on_utc
+create table auto_rng_part_tc7_t2(
+a int not null auto_increment,
+b bigint not null,
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p20240401 values less than(1711929600),
+partition p20240501 values less than(1714521600),
+partition p20240601 values less than(1717200000)
+)
+;
+
+alter table auto_rng_part_tc7_t2 modify ttl set ttl_expr= from_unixtime(`b`) expire after 3 MONTH timezone '+00:00',ttl_part_interval=interval(1,MONTH),archive_type='PARTITION', ttl_cleanup='on', archive_table_post_allocate=1, archive_table_pre_allocate=3;
+
+create table auto_rng_part_tc7_t2_bk like auto_rng_part_tc7_t2 engine=columnar archive_mode='ttl';
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-01-08 00:00:00';
+alter table auto_rng_part_tc7_t2 cleanup expired data;
+show create table auto_rng_part_tc7_t2;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-09-08 00:00:00';
+alter table auto_rng_part_tc7_t2 cleanup expired data;
+show create table auto_rng_part_tc7_t2;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-12-08 00:00:00';
+alter table auto_rng_part_tc7_t2 cleanup expired data;
+show create table auto_rng_part_tc7_t2;
+
+drop table auto_rng_part_tc7_t2;
+  
+  
+  
+## timezone_on_utc
+create table auto_rng_part_tc7_t3(
+a int not null auto_increment,
+b bigint not null,
+primary key(a)
+)
+partition by key(a)
+partitions 4;
+
+insert into auto_rng_part_tc7_t3(a,b) values (1, 1704067200);
+insert into auto_rng_part_tc7_t3(a,b) values (2, 1717200000);
+
+alter table auto_rng_part_tc7_t3 modify ttl set ttl_expr= from_unixtime(`b`) expire after 3 MONTH timezone '+00:00',ttl_part_interval=interval(1,MONTH),archive_type='ROW', ttl_cleanup='on', archive_table_post_allocate=1, archive_table_pre_allocate=3;
+
+create table auto_rng_part_tc7_t3_bk like auto_rng_part_tc7_t3 engine=columnar archive_mode='ttl';
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-05-08 00:00:00';
+alter table auto_rng_part_tc7_t3 cleanup expired data;
+show create table auto_rng_part_tc7_t3;
+
+select * from auto_rng_part_tc7_t3 order by b;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-09-08 00:00:00';
+alter table auto_rng_part_tc7_t3 cleanup expired data;
+show create table auto_rng_part_tc7_t3;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-12-08 00:00:00';
+alter table auto_rng_part_tc7_t3 cleanup expired data;
+show create table auto_rng_part_tc7_t3;
+
+drop table auto_rng_part_tc7_t3;
+
+
+

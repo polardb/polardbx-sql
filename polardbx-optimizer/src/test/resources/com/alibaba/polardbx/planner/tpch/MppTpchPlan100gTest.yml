@@ -631,17 +631,14 @@
     o_orderdate;
 
   plan: |
-
     project(c_name="c_name", c_custkey="c_custkey", o_orderkey="o_orderkey", o_orderdate="o_orderdate", o_totalprice="o_totalprice", sum(l_quantity)="sum(l_quantity)")
-      exchange(distribution=single, collation=[3 desc-nulls-last, 2 asc-nulls-first])
+      exchange(distribution=single, collation=[5 desc-nulls-last, 4 asc-nulls-first])
         memsort(sort="o_totalprice desc,o_orderdate asc")
-          project(c_custkey="c_custkey", o_orderkey="o_orderkey", o_orderdate="o_orderdate", o_totalprice="o_totalprice", c_name="c_name", sum(l_quantity)="sum(l_quantity)")
-            hashjoin(condition="o_custkey = c_custkey", type="inner")
-              exchange(distribution=hash[0], collation=[])
-                logicalview(tables="[0000-0003].customer_[00-15]", shardcount=16, sql="select `c_custkey`, `c_name` from `customer` as `customer`")
-              exchange(distribution=hash[1], collation=[])
-                logicalview(tables="[0000-0003].orders_[00-15],lineitem_[00-15]", shardcount=16, sql="select `orders`.`o_orderkey`, `orders`.`o_custkey`, (`orders`.`o_orderdate`) as `o_orderdate`, (`orders`.`o_totalprice`) as `o_totalprice`, sum(`lineitem`.`l_quantity`) as `sum(l_quantity)` from `orders` as `orders` inner join `lineitem` as `lineitem` on (`orders`.`o_orderkey` = `lineitem`.`l_orderkey`) where (`orders`.`o_orderkey` in (select `l_orderkey` from (select `l_orderkey`, sum(`l_quantity`) as `$f1` from `lineitem` as `lineitem0` group by `l_orderkey` having (sum(`l_quantity`) > 300)) as `t0`)) group by `orders`.`o_orderkey`, `orders`.`o_custkey`")
-
+          hashjoin(condition="o_custkey = c_custkey", type="inner")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].customer_[00-15]", shardcount=16, sql="select `c_custkey`, `c_name` from `customer` as `customer`")
+            exchange(distribution=hash[1], collation=[])
+              logicalview(tables="[0000-0003].orders_[00-15],lineitem_[00-15]", shardcount=16, sql="select `orders`.`o_orderkey`, `orders`.`o_custkey`, (`orders`.`o_orderdate`) as `o_orderdate`, (`orders`.`o_totalprice`) as `o_totalprice`, sum(`lineitem`.`l_quantity`) as `sum(l_quantity)` from `orders` as `orders` inner join `lineitem` as `lineitem` on (`orders`.`o_orderkey` = `lineitem`.`l_orderkey`) where (`orders`.`o_orderkey` in (select `l_orderkey` from (select `l_orderkey`, sum(`l_quantity`) as `$f1` from `lineitem` as `lineitem0` group by `l_orderkey` having (sum(`l_quantity`) > 300)) as `t0`)) group by `orders`.`o_orderkey`, `orders`.`o_custkey`")
 - sql: |
     select
     sum(l_extendedprice * (1 - l_discount) ) as revenue

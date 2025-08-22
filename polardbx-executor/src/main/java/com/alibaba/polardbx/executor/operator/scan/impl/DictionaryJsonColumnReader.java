@@ -71,7 +71,7 @@ public class DictionaryJsonColumnReader extends AbstractDictionaryColumnReader {
                 lastPosition++;
             }
         } else {
-            SliceOutput sliceOutput = new DynamicSliceOutput(positionCount);
+            SliceOutput sliceOutput = new DynamicSliceOutput((int) totalLength);
             if (present == null) {
                 block.setHasNull(false);
                 for (int i = 0; i < positionCount; i++) {

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableDiscardTableSpaceBuilder;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
@@ -28,6 +27,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMoveParti
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.util.Pair;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -67,33 +67,33 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
             tablesPreparedData.put(tableName, alterTableGroupItemPreparedData);
             orderedTargetTablesLocations.put(tableName, itemBuilder.getOrderedTargetTableLocations());
 
-            Map<String, List<List<String>>> tablesTopology = itemBuilder.getTableTopology();
+            TreeMap<String, List<List<String>>> tablesTopology = itemBuilder.getTableTopology();
             AlterTableDiscardTableSpaceBuilder discardTableSpaceBuilder =
                 AlterTableDiscardTableSpaceBuilder.createBuilder(
                     preparedData.getSchemaName(), tableName, tablesTopology, executionContext);
             discardTableSpacePhysicalPlansMap.put(tableName, discardTableSpaceBuilder.build().getPhysicalPlans());
 
-            if (preparedData.isUsePhysicalBackfill()) {
-                tbPtbGroupMap.put(tableName, new HashMap<>());
-                for (Map.Entry<String, Set<String>> srcPhyTbInfo : itemBuilder.getSourcePhyTables().entrySet()) {
-                    String srcGroupKey = srcPhyTbInfo.getKey();
+//            if (preparedData.isUsePhysicalBackfill()) {
+            tbPtbGroupMap.put(tableName, new HashMap<>());
+            for (Map.Entry<String, Set<String>> srcPhyTbInfo : itemBuilder.getSourcePhyTables().entrySet()) {
+                String srcGroupKey = srcPhyTbInfo.getKey();
 
-                    assert srcGroupKey != null;
+                assert srcGroupKey != null;
 
-                    for (String phyTbName : srcPhyTbInfo.getValue()) {
-                        String tarGroupKey = null;
-                        for (Map.Entry<String, Set<String>> tarPhyTbInfo : itemBuilder.getTargetPhyTables()
-                            .entrySet()) {
-                            if (tarPhyTbInfo.getValue().contains(phyTbName)) {
-                                tarGroupKey = tarPhyTbInfo.getKey();
-                                break;
-                            }
+                for (String phyTbName : srcPhyTbInfo.getValue()) {
+                    String tarGroupKey = null;
+                    for (Map.Entry<String, Set<String>> tarPhyTbInfo : itemBuilder.getTargetPhyTables()
+                        .entrySet()) {
+                        if (tarPhyTbInfo.getValue().contains(phyTbName)) {
+                            tarGroupKey = tarPhyTbInfo.getKey();
+                            break;
                         }
-
-                        tbPtbGroupMap.get(tableName).put(phyTbName, Pair.of(srcGroupKey, tarGroupKey));
                     }
+
+                    tbPtbGroupMap.get(tableName).put(phyTbName, Pair.of(srcGroupKey, tarGroupKey));
                 }
             }
+//            }
         }
     }
 

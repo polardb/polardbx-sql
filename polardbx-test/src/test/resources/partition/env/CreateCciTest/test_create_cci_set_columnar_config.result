@@ -1,0 +1,450 @@
+## DISABLE_FAST_SQL_PARSER
+DROP TABLE IF EXISTS t_order
+delete from metadb.columnar_config where table_id = 0 and config_key = 'SNAPSHOT_RETENTION_DAYS'
+delete from metadb.columnar_config where table_id = 0 and config_key = 'columnar_purge_save_ms';
+delete from metadb.columnar_config where table_id = 0 and config_key = 'AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL'
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE t_order (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext DEFAULT NULL,
+`order_detail` longtext DEFAULT NULL,
+PRIMARY KEY (`id`),
+KEY `l_i_order` (`order_id`),
+CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`) partition by hash(`order_id`) partitions 16
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`order_id`) partitions 16
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS,
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+'type', 'snapshot'
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
+			"SNAPSHOT_RETENTION_DAYS":"7",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+'SNAPSHOT_RETENTION_DAYS', 14
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
+			"SNAPSHOT_RETENTION_DAYS":"14",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+'auto_gen_columnar_snapshot_interval', 300
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"300",
+			"SNAPSHOT_RETENTION_DAYS":"14",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+'Type', 'Default'
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+'type', 'snapshot'
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
+			"SNAPSHOT_RETENTION_DAYS":"7",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+CALL polardbx.columnar_set_config('auto_gen_Columnar_Snapshot_interval', '100')
+key,value
+AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL,100
+CALL polardbx.columnar_set_config('SNAPSHOT_RETENTION_dayS', '8')
+key,value
+SNAPSHOT_RETENTION_DAYS,8
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
+			"SNAPSHOT_RETENTION_DAYS":"7",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+'type', 'default'
+'type', 'snapshot'
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"100",
+			"SNAPSHOT_RETENTION_DAYS":"8",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+## ERROR_MSG: $# config error by TYPE is not supported to set global, please specify a particular columnar index #$
+CALL polardbx.columnar_set_config('type', 'snapshot')
+config error by TYPE is not supported to set global, please specify a particular columnar index
+## ERROR_MSG: $# Value too small, should >= 5 #$
+CALL polardbx.columnar_set_config('auto_gen_columnar_snapshot_interval', '3')
+Value too small, should >= 5
+## ERROR_MSG: $# Value should larger than 0 #$
+CALL polardbx.columnar_set_config('SNAPSHOT_RETENTION_DAYS', '0')
+Value should larger than 0
+'type', 'default'
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+CALL polardbx.columnar_set_config('columnar_purge_save_ms', '31622400000')
+key,value
+columnar_purge_save_ms,31622400000
+'type', 'snapshot'
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"100",
+			"SNAPSHOT_RETENTION_DAYS":"367",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`order_id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+ config error by DICTIONARY_COLUMNS is not supported to set dynamically
+## ERROR_MSG: $# config error by DICTIONARY_COLUMNS is not supported to set dynamically #$
+CALL polardbx.columnar_set_config('DICTIONARY_COLUMNS', 'seller_id')
+config error by DICTIONARY_COLUMNS is not supported to set dynamically
+CALL polardbx.columnar_set_config('columnar_purge_save_ms', '86400')
+key,value
+columnar_purge_save_ms,86400
+DROP TABLE t_order;

@@ -5,6 +5,7 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -15,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+@Ignore("We don't support locality in drds mode any more")
 public class MultiDBSingleTableDMLTest extends CrudBasedLockTestCase {
     String dbOneName = "drdsMultiDBTest1";
     String dbTwoName = "drdsMultiDBTest2";

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.executor.operator.scan.impl.LocalBlockDictionary;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
@@ -66,8 +67,11 @@ public class SliceBlockTest extends BaseBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(sliceBlockBuilder, .05d, true);
+
         // test read/write consistency
         SliceBlock block = (SliceBlock) sliceBlockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
         for (int i = 0; i < CHUNK_SIZE; i++) {
             Slice slice = (Slice) block.getObject(i);
             String s = checkList.get(i);
@@ -85,6 +89,7 @@ public class SliceBlockTest extends BaseBlockTest {
 
         Slice serializedBlock = sliceOutput.slice();
         SliceBlock sliceBlock = (SliceBlock) sliceBlockEncoding.readBlock(serializedBlock.getInput());
+        MemoryCountable.checkDeviation(sliceBlock, .05d, true);
 
         for (int i = 0; i < CHUNK_SIZE; i++) {
             Assert.assertTrue(sliceBlock.equals(i, block, i));
@@ -104,6 +109,7 @@ public class SliceBlockTest extends BaseBlockTest {
         LocalBlockDictionary dictionary1 = new LocalBlockDictionary(dict);
         SliceBlock sliceBlock1 = new SliceBlock(new SliceType(), 0, count,
             nulls, dictionary1, dictIds, false);
+        MemoryCountable.checkDeviation(sliceBlock1, .05d, true);
 
         for (int i = 0; i < dictIds.length; i++) {
             Assert.assertEquals(1, sliceBlock1.equals(i, dict[dictIds[i]]));
@@ -115,6 +121,8 @@ public class SliceBlockTest extends BaseBlockTest {
         final boolean compatible = true;
         SliceBlock sourceBlock = getNonNullBlock();
         SliceBlock resultBlock = SliceBlock.from(sourceBlock, CHUNK_SIZE, null, compatible, false);
+        MemoryCountable.checkDeviation(sourceBlock, .05d, true);
+        MemoryCountable.checkDeviation(resultBlock, .05d, true);
         for (int i = 0; i < CHUNK_SIZE; i++) {
             Assert.assertTrue("Failed in copying without selection",
                 resultBlock.equals(i, sourceBlock, i));
@@ -144,6 +152,8 @@ public class SliceBlockTest extends BaseBlockTest {
         final boolean compatible = true;
         SliceBlock sourceBlock = getAllNullBlock();
         SliceBlock resultBlock = SliceBlock.from(sourceBlock, CHUNK_SIZE, null, compatible, false);
+        MemoryCountable.checkDeviation(sourceBlock, .05d, true);
+        MemoryCountable.checkDeviation(resultBlock, .05d, true);
         for (int i = 0; i < CHUNK_SIZE; i++) {
             Assert.assertTrue("Failed in copying without selection",
                 resultBlock.equals(i, sourceBlock, i));
@@ -188,6 +198,7 @@ public class SliceBlockTest extends BaseBlockTest {
                 sliceBlockBuilder.writeObject(Slices.utf8Slice(s));
             }
         }
+        MemoryCountable.checkDeviation(sliceBlockBuilder, .05d, true);
         return (SliceBlock) sliceBlockBuilder.build();
     }
 
@@ -200,6 +211,7 @@ public class SliceBlockTest extends BaseBlockTest {
         for (int i = 0; i < CHUNK_SIZE; i++) {
             sliceBlockBuilder.appendNull();
         }
+        MemoryCountable.checkDeviation(sliceBlockBuilder, .05d, true);
         return (SliceBlock) sliceBlockBuilder.build();
     }
 

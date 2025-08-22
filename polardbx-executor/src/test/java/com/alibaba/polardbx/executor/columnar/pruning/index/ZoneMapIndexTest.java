@@ -1,9 +1,9 @@
 package com.alibaba.polardbx.executor.columnar.pruning.index;
 
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.executor.columnar.pruning.index.builder.ZoneMapIndexBuilder;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import org.junit.Assert;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
@@ -28,6 +28,7 @@ public class ZoneMapIndexTest {
         ZoneMapIndex zoneMapIndexWithGroup = zoneMapIndexBuilder.build();
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("ZONEMAP_MAX_GROUP_SIZE", "1");
         ZoneMapIndex zoneMapIndexWithoutGroup = zoneMapIndexBuilder.build();
+        Assert.assertEquals(zoneMapIndexWithGroup.getSizeInBytes(), zoneMapIndexWithoutGroup.getSizeInBytes());
 
         assert zoneMapIndexWithGroup.groupSize(1) > 0;
         assert zoneMapIndexWithoutGroup.groupSize(1) == 0;

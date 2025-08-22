@@ -1,0 +1,104 @@
+DROP TABLE IF EXISTS r_key_t1
+DROP TABLE IF EXISTS r_list_t2
+DROP TABLE IF EXISTS r_rang_t3
+CREATE TABLE r_key_t1 (
+	a int,
+	b int,
+	c int,
+	PRIMARY KEY (a)
+)
+PARTITION BY KEY (a) PARTITIONS 3
+INSERT INTO r_key_t1
+VALUES (1, 1, 1),
+	(2, 2, 2),
+	(3, 3, 3)
+ALTER TABLE r_key_t1
+PARTITION BY KEY (a) PARTITIONS 1
+SHOW CREATE TABLE r_key_t1
+Table,Create Table
+r_key_t1,CREATE TABLE `r_key_t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 1
+SELECT *
+FROM r_key_t1
+ORDER BY a
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+CREATE TABLE r_list_t2 (
+	a int,
+	b int,
+	c int,
+	PRIMARY KEY (a)
+)
+PARTITION BY LIST (a) (
+	PARTITION r0 VALUES IN (1, 5, 9, 13, 17),
+	PARTITION r1 VALUES IN (2, 6, 10, 14, 18, 22),
+	PARTITION r2 VALUES IN (3, 7, 11, 15, 19, 23),
+	PARTITION r3 VALUES IN (4, 8, 12, 16, 20, 24)
+)
+INSERT INTO r_list_t2
+VALUES (1, 1, 1),
+	(2, 2, 2),
+	(3, 3, 3)
+ALTER TABLE r_list_t2
+PARTITION BY KEY (b) PARTITIONS 1
+SHOW CREATE TABLE r_list_t2
+Table,Create Table
+r_list_t2,CREATE TABLE `r_list_t2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS 1
+SELECT *
+FROM r_list_t2
+ORDER BY a
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+CREATE TABLE r_rang_t3 (
+	a int,
+	b int,
+	c int,
+	PRIMARY KEY (a)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p0 VALUES LESS THAN (5),
+	PARTITION p1 VALUES LESS THAN (10),
+	PARTITION p5 VALUES LESS THAN MAXVALUE
+)
+INSERT INTO r_rang_t3
+VALUES (1, 1, 1),
+	(2, 2, 2),
+	(3, 3, 3)
+ALTER TABLE r_rang_t3
+PARTITION BY KEY (a, b) PARTITIONS 1
+SHOW CREATE TABLE r_rang_t3
+Table,Create Table
+r_rang_t3,CREATE TABLE `r_rang_t3` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 1
+SELECT *
+FROM r_rang_t3
+ORDER BY a
+a,b,c
+1,1,1
+2,2,2
+3,3,3

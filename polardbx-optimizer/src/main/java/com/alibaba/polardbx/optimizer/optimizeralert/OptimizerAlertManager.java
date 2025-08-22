@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.optimizeralert.statisticalert.StatisticAlertLoggerBaseImpl;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 
@@ -75,6 +76,10 @@ public class OptimizerAlertManager extends AbstractLifecycle {
      * @return true if logTrace if printed
      */
     public boolean log(OptimizerAlertType optimizerAlertType, ExecutionContext ec, Object extra) {
+        return log(optimizerAlertType, ec, extra, null);
+    }
+
+    public boolean log(OptimizerAlertType optimizerAlertType, ExecutionContext ec, Object extra, Map<String, Object> extraMap) {
         if (!DynamicConfig.getInstance().optimizerAlert()) {
             return false;
         }
@@ -87,7 +92,7 @@ public class OptimizerAlertManager extends AbstractLifecycle {
         if (!DynamicConfig.getInstance().optimizerAlertLog()) {
             return false;
         }
-        return logger.logDetail(ec, extra);
+        return logger.logDetail(ec, extra, extraMap);
     }
 
     synchronized public List<Pair<OptimizerAlertType, Long>> collectByScheduleJob() {
@@ -117,12 +122,21 @@ public class OptimizerAlertManager extends AbstractLifecycle {
         optimizerAlertLoggers.put(OptimizerAlertType.TP_SLOW, new OptimizerAlertLoggerTpImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.SELECTIVITY_ERR, new OptimizerAlertLoggerSelectivityImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.SPM_ERR, new OptimizerAlertLoggerSpmImpl());
-        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_MISS, new OptimizerAlertLoggerStatisticImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.PRUNING_SLOW, new OptimizerAlertLoggerPruningSlowImpl());
-        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_JOB_INTERRUPT,
-            new OptimizerAlertLoggerStatisticJobInterruptImpl());
+
+        // for statistic
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_MISS, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_MISS));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_JOB_INTERRUPT, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_JOB_INTERRUPT));
 //        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_INCONSISTENT,
 //            new OptimizerAlertLoggerStatisticInconsistentImpl());
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_SAMPLE_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_SAMPLE_FAIL));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_HLL_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_HLL_FAIL));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_COLLECT_ROWCOUNT_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_COLLECT_ROWCOUNT_FAIL));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_PERSIST_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_PERSIST_FAIL));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_SYNC_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_SYNC_FAIL));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_INFORMATION_TABLES_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_INFORMATION_TABLES_FAIL));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_SAMPLE_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_SAMPLE_FAIL));
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_HLL_FAIL, new StatisticAlertLoggerBaseImpl(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_HLL_FAIL));
 
         return optimizerAlertLoggers.build();
     }

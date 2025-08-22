@@ -43,10 +43,12 @@ import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransactionManagerUtil;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.async.DeadlockDetectionTaskWrapper;
+import com.alibaba.polardbx.transaction.async.MdlDeadlockDetectionTask;
 import com.alibaba.polardbx.transaction.async.RotateGlobalTxLogTaskWrapper;
 import com.alibaba.polardbx.transaction.async.SyncPointTaskWrapper;
 import com.alibaba.polardbx.transaction.async.TransactionIdleTimeoutTaskWrapper;
 import com.alibaba.polardbx.transaction.async.TransactionStatisticsTaskWrapper;
+import com.alibaba.polardbx.transaction.async.XARecoverTaskWrapper;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.trx.AllowReadTransaction;
 import com.alibaba.polardbx.transaction.trx.ArchiveTransaction;
@@ -84,6 +86,7 @@ import java.util.concurrent.locks.StampedLock;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_DEADLOCK_DETECTION_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_PURGE_TRANS_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_TRANSACTION_STATISTICS_PARAM;
+import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_XA_RECOVER_PARAM;
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
 /**
@@ -109,7 +112,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
 
     private TransactionExecutor executor;
 
-    private TimerTask xaRecoverTask;
+    private XARecoverTaskWrapper xaRecoverTask;
     private TimerTask bestEffortRecoverTask;
 
     private RotateGlobalTxLogTaskWrapper cleanTask;
@@ -219,10 +222,6 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         if (bestEffortRecoverTask != null) {
             bestEffortRecoverTask.cancel();
             bestEffortRecoverTask = null;
-        }
-        if (mdlDeadlockDetectionTask != null) {
-            mdlDeadlockDetectionTask.cancel();
-            mdlDeadlockDetectionTask = null;
         }
         if (killTimeoutTransactionTask != null) {
             killTimeoutTransactionTask.cancel();
@@ -428,13 +427,14 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         }
         if (xaRecoverTask == null) {
             synchronized (this) {
-                if (xaRecoverTask == null) {
-                    AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
-
-                    ParamManager paramManager = new ParamManager(properties);
-                    int xaRecoverInterval = paramManager.getInt(ConnectionParams.XA_RECOVER_INTERVAL);
-
-                    xaRecoverTask = asyncQueue.scheduleXARecoverTask(executor, xaRecoverInterval, supportAsyncCommit());
+                if (null == xaRecoverTask) {
+                    try {
+                        xaRecoverTask = new XARecoverTaskWrapper(properties, executor.getAsyncQueue(),schemaName,
+                            executor, supportAsyncCommit());
+                    } catch (Throwable t) {
+                        xaRecoverTask = null;
+                        TransactionLogger.warn("Failed to init xa recover task.");
+                    }
                 }
             }
         }
@@ -461,7 +461,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     }
 
     void enableMdlDeadlockDetection() {
-        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+        if (!ConfigDataMode.needDNResource() || !DEFAULT_DB_NAME.equalsIgnoreCase(schemaName)) {
             return;
         }
         ParamManager paramManager = new ParamManager(properties);
@@ -474,7 +474,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
                     AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
 
                     int interval =
-                        5 * paramManager.getInt(ConnectionParams.DEADLOCK_DETECTION_INTERVAL); // reuse this variable
+                        MdlDeadlockDetectionTask.MIN_MDL_WAIT_TIMEOUT_SECOND.intValue() * 1000;
                     int mdlWaitTimeoutInSec =
                         paramManager.getInt(ConnectionParams.PHYSICAL_DDL_MDL_WAITING_TIMEOUT); // reuse this variable
                     // keySet is a shadow copy of schemaMap's key, which can refer to comment keySet
@@ -639,6 +639,15 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             }
         }
 
+        if (null != xaRecoverTask) {
+            final Map<String, String> actualParam = xaRecoverTask.getCurrentParam();
+            if (null != actualParam) {
+                for (String paramName : MODIFIABLE_XA_RECOVER_PARAM) {
+                    allCurrentParams.put(paramName, actualParam.get(paramName));
+                }
+            }
+        }
+
         if (null != deadlockDetectionTask) {
             final Map<String, String> actualParam = deadlockDetectionTask.getCurrentParam();
             if (null != actualParam) {
@@ -665,6 +674,12 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             enableLogCleanTask();
         } else {
             cleanTask.resetTask();
+        }
+
+        if (null == xaRecoverTask) {
+            enableXaRecoverScan();
+        } else {
+            xaRecoverTask.resetTask();
         }
 
         // Try to reset deadlock task in polardbx schema.

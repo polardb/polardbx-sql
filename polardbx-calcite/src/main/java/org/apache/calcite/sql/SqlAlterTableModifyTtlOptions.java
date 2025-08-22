@@ -1,7 +1,5 @@
 package org.apache.calcite.sql;
 
-import com.alibaba.polardbx.druid.DbType;
-import com.alibaba.polardbx.druid.sql.SQLUtils;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.ArrayList;
@@ -18,6 +16,9 @@ public class SqlAlterTableModifyTtlOptions extends SqlAlterSpecification {
     private String ttlEnable = null;
     private SqlNode ttlExpr = null;
     private SqlNode ttlJob = null;
+    private SqlNode ttlFilter = null;
+    private SqlNode ttlCleanup = null;
+    private SqlNode ttlPartInterval = null;
     private String archiveTableSchema = null;
     private String archiveTableName = null;
     private String archiveKind = null;
@@ -43,54 +44,104 @@ public class SqlAlterTableModifyTtlOptions extends SqlAlterSpecification {
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
-        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "MODIFY TTL", "");
+        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "MODIFY TTL ", "");
 
+        int alterOptionCount = 0;
         if (ttlEnable != null) {
-            writer.print(" TTL_ENABLE = ");
+            alterOptionCount++;
+            writer.print("TTL_ENABLE = ");
             writer.print(String.format("'%s'", ttlEnable));
-            writer.print(" ");
         }
 
         if (ttlExpr != null) {
-            writer.print(" TTL_EXPR = ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("TTL_EXPR = ");
             ttlExpr.unparse(writer,leftPrec, rightPrec);
-            writer.print(" ");
         }
 
         if (ttlJob != null) {
-            writer.print(" TTL_JOB = ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("TTL_JOB = ");
             ttlJob.unparse(writer,leftPrec, rightPrec);
-            writer.print(" ");
+        }
+
+        if (ttlFilter != null) {
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("TTL_FILTER = COND_EXPR(");
+            ttlFilter.unparse(writer,leftPrec, rightPrec);
+            writer.print(")");
+        }
+
+        if (ttlCleanup != null) {
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("TTL_CLEANUP = ");
+            ttlCleanup.unparse(writer,leftPrec, rightPrec);
+        }
+
+        if (ttlPartInterval != null) {
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("TTL_PART_INTERVAL = ");
+            ttlPartInterval.unparse(writer,leftPrec, rightPrec);
         }
 
         if (archiveTableSchema != null) {
-            writer.print(" ARCHIVE_TABLE_SCHEMA = ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("ARCHIVE_TABLE_SCHEMA = ");
             writer.print(String.format("'%s'", archiveTableSchema));
-            writer.print(" ");
         }
 
         if (archiveTableName != null) {
-            writer.print(" ARCHIVE_TABLE_NAME = ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("ARCHIVE_TABLE_NAME = ");
             writer.print(String.format("'%s'", archiveTableSchema));
-            writer.print(" ");
         }
 
         if (archiveKind != null) {
-            writer.print(" ARCHIVE_KIND = ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("ARCHIVE_TYPE = ");
             writer.print(String.format("'%s'", archiveKind));
-            writer.print(" ");
         }
 
         if (arcPreAllocate != null) {
-            writer.print(" ARC_PRE_ALLOCATE = ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("ARCHIVE_TABLE_PRE_ALLOCATE = ");
             writer.print(arcPreAllocate);
-            writer.print(" ");
         }
 
         if (arcPostAllocate != null) {
-            writer.print(" ARC_POST_ALLOCATE = ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                writer.print(", ");
+            }
+            writer.print("ARCHIVE_TABLE_POST_ALLOCATE = ");
             writer.print(arcPostAllocate);
-            writer.print(" ");
         }
 
         writer.endList(frame);
@@ -158,6 +209,30 @@ public class SqlAlterTableModifyTtlOptions extends SqlAlterSpecification {
 
     public void setArcPostAllocate(Integer arcPostAllocate) {
         this.arcPostAllocate = arcPostAllocate;
+    }
+
+    public SqlNode getTtlFilter() {
+        return ttlFilter;
+    }
+
+    public void setTtlFilter(SqlNode ttlFilter) {
+        this.ttlFilter = ttlFilter;
+    }
+
+    public SqlNode getTtlCleanup() {
+        return ttlCleanup;
+    }
+
+    public void setTtlCleanup(SqlNode ttlCleanup) {
+        this.ttlCleanup = ttlCleanup;
+    }
+
+    public SqlNode getTtlPartInterval() {
+        return ttlPartInterval;
+    }
+
+    public void setTtlPartInterval(SqlNode ttlPartInterval) {
+        this.ttlPartInterval = ttlPartInterval;
     }
 
 }

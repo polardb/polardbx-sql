@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.CreateViewJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -30,6 +31,8 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 
 import java.io.UnsupportedEncodingException;
+
+import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_CREATE_VIEW;
 
 /**
  * @author dylan
@@ -50,6 +53,10 @@ public class LogicalCreateViewHandler extends LogicalCommonDdlHandler {
 
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        if (!InstConfUtil.getBool(ENABLE_CREATE_VIEW)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_VIEW, "CREATE VIEW is not ENABLED");
+        }
+
         LogicalCreateView logicalCreateView = (LogicalCreateView) logicalDdlPlan;
         String schemaName = logicalCreateView.getSchemaName();
         String viewName = logicalCreateView.getTableName();

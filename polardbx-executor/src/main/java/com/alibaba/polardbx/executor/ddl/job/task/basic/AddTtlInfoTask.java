@@ -5,12 +5,14 @@ import com.alibaba.polardbx.common.scheduler.SchedulePolicy;
 import com.alibaba.polardbx.common.scheduler.SchedulerJobStatus;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlJobUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.exception.TtlJobRuntimeException;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import lombok.Getter;
@@ -40,13 +42,14 @@ public class AddTtlInfoTask extends BaseGmsTask {
             cronExpr = executionContext.getParamManager().getString(ConnectionParams.DEFAULT_TTL_SCHEDULE_CRON_EXPR);
         }
 
+        String ttlCronJobTz = TtlInfoRecord.TTL_JOB_CRON_DEFAULT_TIME_ZONE;
         ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
             schemaName,
             null,
             logicalTableName,
             ScheduledJobExecutorType.TTL_JOB,
             cronExpr,
-            executionContext.getTimeZone().getMySqlTimeZoneName(),
+            ttlCronJobTz,
             SchedulePolicy.WAIT
         );
         String stateVal = disableSchedule ? SchedulerJobStatus.DISABLED.name() : SchedulerJobStatus.ENABLED.name();

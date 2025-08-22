@@ -51,6 +51,7 @@ import static io.airlift.slice.SizeOf.SIZE_OF_FLOAT;
 import static io.airlift.slice.SizeOf.SIZE_OF_INT;
 import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 import static io.airlift.slice.SizeOf.SIZE_OF_SHORT;
+import static io.airlift.slice.SizeOf.sizeOf;
 import static io.airlift.slice.StringDecoder.decodeString;
 import static java.lang.Math.min;
 import static java.lang.String.format;
@@ -203,6 +204,10 @@ public final class Slice
         this.size = size;
 
         this.retainedSize = retainedSize;
+    }
+
+    public long memoryUsage() {
+        return INSTANCE_SIZE + (base instanceof byte[] ? sizeOf((byte[]) base) : 0);
     }
 
     void resetSlice(byte[] base, int offset, int length) {

@@ -33,13 +33,15 @@ public class BufferInputBatchQueue extends AbstractBatchQueue {
 
     AtomicInteger totalRowCount = new AtomicInteger(0);
 
+    boolean isSortLookup = false;
+
     public BufferInputBatchQueue(int batchSize, List<DataType> columns, MemoryAllocatorCtx allocator,
                                  ExecutionContext context) {
-        this(batchSize, columns, allocator, 1024, context);
+        this(batchSize, columns, allocator, 1024, context, false);
     }
 
     public BufferInputBatchQueue(int batchSize, List<DataType> columns, MemoryAllocatorCtx allocator, int chunkSize,
-                                 ExecutionContext context) {
+                                 ExecutionContext context, boolean isSortLookup) {
         super(batchSize, columns, context);
         this.allocator = allocator;
         this.chunks = new LinkedList<>();
@@ -48,6 +50,7 @@ public class BufferInputBatchQueue extends AbstractBatchQueue {
             inputType[i] = columns.get(i);
         }
         this.chunkHashSet = new ChunkHashSet(inputType, 1024, chunkSize, context);
+        this.isSortLookup = isSortLookup;
     }
 
     public boolean isEmpty() {
@@ -77,6 +80,9 @@ public class BufferInputBatchQueue extends AbstractBatchQueue {
 
     @Override
     protected Chunk nextChunk() {
+        if (isSortLookup && chunks.size() > 1) {
+            throw new RuntimeException("Here should only have one chunk in sort-lookup mode!");
+        }
         Chunk chunk = chunks.pollFirst();
         if (chunk != null) {
             long chunkEstimateSize = chunk.estimateSize();
@@ -87,5 +93,14 @@ public class BufferInputBatchQueue extends AbstractBatchQueue {
 
     public AtomicInteger getTotalRowCount() {
         return totalRowCount;
+    }
+
+    @Override
+    public Chunk pop() {
+        if (isSortLookup) {
+            return nextChunk();
+        } else {
+            return super.pop();
+        }
     }
 }

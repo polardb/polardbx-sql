@@ -32,7 +32,6 @@ import com.alibaba.polardbx.executor.operator.scan.ScanPreProcessor;
 import com.alibaba.polardbx.executor.operator.scan.ScanWork;
 import com.alibaba.polardbx.executor.operator.scan.metrics.RuntimeMetrics;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
 import org.apache.hadoop.conf.Configuration;
@@ -51,6 +50,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
     protected final Path csvFile;
     private final int fileId;
     private final int sequenceId;
+    private final boolean isFlashback;
     protected final ScanPreProcessor preProcessor;
     protected final OSSColumnTransformer columnTransformer;
 
@@ -70,7 +70,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
                             Path csvFile, int fileId, int sequenceId, List<Integer> inputRefsForFilter,
                             List<Integer> inputRefsForProject, ScanPreProcessor preProcessor,
                             LazyEvaluator<Chunk, BitSet> lazyEvaluator,
-                            int partNum, int nodePartCount,
+                            int partNum, int nodePartCount, boolean isFlashback,
                             OSSColumnTransformer columnTransformer) {
         this.executionContext = executionContext;
         this.columnarManager = columnarManager;
@@ -85,6 +85,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
         this.lazyEvaluator = lazyEvaluator;
         this.partNum = partNum;
         this.nodePartCount = nodePartCount;
+        this.isFlashback = isFlashback;
         this.columnTransformer = columnTransformer;
     }
 
@@ -122,7 +123,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
         RuntimeMetrics metrics = RuntimeMetrics.create(scanWorkId);
         csvScanWork = new CsvScanWork(columnarManager, tso, position, csvFile, inputRefsForFilter, inputRefsForProject,
             executionContext, scanWorkId, metrics, enableMetrics, lazyEvaluator, preProcessor.getDeletion(csvFile),
-            partNum, nodePartCount, useSelection, enableCompatible, columnTransformer);
+            partNum, nodePartCount, useSelection, enableCompatible, isFlashback, columnTransformer);
         isScanWorkInvoked = true;
         return (ScanWork<SplitT, BATCH>) csvScanWork;
     }
@@ -154,6 +155,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
         private Path csvFile;
         private int fileId;
         private int sequenceId;
+        private boolean isFlashback;
         private LazyEvaluator<Chunk, BitSet> lazyEvaluator;
 
         private List<Integer> inputRefsForFilter;
@@ -174,7 +176,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
                 inputRefsForFilter,
                 inputRefsForProject,
                 preProcessor, lazyEvaluator,
-                partNum, nodePartCount,
+                partNum, nodePartCount, isFlashback,
                 columnTransformer);
         }
 
@@ -193,6 +195,12 @@ public class CsvColumnarSplit implements ColumnarSplit {
         @Override
         public ColumnarSplitBuilder isColumnarMode(boolean isColumnarMode) {
             // do nothing because the csv split is always in columnar mode.
+            return this;
+        }
+
+        @Override
+        public ColumnarSplitBuilder isFlashback(boolean isFlashback) {
+            this.isFlashback = isFlashback;
             return this;
         }
 

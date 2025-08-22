@@ -2,6 +2,7 @@
 drop database if exists inspect_lsi_auto;
 create database inspect_lsi_auto mode=auto;
 use inspect_lsi_auto;
+set transaction_policy = TSO;
 # has same effect as primary key
 create table tb1(
   id int,
@@ -90,3 +91,6 @@ CREATE TABLE `tb7` (
 inspect full index from tb7;
 SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
 inspect_lsi_auto,tb7,idx2,LOCAL INDEX,name,addr,null,null,null,null,found duplicate local indexes: idx2, idx1,None,alter table `tb7` drop index `idx2`;
+select count(0) from information_schema.polardbx_trx where schema = 'inspect_lsi_auto'
+count(0)
+1

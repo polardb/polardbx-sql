@@ -43,6 +43,7 @@ import org.mockito.stubbing.Answer;
 import java.lang.reflect.Field;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -126,7 +127,7 @@ public class TrxConnHolderTest {
         TGroupDataSource tGroupDataSource = Mockito.mock(TGroupDataSource.class);
         MockFastDataSource mockFastDataSource = new MockFastDataSource();
 
-        Mockito.when(tGroupDataSource.getConnection(any())).thenAnswer(
+        Mockito.when(tGroupDataSource.getConnection(any(), (Collection<IConnection>) any())).thenAnswer(
             (Answer<TGroupDirectConnection>) invocation -> {
                 TGroupDirectConnection tGroupDirectConnection = Mockito.mock(TGroupDirectConnection.class);
                 MockConnection connection = new MockConnection(mockFastDataSource);

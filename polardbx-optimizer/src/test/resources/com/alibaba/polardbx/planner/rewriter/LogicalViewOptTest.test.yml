@@ -213,9 +213,5 @@
     on a.id = b.id
     where b.money > all(select price from apple where id = b.id)
   plan: |
-    project(height="height", size="size")
-      hashjoin(condition="id = id", type="inner")
-        gather(concurrent=true)
-          logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7]", shardcount=8, sql="select `id`, `money`, `height` from `boy` as `boy` where (`money` > all (select `price` from `apple` as `apple` where (`id` = `boy`.`id`)))")
-        gather(concurrent=true)
-          logicalview(tables="[0000-0003].apple_[0-7]", shardcount=8, sql="select `id`, min(`size`) as `size`, (`pick_date`) as `$f2` from `apple` as `apple` where (`price` in(12, 3, 4, 6)) group by `id` having ((`pick_date`) > 10)")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7]", shardcount=8, sql="select `boy`.`height`, `t1`.`size` from (select `id`, min(`size`) as `size`, (`pick_date`) as `$f2` from `apple` as `apple` where (`price` in(12, 3, 4, 6)) group by `id` having ((`pick_date`) > 10)) as `t1` inner join `boy` as `boy` on (`t1`.`id` = `boy`.`id`) where (`boy`.`money` > all (select `price` from `apple` as `apple0` where (`id` = `boy`.`id`)))")

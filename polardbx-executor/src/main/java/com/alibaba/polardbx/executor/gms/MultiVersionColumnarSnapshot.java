@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.gms;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.oss.ColumnarFileType;
+import com.alibaba.polardbx.common.oss.ColumnarPartitionPrunedSnapshot;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -243,7 +244,7 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
         return snapshot;
     }
 
-    public Map<String, Pair<List<String>, List<String>>> generateSnapshot(
+    public Map<String, ColumnarPartitionPrunedSnapshot> generateSnapshot(
         final SortedMap<Long, Set<String>> partitionResult, final long tso) {
         long minTso = columnarManager.getMinTso();
         if (tso < minTso) {
@@ -261,7 +262,7 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
             }
         }
 
-        Map<String, Pair<List<String>, List<String>>> result = new HashMap<>();
+        Map<String, ColumnarPartitionPrunedSnapshot> result = new HashMap<>();
 
         allPartsTsoInfo.forEach((partName, snapshot) -> {
             snapshot.forEach((fileName, fileTsoInfo) -> {
@@ -273,16 +274,17 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
                     if (!headMap.isEmpty()) {
                         Set<String> partitionSet = headMap.get(headMap.lastKey());
                         if (partitionSet != null && partitionSet.contains(partName)) {
-                            Pair<List<String>, List<String>> orcAndCsv = result.computeIfAbsent(partName,
-                                s -> Pair.of(new ArrayList<>(), new ArrayList<>()));
+                            ColumnarPartitionPrunedSnapshot orcAndCsv = result.computeIfAbsent(partName,
+                                s -> new ColumnarPartitionPrunedSnapshot());
                             ColumnarFileType columnarFileType = FileSystemUtils.getFileType(fileName);
 
                             switch (columnarFileType) {
                             case ORC:
-                                orcAndCsv.getKey().add(fileName);
+                                orcAndCsv.getOrcFilesAndSchemaTs().add(Pair.of(fileName, schemaTs));
                                 break;
                             case CSV:
-                                orcAndCsv.getValue().add(fileName);
+                                orcAndCsv.getCsvFilesAndSchemaTsWithPos()
+                                    .add(Pair.of(fileName, Pair.of(schemaTs, null)));
                                 break;
                             default:
                                 // ignore.

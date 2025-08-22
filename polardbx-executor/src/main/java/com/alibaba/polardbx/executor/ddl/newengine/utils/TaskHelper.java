@@ -57,11 +57,7 @@ public class TaskHelper {
             return null;
         }
         DdlTask task;
-        if (DdlHelper.isGzip(record.value)) {
-            task = deSerializeTask(record.name, DdlHelper.decompress(record.value));
-        } else {
-            task = deSerializeTask(record.name, record.value);
-        }
+        task = deSerializeTask(record.name, record.value);
         task.setJobId(record.jobId);
         task.setTaskId(record.taskId);
         task.setRootJobId(record.getRootJobId());
@@ -140,13 +136,24 @@ public class TaskHelper {
         return JSON.toJSONString(task);
     }
 
+    public static DdlTask deSerializeTask(String taskName, String compressedJson) {
+        if (StringUtils.isEmpty(taskName) || StringUtils.isEmpty(compressedJson)) {
+            String errMsg = String.format("unexpected value for deSerializeTask. name:%s, value:%s", taskName, compressedJson);
+            throw new TddlNestableRuntimeException(errMsg);
+        }
+        if(DdlHelper.isGzip(compressedJson)){
+            return deSerializeTaskInner(taskName, DdlHelper.decompress(compressedJson));
+        }else{
+            return deSerializeTaskInner(taskName, compressedJson);
+        }
+    }
     /**
      * json + taskName -> DdlTask
      *
      * @param taskName: determines which Class the json will be converted to
      * @param json: the json format of DdlTask
      */
-    public static DdlTask deSerializeTask(String taskName, String json) {
+    private static DdlTask deSerializeTaskInner(String taskName, String json) {
         if (StringUtils.isEmpty(taskName) || StringUtils.isEmpty(json)) {
             String errMsg = String.format("unexpected value for deSerializeTask. name:%s, value:%s", taskName, json);
             throw new TddlNestableRuntimeException(errMsg);

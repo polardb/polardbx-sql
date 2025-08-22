@@ -16,6 +16,8 @@ public class SqlTimeToLiveDefinitionExpr extends SqlNode {
     protected SqlNode ttlExpr;
     protected SqlNode ttlJobExpr;
     protected SqlNode ttlFilterExpr;
+    protected SqlNode ttlCleanupExpr;
+    protected SqlNode ttlPartIntervalExpr;
     protected SqlNode archiveTypeExpr;
     protected SqlNode archiveTableSchemaExpr;
     protected SqlNode archiveTableNameExpr;
@@ -28,7 +30,49 @@ public class SqlTimeToLiveDefinitionExpr extends SqlNode {
 
     @Override
     public SqlNode clone(SqlParserPos pos) {
-        return null;
+        SqlTimeToLiveDefinitionExpr newTtlDefExpr = new SqlTimeToLiveDefinitionExpr();
+
+        if (ttlEnableExpr != null) {
+            newTtlDefExpr.setTtlCleanupExpr(ttlEnableExpr.clone(pos));
+        }
+        if (ttlExpr != null) {
+            newTtlDefExpr.setTtlExpr(ttlExpr.clone(pos));
+        }
+        if (ttlJobExpr != null) {
+            newTtlDefExpr.setTtlJobExpr(ttlJobExpr.clone(pos));
+        }
+        if (ttlFilterExpr != null) {
+            newTtlDefExpr.setTtlFilterExpr(ttlFilterExpr.clone(pos));
+        }
+        if (ttlCleanupExpr != null) {
+            newTtlDefExpr.setTtlCleanupExpr(ttlCleanupExpr.clone(pos));
+        }
+
+        if (ttlPartIntervalExpr != null) {
+            newTtlDefExpr.setTtlPartIntervalExpr(ttlPartIntervalExpr.clone(pos));
+        }
+
+        if (archiveTypeExpr != null) {
+            newTtlDefExpr.setArchiveTypeExpr(archiveTypeExpr.clone(pos));
+        }
+
+        if (archiveTableSchemaExpr != null) {
+            newTtlDefExpr.setArchiveTableSchemaExpr(archiveTableSchemaExpr.clone(pos));
+        }
+
+        if (archiveTableNameExpr != null) {
+            newTtlDefExpr.setArchiveTableNameExpr(archiveTableSchemaExpr.clone(pos));
+        }
+
+        if (archiveTablePreAllocateExpr != null) {
+            newTtlDefExpr.setArchiveTablePreAllocateExpr(archiveTablePreAllocateExpr.clone(pos));
+        }
+
+        if (archiveTablePostAllocateExpr != null) {
+            newTtlDefExpr.setArchiveTablePostAllocateExpr(archiveTablePostAllocateExpr.clone(pos));
+        }
+
+        return newTtlDefExpr;
     }
 
     @Override
@@ -53,9 +97,23 @@ public class SqlTimeToLiveDefinitionExpr extends SqlNode {
         }
         if (ttlFilterExpr != null) {
             writer.print(", ");
-            writer.print("TTL_FILTER = ");
+            writer.print("TTL_FILTER = COND_EXPR");
+            writer.print("(");
             ttlFilterExpr.unparse(writer, leftPrec, rightPrec);
+            writer.print(")");
         }
+        if (ttlCleanupExpr != null) {
+            writer.print(", ");
+            writer.print("TTL_CLEANUP = ");
+            ttlCleanupExpr.unparse(writer, leftPrec, rightPrec);
+        }
+
+        if (ttlPartIntervalExpr != null) {
+            writer.print(", ");
+            writer.print("TTL_PART_INTERVAL = ");
+            ttlPartIntervalExpr.unparse(writer, leftPrec, rightPrec);
+        }
+
         if (archiveTypeExpr != null) {
             writer.print(", ");
             writer.print("ARCHIVE_TYPE = ");
@@ -176,5 +234,21 @@ public class SqlTimeToLiveDefinitionExpr extends SqlNode {
 
     public void setArchiveTableNameExpr(SqlNode archiveTableNameExpr) {
         this.archiveTableNameExpr = archiveTableNameExpr;
+    }
+
+    public SqlNode getTtlCleanupExpr() {
+        return ttlCleanupExpr;
+    }
+
+    public void setTtlCleanupExpr(SqlNode ttlCleanupExpr) {
+        this.ttlCleanupExpr = ttlCleanupExpr;
+    }
+
+    public SqlNode getTtlPartIntervalExpr() {
+        return ttlPartIntervalExpr;
+    }
+
+    public void setTtlPartIntervalExpr(SqlNode ttlPartIntervalExpr) {
+        this.ttlPartIntervalExpr = ttlPartIntervalExpr;
     }
 }

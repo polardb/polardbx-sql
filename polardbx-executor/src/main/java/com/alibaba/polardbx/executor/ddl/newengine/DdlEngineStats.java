@@ -82,6 +82,12 @@ public class DdlEngineStats {
     public static Metric METRIC_CHANGESET_APPLY_PARALLELISM = new Metric("CHANGESET_APPLY_PARALLELISM");
     public static Metric METRIC_CHANGESET_APPLY_ROWS_SPEED = new Metric("CHANGESET_APPLY_ROWS_SPEED");
 
+    public static Metric METRIC_OMC_CURRENT_PARALLELISM = new Metric("OMC_CURRENT_PARALLELISM");
+    public static Metric METRIC_OMC_BACKFILL_BATCH_WAITING = new Metric("OMC_BACKFILL_BATCH_WAITING");
+
+    public static Metric METRIC_OMC_THREAD_POOL_NUM = new Metric("OMC_THREAD_POOL_NUM");
+    public static Metric METRIC_OMC_THREAD_POOL_SIZE = new Metric("OMC_THREAD_POOL_SIZE");
+
     public static Metric METRIC_TWO_PHASE_DDL_PARALLISM = new Metric("TWO_PHASE_DDL_PARALLISM");
 
     public static Metric METRIC_THROTTLE_RATE =

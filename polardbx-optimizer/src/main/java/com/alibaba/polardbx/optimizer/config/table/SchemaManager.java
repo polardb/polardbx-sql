@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.google.common.collect.Lists;
+import org.apache.calcite.avatica.util.TimeUnit;
 
 import java.sql.Connection;
 import java.util.Collection;
@@ -31,7 +32,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 /**
@@ -109,14 +109,15 @@ public interface SchemaManager extends Lifecycle {
         return null;
     }
 
+
     default void toNewVersionInTrx(List<String> tableNameList,
-                                   boolean preemtive, long initWait, long interval, TimeUnit timeUnit,
-                                   long connId, boolean allowTwoVersion, boolean sameTableGroup,
+                                   boolean preemtive, PreemptiveTime preemptiveTime,
+                                   Long connId, boolean allowTwoVersion, boolean sameTableGroup,
                                    boolean forceSyncFailed) {
         throw new AssertionError("NOT SUPPORTED");
     }
 
-    default void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion,
+    default void toNewVersionInTrx(List<String> tableNameList, Long connId, boolean allowTwoVersion,
                                    boolean forceSyncFailed) {
         throw new AssertionError("NOT SUPPORTED");
     }

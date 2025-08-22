@@ -35,10 +35,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator =
             (count) -> String.format("update %%s set b=%d+1 where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colA + 1 == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -51,10 +49,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator =
             (count) -> String.format("update %%s set a=%d-1 where b=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colA + 1 == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -68,10 +64,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set b=default where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -85,10 +79,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set b=default(b) where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -100,10 +92,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         String selectSql = "select * from %s order by a";
         Function<Integer, String> generator = (count) -> String.format("update %%s set b=a+1 where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colB == colA + 1;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -116,10 +106,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator =
             (count) -> String.format("update %%s set b=a+1,a=%d,b=a+1,b=b+1 where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colB == colA + 2;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -133,10 +121,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set b=%d+1,c=b where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colA + 1 == colB) && (Float.parseFloat(colC) == colB);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -144,16 +130,14 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         String tableName = "omc_multi_with_update_2";
         String colDef = "int default 3";
         String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
-            + " alter table %s modify column b bigint default 4, drop column d, add column e varchar(10) not null default 'abcdefg'";
+            + " alter table %s modify column b bigint default 4, drop column d, add column e varchar(10) not null default 'abcdefg' after c";
         String selectSql = "select * from %s order by a";
         Function<Integer, String> generator = (count) -> String.format("update %%s set b=a+1 where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colB == colA + 1)
                 && (colD.equalsIgnoreCase("abcdefg") || colD.equalsIgnoreCase(colC));
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -167,9 +151,9 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set b=%d+1 where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colA + 1 == colB;
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, true);
+            true);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, true);
+            true);
     }
 
     @Test
@@ -183,9 +167,9 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set b=%d+1 where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colA + 1 == colB;
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, true);
+            true);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, true);
+            true);
     }
 
     @Test
@@ -200,9 +184,9 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, true);
+            true);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, true);
+            true);
     }
 
     @Test
@@ -217,9 +201,9 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, true);
+            true);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, true);
+            true);
     }
 
     @Test
@@ -232,9 +216,9 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator = (count) -> String.format("update %%s set b=a+1 where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colB == colA + 1;
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, true);
+            true);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, true);
+            true);
     }
 
     @Test
@@ -248,9 +232,9 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set b=a+1,a=%d,b=a+1,b=b+1 where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colB == colA + 2;
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, true);
+            true);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, true);
+            true);
     }
 
     @Test
@@ -265,10 +249,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator2 =
             (count) -> String.format("update %%s set e=%d+1 where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colA + 1 == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -283,10 +265,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator2 =
             (count) -> String.format("update %%s set a=%d-1 where e=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colA + 1 == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -302,10 +282,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set e=default where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -321,10 +299,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set e=default(e) where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -337,10 +313,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator1 = (count) -> String.format("update %%s set b=a+1 where a=%d", count);
         Function<Integer, String> generator2 = (count) -> String.format("update %%s set c=a+1 where a=%d", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colB == colA + 1;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -355,10 +329,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         Function<Integer, String> generator2 =
             (count) -> String.format("update %%s set e=a+1,a=%d,e=a+1,e=e+1 where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> colB == colA + 2;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -376,10 +348,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
                 && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("yyy"))
                 && (colD.equalsIgnoreCase("abc") || colD.equalsIgnoreCase("xxx"));
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -395,10 +365,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set e=a+1,a=%d,e=a+1,e=e+1,c=e,d=a where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colB == colA + 2) && (Float.parseFloat(colD) == Float.parseFloat(colC) + 2);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false);
     }
 
     @Test
@@ -412,10 +380,8 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set b=%d where a=%d", count, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) ->
             Objects.equals(colA, colB);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -440,7 +406,7 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colB == colA + 2) && (Float.parseFloat(colD) == Float.parseFloat(colC) + 2);
         concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
-            true, false, 1, createSql);
+            true, false, createSql);
     }
 
     @Test
@@ -465,7 +431,7 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colB == colA + 2) && (Float.parseFloat(colD) == Float.parseFloat(colC) + 2);
         concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
-            true, false, 1, createSql);
+            true, false, createSql);
     }
 
     @Test
@@ -482,9 +448,9 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             (count) -> String.format("update %%s set e=%f where a=%d", count / 7.0, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
 
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
-            1, false, false, null);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
-            1, false, false, null);
+        concurrentTestInternalWithNotStrict(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            true, true);
+        concurrentTestInternalWithNotStrict(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            true, false);
     }
 }

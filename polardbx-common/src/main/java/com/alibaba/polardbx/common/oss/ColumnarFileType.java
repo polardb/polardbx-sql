@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.common.oss;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public enum ColumnarFileType {
     ORC, CSV, DEL, SET,
     /**
@@ -28,19 +31,29 @@ public enum ColumnarFileType {
     PK_IDX_SST,
     PK_IDX_BF;
 
+    static Map<String, ColumnarFileType> COLUMAR_FILE_TYPE_MAP = new HashMap<>();
+
+    static {
+        for (ColumnarFileType columnarFileType : ColumnarFileType.values()) {
+            COLUMAR_FILE_TYPE_MAP.put(columnarFileType.name(), columnarFileType);
+            COLUMAR_FILE_TYPE_MAP.put(columnarFileType.name().toLowerCase(), columnarFileType);
+        }
+    }
+
     public static ColumnarFileType of(String fileType) {
         if (fileType == null) {
             return null;
         }
 
+        ColumnarFileType result;
+        if ((result = COLUMAR_FILE_TYPE_MAP.get(fileType)) != null) {
+            return result;
+        }
+
         try {
             return valueOf(fileType);
         } catch (Throwable throwable) {
-            try {
-                return valueOf(fileType.toUpperCase());
-            } catch (Throwable ignorable) {
-                return null;
-            }
+            return null;
         }
     }
 

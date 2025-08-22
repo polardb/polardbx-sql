@@ -68,7 +68,9 @@ public class ColumnarTransactionUtils {
         List<List<Map<String, Object>>> results =
             SyncManagerHelper.sync(action, SystemDbHelper.DEFAULT_DB_NAME, SyncScope.ALL);
 
-        long minSnapshotTime = ColumnarManager.getInstance().latestTso();
+        // must >= 0
+        long minSnapshotKeepTime = Math.max(DynamicConfig.getInstance().getMinSnapshotKeepTime(), 0L);
+        long minSnapshotTime = ColumnarManager.getInstance().latestTso() - (minSnapshotKeepTime << 22);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {
@@ -245,7 +247,16 @@ public class ColumnarTransactionUtils {
                 ColumnarAppendedFilesAccessor appendedFilesAccessor = new ColumnarAppendedFilesAccessor();
                 appendedFilesAccessor.setConnection(metaDbConn);
 
-                //csv/del文件统计
+                //快照表csv没有append记录的统计
+                List<OrcFileStatusRecord> csvFileStatusRecords =
+                    filesAccessor.querySnapshotCSVFileStatusByTsoAndTableId(tso, schemaName, String.valueOf(tableId));
+                if (!csvFileStatusRecords.isEmpty()) {
+                    row.csvFileNum += csvFileStatusRecords.get(0).fileCounts;
+                    row.csvRows += csvFileStatusRecords.get(0).rowCounts;
+                    row.csvFileSize += csvFileStatusRecords.get(0).fileSizes;
+                }
+
+                //csv/del文件appended统计
                 boolean useSubQuery = DynamicConfig.getInstance().isShowColumnarStatusUseSubQuery();
                 List<ColumnarAppendedFilesRecord> appendedFilesRecords;
                 if (useSubQuery) {

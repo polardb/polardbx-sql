@@ -100,7 +100,7 @@ public class PartitionPrunerUtils {
         List<TargetDB> targetDbList = new ArrayList<>();
         Map<String, Map<String, Field>> targetDbInfo = new HashMap<>();
 
-        List<PhysicalPartitionInfo> prunedParts = result.getPrunedParttions();
+        List<PhysicalPartitionInfo> prunedParts = result.getPrunedPartitions();
         for (int j = 0; j < prunedParts.size(); j++) {
             PhysicalPartitionInfo prunedPart = prunedParts.get(j);
 
@@ -149,7 +149,7 @@ public class PartitionPrunerUtils {
 
         for (int i = 0; i < results.size(); i++) {
             PartPrunedResult result = results.get(i);
-            if (result.getPrunedParttions().isEmpty()) {
+            if (result.getPrunedPartitions().isEmpty()) {
                 return phyGrpInfoMap;
             }
         }
@@ -160,7 +160,7 @@ public class PartitionPrunerUtils {
                 broadcastTopologyList.add(result.getPartInfo().getTopology());
                 continue;
             }
-            List<PhysicalPartitionInfo> prunedParts = result.getPrunedParttions();
+            List<PhysicalPartitionInfo> prunedParts = result.getPrunedPartitions();
             for (int j = 0; j < prunedParts.size(); j++) {
                 PhysicalPartitionInfo prunedPart = prunedParts.get(j);
                 String grpKey = prunedPart.getGroupKey();
@@ -261,7 +261,7 @@ public class PartitionPrunerUtils {
         for (int i = 0; i < results.size(); i++) {
             PartPrunedResult result = results.get(i);
             PartitionInfo partInfo = result.getPartInfo();
-            if (result.getPrunedParttions().isEmpty()) {
+            if (result.getPrunedPartitions().isEmpty()) {
                 TargetTableInfoOneTable targetTableInfoOneTable = new TargetTableInfoOneTable();
                 targetTableInfoOneTable.setPartInfo(partInfo);
                 targetTableInfoOneTableList.add(targetTableInfoOneTable);
@@ -286,7 +286,7 @@ public class PartitionPrunerUtils {
                 broadcastTopologyList.add(result.getPartInfo().getTopology());
                 continue;
             }
-            List<PhysicalPartitionInfo> prunedParts = result.getPrunedParttions();
+            List<PhysicalPartitionInfo> prunedParts = result.getPrunedPartitions();
             PartKeyLevel phyPartLevel = null;
             for (int j = 0; j < prunedParts.size(); j++) {
                 PhysicalPartitionInfo prunedPart = prunedParts.get(j);
@@ -929,6 +929,23 @@ public class PartitionPrunerUtils {
         return newPartField;
     }
 
+    /**
+     * Calc the partition int function value by the partColFLd
+     */
+    public static PartitionField buildPartFieldByEvalPartFuncExpr(
+        PartitionField partColField,
+        PartitionByDefinition partBy,
+        ExecutionContext context) {
+        PartitionIntFunction partIntFunc = partBy.getPartIntFunc();
+        if (partIntFunc == null) {
+            return partColField;
+        }
+        PartitionStrategy partStrategy = partBy.getStrategy();
+        PartitionField partFuncEvalResultFld =
+            evalPartFuncVal(partColField, partIntFunc, partStrategy, context, null, PartFieldAccessType.DDL_EXECUTION);
+        return partFuncEvalResultFld;
+    }
+
     public static PartitionField buildPartField(Object predExprVal,
                                                 DataType predExprDataType,
                                                 DataType partFldDataType,
@@ -1188,7 +1205,7 @@ public class PartitionPrunerUtils {
     }
 
     public static boolean checkIfPointSelect(PartitionPruneStep step, ExecutionContext ec) {
-        if (ec.getParams() != null) {
+        if (ec != null && ec.getParams() != null) {
             Map<Integer, ParameterContext> map = ec.getParams().getCurrentParameter();
             for (ParameterContext parameterContext : map.values()) {
                 if (parameterContext.getValue() instanceof RawString) {

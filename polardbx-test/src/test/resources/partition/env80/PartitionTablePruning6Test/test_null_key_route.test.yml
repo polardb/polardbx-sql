@@ -1,0 +1,109 @@
+## DISABLE_FAST_SQL_PARSER
+
+
+CREATE TABLE `null_key_route_varchar` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(8) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 16;
+
+CREATE TABLE `null_key_route_datetime` (
+`a` datetime DEFAULT NULL,
+`b` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 16;
+
+CREATE TABLE `null_key_route_bigint` (
+`a` bigint DEFAULT NULL,
+`b` bigint DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 16;
+
+explain select * from null_key_route_bigint where a is null;
+explain select * from null_key_route_varchar where a is null;
+explain select * from null_key_route_datetime where a is null;
+
+insert into null_key_route_bigint(a,b) values(null, 0);
+insert into null_key_route_varchar(a,b) values(null, '');
+insert into null_key_route_datetime(a,b) values(null, 0);
+
+select * from null_key_route_bigint where a is null;
+select * from null_key_route_varchar where a is null;
+select * from null_key_route_datetime where a is null;
+
+
+CREATE TABLE `null_rng_route_varchar` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(8) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(
+PARTITION p1 VALUES LESS THAN(''),
+PARTITION pmax VALUES LESS THAN(maxvalue)
+);
+
+CREATE TABLE `null_rng_route_datetime` (
+`a` datetime DEFAULT NULL,
+`b` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(
+PARTITION p1 VALUES LESS THAN('0000-00-0000'),
+PARTITION pmax VALUES LESS THAN(maxvalue)
+);
+
+
+CREATE TABLE `null_rng_route_bigint` (
+`a` bigint DEFAULT NULL,
+`b` bigint DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`)
+(
+PARTITION p1 VALUES LESS THAN(0),
+PARTITION pmax VALUES LESS THAN(maxvalue)
+);
+
+
+explain select * from null_rng_route_bigint where a is null;
+explain select * from null_rng_route_varchar where a is null;
+explain select * from null_rng_route_datetime where a is null;
+
+insert into null_rng_route_bigint(a,b) values(null, 0);
+insert into null_rng_route_varchar(a,b) values(null, '');
+insert into null_rng_route_datetime(a,b) values(null, 0);
+
+select * from null_rng_route_bigint where a is null;
+select * from null_rng_route_varchar where a is null;
+select * from null_rng_route_datetime where a is null;
+
+
+CREATE TABLE `null_lst_route_bigint` (
+`a` bigint DEFAULT NULL,
+`b` bigint DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(
+PARTITION p1 VALUES IN(0,10),
+PARTITION p2 VALUES IN(1,2,3,4,5,6,7,8,9),
+PARTITION pd VALUES IN(DEFAULT)
+);
+
+explain select * from null_lst_route_bigint where a is null;
+explain select * from null_lst_route_bigint where a > 0 and a <10;
+
+CREATE TABLE `null_lst_route_bigint2` (
+`a` bigint DEFAULT NULL,
+`b` bigint DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(
+PARTITION p1 VALUES IN(0),
+PARTITION p2 VALUES IN(1,2,3,4,5,6,7,8,9),
+PARTITION p3 VALUES IN(10),
+PARTITION pd VALUES IN(DEFAULT)
+);
+
+explain select * from null_lst_route_bigint2 where a > 0 and a <10;

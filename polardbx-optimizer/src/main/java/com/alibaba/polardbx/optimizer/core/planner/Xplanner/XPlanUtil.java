@@ -35,9 +35,11 @@ import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.Pair;
@@ -763,6 +765,13 @@ public class XPlanUtil {
                         tableScan.getOriginalRowType().getFieldNames().get(keyExpr.getKey().getIndex());
                     final RelDataType keyType =
                         tableScan.getOriginalRowType().getFieldList().get(keyExpr.getKey().getIndex()).getType();
+                    final SqlCollation collation =
+                        keyType != null && keyType.getSqlTypeName().getFamily() == SqlTypeFamily.CHARACTER ?
+                            keyType.getCollation() : null;
+                    final String name = collation != null ? collation.getCharset().name().toUpperCase() : null;
+                    if (name != null && !name.startsWith("UTF8") && !name.startsWith("UTF-8")) {
+                        throw GeneralUtil.nestedException("XPlan does not support charset except utf8.");
+                    }
                     final PolarxDatatypes.Scalar value =
                         rexToScalar(keyExpr.getValue(), new RexContext(keyType, keyExpr.getOperator().isName("<=>")));
                     keyExprBuilder.setField(XUtil.genUtf8StringScalar(keyName));

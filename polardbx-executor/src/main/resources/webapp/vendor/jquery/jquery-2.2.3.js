@@ -64,7 +64,7 @@
 
 
     var
-        version = "2.2.3",
+        version = "X.X.X",
 
         // Define a local copy of jQuery
         jQuery = function (selector, context) {

@@ -73,6 +73,7 @@ public enum HintType {
     CMD_MERGE_UNION_SIZE(Values.CMD_MERGE_UNION_SIZE),
     CMD_QUERY_BLOCK_NAME(Values.CMD_QUERY_BLOCK_NAME),
     CMD_INDEX(Values.INDEX),
+    CMD_PAGING_INDEX(Values.PAGING_INDEX),
     CMD_BKA_JOIN(Values.BKA_JOIN),
     CMD_NL_JOIN(Values.NL_JOIN),
     CMD_HASH_JOIN(Values.HASH_JOIN),
@@ -171,6 +172,7 @@ public enum HintType {
         VALUE_TO_OPERATOR.put(Values.CMD_MPP, CMD_MPP);
         VALUE_TO_OPERATOR.put(Values.CMD_QUERY_BLOCK_NAME, CMD_QUERY_BLOCK_NAME);
         VALUE_TO_OPERATOR.put(Values.INDEX, CMD_INDEX);
+        VALUE_TO_OPERATOR.put(Values.PAGING_INDEX, CMD_PAGING_INDEX);
         VALUE_TO_OPERATOR.put(Values.BKA_JOIN, CMD_BKA_JOIN);
         VALUE_TO_OPERATOR.put(Values.HASH_JOIN, CMD_HASH_JOIN);
         VALUE_TO_OPERATOR.put(Values.HASH_OUTER_JOIN, CMD_HASH_OUTER_JOIN);
@@ -246,6 +248,7 @@ public enum HintType {
         static final String CMD_MPP = "MPP";
         static final String CMD_QUERY_BLOCK_NAME = "QB_NAME";
         static final String INDEX = "INDEX";
+        static final String PAGING_INDEX = "PAGING_INDEX";
         static final String BKA_JOIN = "BKA_JOIN";
         static final String NL_JOIN = "NL_JOIN";
         static final String HASH_JOIN = "HASH_JOIN";

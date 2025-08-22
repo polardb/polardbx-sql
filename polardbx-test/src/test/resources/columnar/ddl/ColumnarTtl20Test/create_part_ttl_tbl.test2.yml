@@ -1,0 +1,38 @@
+
+## create table
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a),
+global index g_b (b) partition by key(b) partitions 16
+)
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 5 MINUTE TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */1 * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 16;
+
+create table oss_t1
+like ttl_t1 engine = 'local_disk'
+archive_mode = 'ttl';
+
+## prepare data
+insert into ttl_t1 values
+(null, '2023-01-01'),
+(null, '2023-01-02'),
+(null, '2023-01-03'),
+(null, '2023-01-04'),
+(null, '2023-01-11'),
+(null, '2023-01-12')
+;
+insert into ttl_t1 (a, b) select null, b from ttl_t1;
+
+## prepare new part for the exparied data to be archived
+alter table _ttl_tmp_ttl_t1 add partition (
+PARTITION `p2` VALUES LESS THAN ('2023-02-01 00:00:00'),
+PARTITION `p3` VALUES LESS THAN ('2023-03-01 00:00:00')
+);
+
+## do data cleaning, ( clean the data of time <= '2023-02-2' , mock)
+alter table ttl_t1 cleanup expired data;
+
+

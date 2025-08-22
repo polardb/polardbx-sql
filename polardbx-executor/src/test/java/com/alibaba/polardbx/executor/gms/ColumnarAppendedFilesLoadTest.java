@@ -14,15 +14,18 @@ import static com.alibaba.polardbx.executor.gms.FileVersionStorage.CSV_CHUNK_LIM
 public class ColumnarAppendedFilesLoadTest extends FileVersionStorageTestBase {
 
     @Test
-    public void testCsvLoad() {
+    public void testCsvLoad() throws InterruptedException {
         int loadedVersionCnt = 0;
         for (MockAppendedFilesStatus status : CSV_STATUSES) {
-            List<Chunk> chunkList = fileVersionStorage.csvData(status.checkpointTso, CSV_FILE_NAME);
+            List<Chunk> chunkList =
+                fileVersionStorage.csvData(status.checkpointTso, status.checkpointTso, CSV_FILE_NAME);
             Assert.assertEquals(status.totalRows, chunkList.stream().mapToLong(Chunk::getPositionCount).sum());
             // Random check an older version
             if (loadedVersionCnt > 0) {
                 int version = R.nextInt(loadedVersionCnt);
-                chunkList = fileVersionStorage.csvData(CSV_STATUSES[version].checkpointTso, CSV_FILE_NAME);
+                chunkList =
+                    fileVersionStorage.csvData(CSV_STATUSES[version].checkpointTso, CSV_STATUSES[version].checkpointTso,
+                        CSV_FILE_NAME);
                 Assert.assertEquals(
                     CSV_STATUSES[version].totalRows,
                     chunkList.stream().mapToLong(Chunk::getPositionCount).sum()
@@ -30,6 +33,10 @@ public class ColumnarAppendedFilesLoadTest extends FileVersionStorageTestBase {
             }
             loadedVersionCnt++;
         }
+        Assert.assertTrue(fileVersionStorage.getCsvCacheSizeInBytes() > 0);
+        fileVersionStorage.purgeByFile(CSV_FILE_NAME);
+        Thread.sleep(50);
+        Assert.assertEquals(0, fileVersionStorage.getCsvCacheSizeInBytes());
     }
 
     @Test
@@ -41,7 +48,8 @@ public class ColumnarAppendedFilesLoadTest extends FileVersionStorageTestBase {
                 purged = true;
                 fileVersionStorage.purge(lastTso);
             }
-            List<Chunk> chunkList = fileVersionStorage.csvData(status.checkpointTso, CSV_FILE_NAME);
+            List<Chunk> chunkList =
+                fileVersionStorage.csvData(status.checkpointTso, status.checkpointTso, CSV_FILE_NAME);
 
             long totalRows = chunkList.stream().mapToLong(Chunk::getPositionCount).sum();
 
@@ -69,6 +77,28 @@ public class ColumnarAppendedFilesLoadTest extends FileVersionStorageTestBase {
 
             lastTso = status.checkpointTso;
         }
+    }
+
+    @Test
+    public void testCsvLoadTsoInverseOrderWithPurge() {
+        MockAppendedFilesStatus version3 = CSV_STATUSES[3];
+        MockAppendedFilesStatus version4 = CSV_STATUSES[4];
+        List<Chunk> chunkList =
+            fileVersionStorage.csvData(version4.checkpointTso, version4.checkpointTso, CSV_FILE_NAME);
+
+        long totalRows = chunkList.stream().mapToLong(Chunk::getPositionCount).sum();
+
+        Assert.assertEquals(version4.totalRows, totalRows);
+
+        // This will make tso of version 3 in cache turn to purge tso
+        long purgeTso = version3.checkpointTso + 1L;
+        fileVersionStorage.purge(purgeTso);
+
+        chunkList = fileVersionStorage.csvData(version3.checkpointTso, purgeTso, CSV_FILE_NAME);
+
+        totalRows = chunkList.stream().mapToLong(Chunk::getPositionCount).sum();
+
+        Assert.assertEquals(version3.totalRows, totalRows);
     }
 
     @Test
@@ -121,7 +151,7 @@ public class ColumnarAppendedFilesLoadTest extends FileVersionStorageTestBase {
     }
 
     @Test
-    public void testGenerateDeleteBitmap() {
+    public void testGenerateDeleteBitmap() throws InterruptedException {
         int loadedVersionCnt = 0;
         for (MockAppendedFilesStatus status : DEL_STATUS) {
             RoaringBitmap bitmap = fileVersionStorage.getDeleteBitMap(FILE_META, status.checkpointTso);
@@ -134,6 +164,10 @@ public class ColumnarAppendedFilesLoadTest extends FileVersionStorageTestBase {
             }
             loadedVersionCnt++;
         }
+        Assert.assertTrue(fileVersionStorage.getDelCacheSizeInBytes() > 0);
+        fileVersionStorage.purgeByFile(CSV_FILE_NAME);
+        Thread.sleep(50);
+        Assert.assertEquals(0, fileVersionStorage.getDelCacheSizeInBytes());
     }
 
     @Test

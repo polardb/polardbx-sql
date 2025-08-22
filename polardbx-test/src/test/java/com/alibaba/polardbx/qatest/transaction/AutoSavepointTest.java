@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.qatest.transaction;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
@@ -31,20 +30,15 @@ import org.junit.runners.Parameterized;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.Random;
 import java.util.function.Supplier;
 
-import static com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase.quoteSpecialName;
-
 @NotThreadSafe
-
 public class AutoSavepointTest extends CrudBasedLockTestCase {
     private final String primaryName;
     private final String gsiName;
@@ -82,6 +76,7 @@ public class AutoSavepointTest extends CrudBasedLockTestCase {
      */
     @Before
     public void before() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global ENABLE_CLOSE_CONNECTION_WHEN_TRX_FATAL = false");
         JdbcUtil.executeUpdate(tddlConnection, "SET GLOBAL CONN_POOL_XPROTO_SLOW_THRESH = 0");
         this.myPolarXConn = getPolardbxConnection();
         this.myMysqlConn = getMysqlConnection();

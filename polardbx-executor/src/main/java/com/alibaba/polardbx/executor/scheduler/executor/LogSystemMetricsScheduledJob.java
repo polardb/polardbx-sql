@@ -4,20 +4,32 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.sync.MetricSyncAction;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarDuplicatesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.module.LogPattern;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.stats.metric.FeatureStats;
 import com.google.common.collect.Lists;
 
+import java.sql.Connection;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,6 +50,8 @@ import static com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType.LOG_SY
  * @author fangwu
  */
 public class LogSystemMetricsScheduledJob extends SchedulerExecutor {
+    private static final Logger LOGGER = LoggerFactory.getLogger(LogSystemMetricsScheduledJob.class);
+
     private final ExecutableScheduledJob executableScheduledJob;
 
     public LogSystemMetricsScheduledJob(final ExecutableScheduledJob executableScheduledJob) {
@@ -97,6 +111,10 @@ public class LogSystemMetricsScheduledJob extends SchedulerExecutor {
             EventLogger.log(EventType.METRICS, log);
             ModuleLogInfo.getInstance().logRecord(Module.METRIC, LogPattern.PROCESS_END,
                 new String[] {"feature metric log", log}, NORMAL);
+            // columnar status
+            for (final String status : columnarStatus()) {
+                EventLogger.log(EventType.COLUMNAR_STATUS, status);
+            }
             //mark as SUCCESS
             succeedExit(scheduleId, fireTime, remark);
         } catch (Throwable t) {
@@ -131,5 +149,47 @@ public class LogSystemMetricsScheduledJob extends SchedulerExecutor {
         long finishTime = System.currentTimeMillis() / 1000;
         //mark as SUCCESS
         return ScheduledJobsManager.casStateWithFinishTime(scheduleId, fireTime, RUNNING, SUCCESS, finishTime, remark);
+    }
+
+    static List<String> columnarStatus() {
+        final List<ColumnarTableMappingRecord> columnarRecords = new ArrayList<>();
+        final Map<Long, Long> duplicates = new HashMap<>();
+        try (final Connection metaDbConn = MetaDbUtil.getConnection()) {
+            final ColumnarTableMappingAccessor tableMappingAccessor = new ColumnarTableMappingAccessor();
+            tableMappingAccessor.setConnection(metaDbConn);
+
+            columnarRecords.addAll(tableMappingAccessor.queryByStatus(ColumnarTableStatus.PUBLIC.name()));
+            columnarRecords.addAll(tableMappingAccessor.queryByStatus(ColumnarTableStatus.CREATING.name()));
+
+            final ColumnarDuplicatesAccessor duplicatesAccessor = new ColumnarDuplicatesAccessor();
+            for (final ColumnarTableMappingRecord record : columnarRecords) {
+                final long count = duplicatesAccessor.countDuplicates(record.tableId);
+                duplicates.put(record.tableId, count);
+            }
+        } catch (Throwable t) {
+            LOGGER.error(t.getMessage(), t);
+            return Collections.emptyList();
+        }
+
+        final List<ColumnarTransactionUtils.ColumnarIndexStatusRow> rows;
+        try {
+            final long tso = ColumnarTransactionUtils.getLatestShowColumnarStatusTsoFromGms();
+            rows = ColumnarTransactionUtils.queryColumnarIndexStatus(tso, columnarRecords);
+        } catch (Throwable t) {
+            LOGGER.error(t.getMessage(), t);
+            return Collections.emptyList();
+        }
+
+        // generate status string
+        final List<String> results = new ArrayList<>();
+        for (final ColumnarTransactionUtils.ColumnarIndexStatusRow row : rows) {
+            final String str =
+                String.valueOf(row.tso) + '|' + row.tableSchema + '|' + row.tableName + '|' + row.indexName + '|'
+                    + row.indexId + '|' + row.csvRows + '|' + row.orcRows + '|' + row.delRows + '|' + row.csvFileNum
+                    + '|' + row.orcFileNum + '|' + row.delFileNum + '|' + row.csvFileSize + '|' + row.orcFileSize + '|'
+                    + row.delFileSize + '|' + row.status + '|' + duplicates.get(row.indexId);
+            results.add(str);
+        }
+        return results;
     }
 }

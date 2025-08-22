@@ -22,7 +22,6 @@ import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
-import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -34,7 +33,6 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
 
-import static com.alibaba.polardbx.common.cdc.ICdcManager.FOREIGN_KEYS_DDL;
 import static com.alibaba.polardbx.common.cdc.ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE;
 import static com.alibaba.polardbx.common.cdc.ICdcManager.USE_ORIGINAL_DDL;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
@@ -82,7 +80,7 @@ public class CdcAlterTableRewrittenDdlMarkTask extends BaseCdcTask {
             }
         }
         if (foreignKeys) {
-            executionContext.getExtraCmds().put(FOREIGN_KEYS_DDL, "true");
+            executionContext.getExtraCmds().put(USE_ORIGINAL_DDL, "true");
         }
 
         CdcManagerHelper.getInstance()

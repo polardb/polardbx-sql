@@ -30,7 +30,6 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
@@ -56,9 +55,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -267,6 +269,30 @@ public class CheckModifyLimitation {
         }
 
         return false;
+    }
+
+    public static boolean checkPartitionColumn(Collection<RelOptTable> tables,
+                                               BiPredicate<Ord<RelOptTable>, String> handler) {
+        final AtomicBoolean result = new AtomicBoolean(false);
+        for (Ord<RelOptTable> table : Ord.zip(tables)) {
+            final Pair<String, String> qualifiedTableName = RelUtils.getQualifiedTableName(table.e);
+            final String schemaName = qualifiedTableName.left;
+            final String tableName = qualifiedTableName.right;
+            if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName))
+                    .getRuleManager()
+                    .getSharedColumns(tableName).
+                    forEach(shardingColumn -> result.set(
+                        Boolean.logicalOr(result.get(), handler.test(table, shardingColumn))));
+            } else {
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName))
+                    .getRuleManager()
+                    .getActualSharedColumns(tableName)
+                    .forEach(partitionColumn -> result.set(
+                        Boolean.logicalOr(result.get(), handler.test(table, partitionColumn))));
+            }
+        }
+        return result.get();
     }
 
     private static void checkInsert(LogicalTableModify modify, PlannerContext pc) {

@@ -35,10 +35,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropTableWithGsiPrep
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @author guxu
@@ -46,7 +43,7 @@ import java.util.Set;
 public class DropTableWithGsiJobFactory extends DdlJobFactory {
 
     final private DropTableWithGsiPreparedData preparedData;
-    final private Map<String, List<List<String>>> primaryTableTopology;
+    final private TreeMap<String, List<List<String>>> primaryTableTopology;
     final private List<PhyDdlTableOperation> primaryTablePhysicalPlans;
     final private Map<String, Map<String, List<List<String>>>> indexTableTopologyMap;
     final private ExecutionContext executionContext;
@@ -65,7 +62,7 @@ public class DropTableWithGsiJobFactory extends DdlJobFactory {
 
         dropTableWithGsiBuilder.build();
 
-        Map<String, List<List<String>>> primaryTableTopology = dropTableWithGsiBuilder.getPrimaryTableTopology();
+        TreeMap<String, List<List<String>>> primaryTableTopology = dropTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = dropTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
 
         Map<String, Map<String, List<List<String>>>> indexTableTopologyMap =

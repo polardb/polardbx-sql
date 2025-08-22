@@ -768,11 +768,12 @@
     select x.tt from customer join (select sum(o_custkey)+1 as tt from orders group by o_orderkey) x on c_nationkey > x.tt;
 
   plan: |
-
     project(tt="$f1 + 1")
       nljoin(condition="c_nationkey > $f1 + 1", type="inner")
         exchange(distribution=single, collation=[])
-          logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, sum(`o_custkey`) as `$f1` from `orders` as `orders` group by `o_orderkey`")
+          sortagg(group="o_orderkey", $f1="sum(o_custkey)")
+            exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+              logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_custkey` from `orders` as `orders` force index(`primary`) order by `o_orderkey`")
         exchange(distribution=single, collation=[])
           logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey` from `customer` as `customer`")
 
@@ -785,8 +786,141 @@
     project(tt="tt")
       hashjoin(condition="tt = c_nationkey", type="inner")
         exchange(distribution=hash[0], collation=[])
-          logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select (sum(`o_custkey`) + 1) as `tt` from `orders` as `orders` group by `o_orderkey`")
+          project(tt="$f1 + 1")
+            sortagg(group="o_orderkey", $f1="sum(o_custkey)")
+              exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_custkey` from `orders` as `orders` force index(`primary`) order by `o_orderkey`")
         project(c_nationkey="c_nationkey")
           exchange(distribution=hash[1], collation=[])
             project(c_nationkey="c_nationkey", c_nationkey_shuffle__="cast(c_nationkey)")
               logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey` from `customer` as `customer`")
+
+- sql: |
+    select 1 from
+    lineitem left join orders on  l_orderkey = o_shippriority
+    where o_custkey not in (select o_custkey from orders);
+
+  plan: |
+    project(1="1")
+      hashjoin(condition="l_orderkey = o_shippriority", type="inner")
+        exchange(distribution=hash[0], collation=[])
+          filter(condition="bloomfilter(l_orderkey)")
+            logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey` from `lineitem` as `lineitem`")
+        exchange(distribution=hash[1], collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](o_shippriority)")
+            semihashjoin(condition="o_custkey = o_custkey", type="anti", build="inner")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey`, `o_shippriority` from `orders` as `orders`")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey` from `orders` as `orders`")
+
+- sql: |
+    select 1 from
+    lineitem right join orders on  l_orderkey = o_shippriority
+    where o_custkey not in (select o_custkey from orders);
+
+  plan: |
+    project(1="1")
+      hashjoin(condition="l_orderkey = o_shippriority", type="right", build="right")
+        exchange(distribution=hash[0], collation=[])
+          logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey` from `lineitem` as `lineitem`")
+        exchange(distribution=hash[1], collation=[])
+          semihashjoin(condition="o_custkey = o_custkey", type="anti", build="inner")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey`, `o_shippriority` from `orders` as `orders`")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey` from `orders` as `orders`")
+
+- sql: |
+    select 1 from
+    lineitem  join orders on  l_orderkey = o_shippriority
+    where o_custkey not in (select o_custkey from orders);
+
+  plan: |
+    project(1="1")
+      hashjoin(condition="o_shippriority = l_orderkey", type="inner")
+        exchange(distribution=hash[0], collation=[])
+          filter(condition="bloomfilter(l_orderkey)")
+            logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey` from `lineitem` as `lineitem`")
+        exchange(distribution=hash[1], collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](o_shippriority)")
+            semihashjoin(condition="o_custkey = o_custkey", type="anti", build="inner")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey`, `o_shippriority` from `orders` as `orders`")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey` from `orders` as `orders`")
+
+- sql: |
+    select 1 from
+    lineitem left join orders on  l_orderkey = o_shippriority
+    where not(o_custkey not in (select o_custkey from orders));
+  plan: |
+    project(1="1")
+      filter(condition="not(apply_boolean)")
+        correlateapply(cor=$cor0, leftconditions=[$0], opkind=not_equals, type=anti)
+          project(o_custkey="o_custkey")
+            hashjoin(condition="l_orderkey = o_shippriority", type="right")
+              exchange(distribution=hash[1], collation=[])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey`, `o_shippriority` from `orders` as `orders`")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey` from `lineitem` as `lineitem`")
+          logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey` as `$f0` from `orders` as `orders`")
+    cache node:
+
+    project(o_custkey="o_custkey")
+      hashjoin(condition="l_orderkey = o_shippriority", type="right")
+        exchange(distribution=hash[1], collation=[])
+          logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey`, `o_shippriority` from `orders` as `orders`")
+        exchange(distribution=hash[0], collation=[])
+          logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey` from `lineitem` as `lineitem`")
+    logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey` as `$f0` from `orders` as `orders`")
+
+- sql: |
+    select 1 from
+    lineitem left join orders on  l_orderkey = o_shippriority
+    where not(o_custkey in (select o_custkey from orders));
+  plan: |
+    project(1="1")
+      filter(condition="not(apply_boolean)")
+        correlateapply(cor=$cor0, leftconditions=[$0], opkind=equals, type=semi)
+          project(o_custkey="o_custkey")
+            hashjoin(condition="l_orderkey = o_shippriority", type="right")
+              exchange(distribution=hash[1], collation=[])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey`, `o_shippriority` from `orders` as `orders`")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey` from `lineitem` as `lineitem`")
+          logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey` as `$f0` from `orders` as `orders`")
+    cache node:
+
+    project(o_custkey="o_custkey")
+      hashjoin(condition="l_orderkey = o_shippriority", type="right")
+        exchange(distribution=hash[1], collation=[])
+          logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey`, `o_shippriority` from `orders` as `orders`")
+        exchange(distribution=hash[0], collation=[])
+          logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey` from `lineitem` as `lineitem`")
+    logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_custkey` as `$f0` from `orders` as `orders`")
+- sql: |
+    select rn from 
+    (select *, row_number() OVER ( ORDER BY l_orderkey ) AS rn  from (select * from lineitem order  by l_suppkey));
+  plan: |
+    project(rn="f16w0$o0")
+      sortwindow(l_orderkey="l_orderkey", f1w0$o0="window#0row_number()", reference windows="window#0=window(partition {} order by [0 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number()])")
+        exchange(distribution=single, collation=[0 asc-nulls-first])
+          project(l_orderkey="l_orderkey")
+            logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem` force index(`primary`) order by `l_orderkey`")
+- sql: |
+    select rn from 
+    (select *, row_number() OVER ( ORDER BY l_orderkey ) AS rn  from (select * from lineitem order  by l_suppkey)) order by l_suppkey;
+  plan: |
+    project(rn="rn")
+      exchange(distribution=single, collation=[1 asc-nulls-first])
+        memsort(sort="l_suppkey asc")
+          project(rn="f16w0$o0", l_suppkey="l_suppkey")
+            sortwindow(l_orderkey="l_orderkey", l_suppkey="l_suppkey", f2w0$o0="window#0row_number()", reference windows="window#0=window(partition {} order by [0 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number()])")
+              exchange(distribution=single, collation=[0 asc-nulls-first])
+                logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem` force index(`primary`) order by `l_orderkey`")
+- sql: |
+    select l.l_shipdate,c.c_phone  from (select max(l_shipdate) as l_shipdate, l_orderkey from lineitem group by l_orderkey) l join customer c on l.l_orderkey=c.c_custkey;
+
+  plan: |
+    logicalview(tables="lineitem[p1,p2,p3,p4],customer[p1,p2,p3,p4]", shardcount=4, sql="select `t`.`l_shipdate`, `customer`.`c_phone` from (select `l_orderkey`, max(`l_shipdate`) as `l_shipdate` from `lineitem` as `lineitem` group by `l_orderkey`) as `t` inner join `customer` as `customer` on (`t`.`l_orderkey` = `customer`.`c_custkey`)")

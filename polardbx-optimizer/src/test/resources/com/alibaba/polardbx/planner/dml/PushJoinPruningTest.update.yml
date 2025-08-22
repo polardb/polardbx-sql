@@ -1,0 +1,22 @@
+- sql: |
+    update self_join_t1 a join self_join_t1 b on a.c1 = b.c1 and a.pk > b.pk set a.pk = a.pk * 2, b.pk = b.pk * 5
+
+  plan: |
+
+    logicalmodifyview(tables="self_join_t1[p1,p2,p3,...p64],self_join_t1[p1,p2,p3,...p64]", shardcount=64, sql="update `self_join_t1` as `self_join_t1` inner join `self_join_t1` as `self_join_t10` on ((`self_join_t1`.`c1` = `self_join_t10`.`c1`) and (`self_join_t1`.`pk` > `self_join_t10`.`pk`)) set `self_join_t1`.`pk` = (`self_join_t1`.`pk` * ?) , `self_join_t10`.`pk` = (`self_join_t10`.`pk` * ?)")
+
+- sql: |
+    update `optest`.`img` set `optest`.`img`.`ding_count` = (`optest`.`img`.`ding_count` + 1), `optest`.`img`.`is_ding` = 1 where `optest`.`img`.`imgid` in (1618372744)
+
+  plan: |
+
+    logicalmodifyview(tables="img[p45sp10]", sql="update `img` as `img` force index(`primary`) set `ding_count` = (`ding_count` + ?) , `is_ding` = ? where (`imgid` in(?))")
+
+
+- sql: |
+    select a.id as id from test_hash_ta a join test_hash_tc c on a.id=c.id and a.id=100;
+
+  plan: |
+
+    gather(concurrent=true)
+      logicalview(tables="test_hash_ta[p23],test_hash_tc[p23]", sql="select `test_hash_ta`.`id` from `test_hash_ta` as `test_hash_ta` inner join `test_hash_tc` as `test_hash_tc` on ((`test_hash_ta`.`id` = ?) and (`test_hash_tc`.`id` = ?) and (`test_hash_ta`.`id` = `test_hash_tc`.`id`))")

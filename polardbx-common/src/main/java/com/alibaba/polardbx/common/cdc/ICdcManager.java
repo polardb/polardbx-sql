@@ -75,6 +75,7 @@ public interface ICdcManager {
     String DDL_ID = "DDL_ID";
     String EXCHANGE_NAMES_MAPPING = "EXCHANGE_NAMES_MAPPING";
     String CDC_MARK_RECORD_COMMIT_TSO = "cdc_mark_record_commit_tso";
+    String CDC_ARCHIVE_DROP_PARTITION = "CDC_ARCHIVE_DROP_PARTITION";
 
     /**
      * 发送Cdc通用指令
@@ -82,6 +83,8 @@ public interface ICdcManager {
     void sendInstruction(InstructionType instructionType, String instructionId, String instructionContent);
 
     void notifyDdl(CdcDDLContext cdcDDLContext);
+
+    void syncToLeaderMarkDdl(CdcDDLContext cdcDDLContext);
 
     /**
      * 查询用于 DDL 打标的 CDC 系统表记录

@@ -18,45 +18,56 @@
 
 package com.alibaba.polardbx.executor.columnar;
 
-import org.apache.hadoop.fs.FSDataInputStream;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 
 public class ByteCSVReader {
     private final ByteBuffer lengthBuffer = ByteBuffer.allocate(Integer.BYTES);
-    private final FSDataInputStream inputStream;
+    private final InputStream inputStream;
 
     private final String csvFileName;
+    private int preAssignedLength = 1024;
+    byte[] data = new byte[preAssignedLength];
 
     private long currentPosition;
     private final long fileEndOffset;
 
-    public ByteCSVReader(String csvFileName, FSDataInputStream inputStream, long length) throws IOException {
+    private final byte[] reusableNulls;
+    private final int[] reusableOffsets;
+
+    public ByteCSVReader(String csvFileName, InputStream inputStream, long length,
+                         byte[] reusableNulls, int[] reusableOffsets) {
         this.csvFileName = csvFileName;
         this.inputStream = inputStream;
         this.currentPosition = 0;
         this.fileEndOffset = length;
+        this.reusableNulls = reusableNulls;
+        this.reusableOffsets = reusableOffsets;
     }
 
     public boolean isReadable() throws IOException {
-        return currentPosition < fileEndOffset && inputStream.available() > 0;
+        return (currentPosition < fileEndOffset || fileEndOffset < 0) && inputStream.available() > 0;
     }
 
     public CSVRow nextRow() throws IOException {
         lengthBuffer.clear();
         canReadFileLength(Integer.BYTES);
-        inputStream.readFully(lengthBuffer.array(), 0, Integer.BYTES);
+        inputStream.read(lengthBuffer.array(), 0, Integer.BYTES);
 
         int length = lengthBuffer.getInt();
-        byte[] data = new byte[length];
+
+        if (preAssignedLength < length) {
+            preAssignedLength = (int) (length * 1.5);
+            data = new byte[preAssignedLength];
+        }
+
         canReadFileLength(length);
-        inputStream.readFully(data);
+        inputStream.read(data, 0, length);
 
         currentPosition += (Integer.BYTES + length);
 
-        return CSVRow.deserialize(data);
+        return CSVRow.deserialize(data, reusableNulls, reusableOffsets, length);
     }
 
     public void close() throws IOException {
@@ -66,7 +77,7 @@ public class ByteCSVReader {
     }
 
     private void canReadFileLength(int needRead) throws IOException {
-        if (currentPosition + needRead > fileEndOffset) {
+        if (fileEndOffset >= 0 && currentPosition + needRead > fileEndOffset) {
             throw new IOException(
                 String.format("%s need read %d failed! current Position:%d, end Position:%d", csvFileName,
                     needRead, currentPosition, fileEndOffset));

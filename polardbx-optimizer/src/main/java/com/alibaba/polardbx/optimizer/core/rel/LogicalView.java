@@ -226,6 +226,8 @@ public class LogicalView extends TableScan {
     protected Map<String, PartitionPruneStep> pruneStepHintCache;
     protected boolean crossSingleTable = false;
     protected boolean isMGetEnabled = false;
+    protected boolean inToUnionAll = false;
+    protected boolean isOnePhaseAgg = false;
     protected Join join;
     protected String schemaName;
     protected List<RexDynamicParam> scalarList = Lists.newArrayList();
@@ -256,7 +258,7 @@ public class LogicalView extends TableScan {
     // Physical query cache
     private SqlNode sqlTemplateCache;
     private String sqlTemplateStringCache;
-    private BytesSql lookupSqlTemplateCache; // MPP executor use this to run lookup join
+    private LookupSql lookupSqlTemplateCache; // MPP executor use this to run lookup join
     private ExtractionResult partitionConditionCache;
 
     private BytesSql bytesSql;
@@ -282,7 +284,9 @@ public class LogicalView extends TableScan {
         this.partitions = extractPartitionsFromStrList(relInput.getStringList("partitions"));
         this.flashback = relInput.getExpression("flashback");
         this.flashbackOperator = relInput.getSqlOperator("flashbackOperator");
-        isMGetEnabled = relInput.getBoolean("isMGetEnabled", false);
+        this.isMGetEnabled = relInput.getBoolean("isMGetEnabled", false);
+        this.inToUnionAll = relInput.getBoolean("inToUnionAll", false);
+        this.flashbackOperator = relInput.getSqlOperator("flashbackOperator");
         Map<String, Object> xplanMap = (Map) relInput.get("xplan");
         try {
             this.XPlan = DRDSRelJson.fromJsonToXPlan(xplanMap);
@@ -345,6 +349,8 @@ public class LogicalView extends TableScan {
         this.comparativeHintCache = newLogicalView.comparativeHintCache;
         this.crossSingleTable = newLogicalView.crossSingleTable;
         this.isMGetEnabled = newLogicalView.isMGetEnabled;
+        this.inToUnionAll = newLogicalView.inToUnionAll;
+        this.isOnePhaseAgg = newLogicalView.isOnePhaseAgg;
         this.join = newLogicalView.join;
         this.scalarList = newLogicalView.scalarList;
         this.correlateVariableScalar = newLogicalView.correlateVariableScalar;
@@ -486,6 +492,7 @@ public class LogicalView extends TableScan {
             .item("pushDownOpt", pushDownOpt)
             .item("schemaName", schemaName)
             .itemIf("isMGetEnabled", isMGetEnabled, isMGetEnabled)
+            .itemIf("inToUnionAll", inToUnionAll, inToUnionAll)
             .item("partitions", convertPartitionsToStrList())
             .item("flashback", flashback)
             .itemIf("flashbackOperator", flashbackOperator, flashbackOperator != null)
@@ -1312,7 +1319,7 @@ public class LogicalView extends TableScan {
                         continue;
                     }
                     phyTableString += "[";
-                    List<PhysicalPartitionInfo> prunedParts = rs.getPrunedParttions();
+                    List<PhysicalPartitionInfo> prunedParts = rs.getPrunedPartitions();
                     shardCount = prunedParts.size();
                     if (shardCount > 10) {
                         phyTableString += prunedParts.get(0).getPartName() + ",";
@@ -1342,7 +1349,7 @@ public class LogicalView extends TableScan {
 
         pw.itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
 
-        if (isMGetEnabled && join != null) {
+        if (isMGetEnabled && join != null && !inToUnionAll) {
             List<LookupEquiJoinKey> joinKeys =
                 EquiJoinUtils.buildLookupEquiJoinKeys(join, join.getOuter(), join.getInner(),
                     (RexCall) join.getCondition(), join.getJoinType());
@@ -1369,11 +1376,6 @@ public class LogicalView extends TableScan {
 
         pw.item("sql", sql);
 
-        // TODO: RT filter disabled now.
-//        if (isMGetEnabled && join != null && join instanceof HashJoin) {
-//            pw.item("runtimeFilter", true);
-//        }
-
         final XPlanTemplate XPlan = getXPlan();
         if (XPlan != null && executionContext.getParamManager().getBoolean(ConnectionParams.EXPLAIN_X_PLAN)) {
             final JsonFormat format = new JsonFormat();
@@ -1385,7 +1387,7 @@ public class LogicalView extends TableScan {
             }
         }
         String pruningInfo = pruningInfo(executionContext);
-        boolean couldPruning = pushDownOpt.couldDynamicPruning();
+        boolean couldPruning = pushDownOpt.couldDynamicPruning(executionContext);
         pw.itemIf("pruningInfo", pruningInfo, couldPruning && StringUtils.isNotEmpty(pruningInfo));
 
         // FIXME generate correct param for LogicalView
@@ -1412,7 +1414,7 @@ public class LogicalView extends TableScan {
      * get pruning info, only for explain
      */
     private String pruningInfo(ExecutionContext executionContext) {
-        Set<Integer> indexes = pushDownOpt.getShardRelatedInTypeParamIndexes();
+        Set<Integer> indexes = pushDownOpt.getShardRelatedInTypeParamIndexes(executionContext);
         if (indexes == null || indexes.size() == 0) {
             return "";
         }
@@ -1474,6 +1476,22 @@ public class LogicalView extends TableScan {
 
     public boolean isMGetEnabled() {
         return isMGetEnabled;
+    }
+
+    public boolean isInToUnionAll() {
+        return inToUnionAll;
+    }
+
+    public void setInToUnionAll(boolean inToUnionAll) {
+        this.inToUnionAll = inToUnionAll;
+    }
+
+    public boolean isOnePhaseAgg() {
+        return isOnePhaseAgg;
+    }
+
+    public void setOnePhaseAgg(boolean onePhaseAgg) {
+        isOnePhaseAgg = onePhaseAgg;
     }
 
     public boolean getFinishShard() {
@@ -1704,7 +1722,13 @@ public class LogicalView extends TableScan {
                 .getBoolean(ConnectionParams.CALCULATE_ACTUAL_SHARD_COUNT_FOR_COST);
         ExecutionContext executionContext = PlannerContext.getPlannerContext(this).getExecutionContext();
         Parameters params = OptimizerUtils.getParametersForOptimizer(this);
-        executionContext = executionContext.copy(params);
+
+        executionContext = executionContext.copyForSharding(
+            schemaName,
+            params,
+            executionContext.getSchemaManagers(),
+            executionContext.getTimeZone());
+
         if (calActualShardCount) {
             try {
                 if (!partitionInfoManager.isNewPartDbTable(logTb)) {
@@ -1815,7 +1839,7 @@ public class LogicalView extends TableScan {
         if (PlannerUtils.allTableSingle(tableNames, schemaName, tddlRuleManager)) {
             return true;
         }
-        if (pushDownOpt.couldDynamicPruning() && pushDownOpt.dynamicPruningContainsPartitionKey()) {
+        if (pushDownOpt.couldDynamicPruning(ec) && pushDownOpt.dynamicPruningContainsPartitionKey()) {
             return false;
         }
         if (tableNames.size() == 1) {
@@ -2066,16 +2090,19 @@ public class LogicalView extends TableScan {
     }
 
     public void optimizePhySql() {
+        RelNode prev = getPushDownOpt().getPushedRelNode();
         getPushDownOpt().optimizePhySql();
-        if(getNativeSqlNode().getKind() == SqlKind.DELETE){
+        if (getNativeSqlNode().getKind() != SqlKind.DELETE) {
             // since force index in single table delete need to add alias
             // may cause error execute on mysql
             // so not support delete auto gen force index for delete
-            return;
+            String index = ForceIndexUtil.genAutoForceIndex(this);
+            if (index != null) {
+                getPushDownOpt().autoForceIndex(index);
+            }
         }
-        String index = ForceIndexUtil.genAutoForceIndex(this);
-        if (index != null) {
-            getPushDownOpt().autoForceIndex(index);
+        if (getPushDownOpt().getPushedRelNode() != prev) {
+            mysqlNodeCache = null;
         }
         tableNames = collectTableNames();
         rebuildPartRoutingPlanInfo();
@@ -2163,6 +2190,7 @@ public class LogicalView extends TableScan {
         logicalView.correlateVariableScalar.addAll(correlateVariableScalar);
         logicalView.flashback = this.flashback;
         logicalView.flashbackOperator = this.flashbackOperator;
+        logicalView.isOnePhaseAgg = this.isOnePhaseAgg();
         logicalView.columnOrigins = this.getColumnOrigins();
         logicalView.isFromForceIndex = this.isFromForceIndex();
         return logicalView;
@@ -2289,8 +2317,8 @@ public class LogicalView extends TableScan {
         this.queryOperation = queryOperation;
     }
 
-    public BytesSql getLookupSqlTemplateCache(Supplier<BytesSql> generator) {
-        if (isCacheForbidden()) {
+    public LookupSql getLookupSqlTemplateCache(Supplier<LookupSql> generator) {
+        if (this.isCacheForbidden()) {
             return generator.get();
         }
         if (lookupSqlTemplateCache == null) {
@@ -2304,10 +2332,6 @@ public class LogicalView extends TableScan {
             partitionConditionCache = generator.get();
         }
         return partitionConditionCache;
-    }
-
-    public boolean hasDynamicPruning() {
-        return pushDownOpt.couldDynamicPruning();
     }
 
     public List<String> getColumnOrigins() {
@@ -2701,7 +2725,7 @@ public class LogicalView extends TableScan {
             List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, ec);
             filterPrunedResultBySelectedPartitions(resultList);
             if (!resultList.isEmpty()) {
-                List<PhysicalPartitionInfo> prunedResult = resultList.get(0).getPrunedParttions();
+                List<PhysicalPartitionInfo> prunedResult = resultList.get(0).getPrunedPartitions();
                 if (prunedResult.size() == 1) {
                     return true;
                 }

@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import org.junit.Assert;
 import org.junit.Before;
@@ -24,9 +25,12 @@ public class FloatBlockTest extends BaseBlockTest {
             blockBuilder.writeFloat(i * 1.23F);
         }
         blockBuilder.appendNull();
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         FloatBlock fromBlock = (FloatBlock) blockBuilder.build();
+        MemoryCountable.checkDeviation(fromBlock, .05d, true);
 
         FloatBlock newBlock = FloatBlock.from(fromBlock, fromBlock.positionCount, null);
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
         int[] hashCodes = fromBlock.hashCodeVector();
         int[] newHashCodes = new int[hashCodes.length];
         newBlock.hashCodeVector(newHashCodes, newHashCodes.length);
@@ -43,6 +47,7 @@ public class FloatBlockTest extends BaseBlockTest {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.checksum(i), newBlock.checksum(i));
         }
         FloatBlock newBlock2 = FloatBlock.from(fromBlock, sel.length, sel);
+        MemoryCountable.checkDeviation(newBlock2, .05d, true);
         for (int i = 0; i < sel.length; i++) {
             int j = sel[i];
             if (fromBlock.isNull(j)) {
@@ -60,7 +65,9 @@ public class FloatBlockTest extends BaseBlockTest {
         for (int i = 0; i < count; i++) {
             fromBlock.writePositionTo(i, blockBuilder2);
         }
+        MemoryCountable.checkDeviation(blockBuilder2, .05d, true);
         FloatBlock newBlock3 = (FloatBlock) blockBuilder2.build();
+        MemoryCountable.checkDeviation(newBlock3, .05d, true);
         for (int i = 0; i < count; i++) {
             if (fromBlock.isNull(i)) {
                 Assert.assertTrue(newBlock3.isNull(i));
@@ -73,6 +80,7 @@ public class FloatBlockTest extends BaseBlockTest {
         }
 
         FloatBlock newBlock4 = new FloatBlock(DataTypes.FloatType, count);
+        MemoryCountable.checkDeviation(newBlock4, .05d, true);
         fromBlock.copySelected(false, null, count, newBlock4);
         for (int i = 0; i < count; i++) {
             if (fromBlock.isNull(i)) {
@@ -82,6 +90,7 @@ public class FloatBlockTest extends BaseBlockTest {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.getFloat(i), newBlock4.getFloat(i), 1e-10);
         }
         FloatBlock newBlock5 = new FloatBlock(DataTypes.FloatType, count);
+        MemoryCountable.checkDeviation(newBlock5, .05d, true);
         fromBlock.copySelected(true, sel, sel.length, newBlock5);
         for (int i = 0; i < sel.length; i++) {
             int j = sel[i];
@@ -96,6 +105,7 @@ public class FloatBlockTest extends BaseBlockTest {
         // just compare reference since it is a shallow copy
         fromBlock.shallowCopyTo(newBlock6);
         Assert.assertSame(fromBlock.floatArray(), newBlock6.floatArray());
+        MemoryCountable.checkDeviation(newBlock6, .05d, true);
 
         // compact should work
         fromBlock.compact(sel);

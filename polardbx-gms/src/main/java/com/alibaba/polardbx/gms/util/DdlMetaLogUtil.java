@@ -64,6 +64,7 @@ public class DdlMetaLogUtil {
         ddlTables.add(GmsSystemTables.REFERENTIAL_CONSTRAINTS);
         ddlTables.add(GmsSystemTables.BACKFILL_OBJECTS);
         ddlTables.add(GmsSystemTables.BACKFILL_SAMPLE_ROWS);
+        ddlTables.add(GmsSystemTables.REBALANCE_EXTERNAL_SOLUTION);
         ddlTables.add(GmsSystemTables.CHANGESET_OBJECT);
         ddlTables.add(GmsSystemTables.CHECKER_REPORTS);
         ddlTables.add(GmsSystemTables.DDL_JOBS);

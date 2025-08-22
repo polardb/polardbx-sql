@@ -38,6 +38,7 @@ import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigWithIndexNameRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -404,6 +405,29 @@ public class GsiMetaManager extends AbstractLifecycle {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
                 e,
                 "update Global Secondary Index visibility failed!");
+        }
+    }
+
+    /**
+     * Alter gsi visibility from before -> after.
+     */
+    public long updateLackingLocalIndex(Connection connection, String schemaName, String tableName, String indexName,
+                                        LackLocalIndexStatus lackingLocalIndex) {
+        try {
+            String sql = getSqlUpdateLocalIndexStatus();
+            List params = ImmutableList.of(
+                stringParamRow(String
+                    .valueOf(lackingLocalIndex.getValue()), schemaName, tableName, indexName
+                ));
+            doExecuteUpdate(sql,
+                params,
+                connection);
+
+            return 0;
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
+                e,
+                "update Global Secondary Index local index status failed!");
         }
     }
 
@@ -1019,6 +1043,9 @@ public class GsiMetaManager extends AbstractLifecycle {
     private static final String SQL_UPDATE_INDEX_VISIBILITY =
         "UPDATE {0} SET VISIBLE = ? WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ? AND VISIBLE = ? AND INDEX_LOCATION = 1";
 
+    private static final String SQL_UPDATE_LOCAL_INDEX_STATUS =
+        "UPDATE {0} SET LACKING_LOCAL_INDEX = ? WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ? AND INDEX_LOCATION = 1";
+
     private String getSqlUpdateIndexStatus() {
         return MessageFormat.format(SQL_UPDATE_INDEX_STATUS, GmsSystemTables.INDEXES);
     }
@@ -1029,6 +1056,10 @@ public class GsiMetaManager extends AbstractLifecycle {
 
     private String getSqlUpdateIndexVisibility() {
         return MessageFormat.format(SQL_UPDATE_INDEX_VISIBILITY, GmsSystemTables.INDEXES);
+    }
+
+    private String getSqlUpdateLocalIndexStatus() {
+        return MessageFormat.format(SQL_UPDATE_LOCAL_INDEX_STATUS, GmsSystemTables.INDEXES);
     }
 
     private static final String SQL_REMOVE_INDEX_META_WITH_STATUS =
@@ -1476,21 +1507,7 @@ public class GsiMetaManager extends AbstractLifecycle {
             // cci name -> config key -> record
             Map<String, Map<String, String>> records = new HashMap<>();
             Map<String, String> globalConfig = new HashMap<>();
-            try (Connection connection = MetaDbUtil.getConnection()) {
-                ColumnarConfigAccessor accessor = new ColumnarConfigAccessor();
-                accessor.setConnection(connection);
-                for (ColumnarConfigWithIndexNameRecord record : accessor.query(schemaName, tableName)) {
-                    if (0 == record.tableId) {
-                        globalConfig.put(record.configKey, record.configValue);
-                        continue;
-                    }
-                    records.computeIfAbsent(record.indexName, k -> new HashMap<>())
-                        .put(record.configKey, record.configValue);
-                }
-            } catch (Throwable t) {
-                logger.error("Get columnar config error.", t);
-                return;
-            }
+            MetaDbUtil.generateColumnarConfig(schemaName, tableName, records, globalConfig);
 
             if (records.isEmpty()) {
                 return;
@@ -1674,7 +1691,8 @@ public class GsiMetaManager extends AbstractLifecycle {
                         indexRecord.version,
                         (indexRecord.flag & IndexesRecord.FLAG_CLUSTERED) != 0L,
                         (indexRecord.flag & IndexesRecord.FLAG_COLUMNAR) != 0L,
-                        IndexVisibility.convert(indexRecord.visible))
+                        IndexVisibility.convert(indexRecord.visible),
+                        LackLocalIndexStatus.convert(indexRecord.lackLocalIndex))
                 );
 
                 tmpIndexColumnMap.computeIfAbsent(
@@ -1871,6 +1889,7 @@ public class GsiMetaManager extends AbstractLifecycle {
         public final boolean clusteredIndex;
         public final boolean columnarIndex;
         public final IndexVisibility visibility;
+        public final LackLocalIndexStatus lackLocalIndexStatus;
         public AtomicReference<Map<String, String>> columnarOptions = new AtomicReference<>(new HashMap<>());
 
         public GsiIndexMetaBean(String tableCatalog, String tableSchema, String tableName, boolean nonUnique,
@@ -1878,7 +1897,7 @@ public class GsiMetaManager extends AbstractLifecycle {
                                 List<GsiIndexColumnMetaBean> coveringColumns, String indexType, String comment,
                                 String indexComment, SqlIndexResiding indexLocation, String indexTableName,
                                 IndexStatus indexStatus, long version, boolean clusteredIndex, boolean columnarIndex,
-                                IndexVisibility visibility) {
+                                IndexVisibility visibility, LackLocalIndexStatus lackLocalIndexStatus) {
             this.tableCatalog = tableCatalog;
             this.tableSchema = tableSchema;
             this.tableName = tableName;
@@ -1897,6 +1916,7 @@ public class GsiMetaManager extends AbstractLifecycle {
             this.clusteredIndex = clusteredIndex;
             this.columnarIndex = columnarIndex;
             this.visibility = visibility;
+            this.lackLocalIndexStatus = lackLocalIndexStatus;
         }
 
         public List<GsiIndexColumnMetaBean> getIndexColumns() {
@@ -1907,6 +1927,7 @@ public class GsiMetaManager extends AbstractLifecycle {
             return coveringColumns;
         }
 
+        @Override
         public GsiIndexMetaBean clone() {
             List<GsiIndexColumnMetaBean> newIndexColumns = new ArrayList<>();
             newIndexColumns.addAll(indexColumns);
@@ -1916,7 +1937,7 @@ public class GsiMetaManager extends AbstractLifecycle {
                 indexSchema, indexName, newIndexColumns,
                 newCoveringColumns, indexType, comment,
                 indexComment, indexLocation, indexTableName,
-                indexStatus, version, clusteredIndex, columnarIndex, visibility);
+                indexStatus, version, clusteredIndex, columnarIndex, visibility, lackLocalIndexStatus);
         }
 
         @Override
@@ -2105,12 +2126,14 @@ public class GsiMetaManager extends AbstractLifecycle {
          * 2. 写入时不带visible字段，直接使用default值
          */
         public final long visible;
+        public final long lackLocalIndex;
 
         public IndexRecord(long id, String tableCatalog, String tableSchema, String tableName, boolean nonUnique,
                            String indexSchema, String indexName, long seqInIndex, String columnName, String collation,
                            long cardinality, Long subPart, String packed, String nullable, String indexType,
                            String comment, String indexComment, long indexColumnType, long indexLocation,
-                           String indexTableName, long indexStatus, long version, long flag, long visibility) {
+                           String indexTableName, long indexStatus, long version, long flag, long visibility,
+                           long lackLocalIndex) {
             this.id = id;
             this.tableCatalog = tableCatalog;
             this.tableSchema = tableSchema;
@@ -2135,6 +2158,7 @@ public class GsiMetaManager extends AbstractLifecycle {
             this.version = version;
             this.flag = flag;
             this.visible = visibility;
+            this.lackLocalIndex = lackLocalIndex;
         }
 
         private IndexRecord() {
@@ -2162,6 +2186,7 @@ public class GsiMetaManager extends AbstractLifecycle {
             this.version = -1;
             this.flag = 0;
             this.visible = IndexVisibility.VISIBLE.getValue();
+            this.lackLocalIndex = LackLocalIndexStatus.NO_LACKIING.getValue();
         }
 
         @Override
@@ -2190,7 +2215,8 @@ public class GsiMetaManager extends AbstractLifecycle {
                     resultSet.getLong("index_status"),
                     resultSet.getLong("version"),
                     resultSet.getLong("flag"),
-                    resultSet.getLong("visible"));
+                    resultSet.getLong("visible"),
+                    resultSet.getLong("lacking_local_index"));
             } else {
                 return new IndexRecord(resultSet.getLong("id"),
                     resultSet.getString("table_catalog"),
@@ -2215,7 +2241,8 @@ public class GsiMetaManager extends AbstractLifecycle {
                     resultSet.getLong("index_status"),
                     resultSet.getLong("version"),
                     0,
-                    resultSet.getLong("visible"));
+                    resultSet.getLong("visible"),
+                    resultSet.getLong("lacking_local_index"));
             }
         }
 

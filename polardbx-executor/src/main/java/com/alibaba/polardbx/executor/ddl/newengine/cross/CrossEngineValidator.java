@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.cross;
 
+import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
@@ -60,6 +65,13 @@ public class CrossEngineValidator {
                 return new DropPhyObjectRecorder(physicalPlan, executionContext);
             case RENAME_TABLE:
                 return new RenameTablePhyObjectRecorder(physicalPlan, executionContext);
+            case ALTER_TABLE_DISCARD_TABLESPACE:
+                boolean checkTableDiscardState =
+                    executionContext.getParamManager().getBoolean(ConnectionParams.CHECK_TABLE_DISCARD_STATE);
+                if (checkTableDiscardState) {
+                    return new DiscardTableSpacePhyObjectRecorder(physicalPlan, executionContext);
+                }
+                //else use default
             case CREATE_INDEX:
             case DROP_INDEX:
             case ALTER_TABLE:

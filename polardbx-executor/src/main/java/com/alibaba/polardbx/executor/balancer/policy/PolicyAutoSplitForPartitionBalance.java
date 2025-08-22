@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.balancer.policy;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -31,6 +30,7 @@ import com.alibaba.polardbx.executor.balancer.action.ActionSplitTablePartition;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.ActionWriteDataDistLog;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
+import com.alibaba.polardbx.executor.balancer.action.EventLogger;
 import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
 import com.alibaba.polardbx.executor.balancer.solver.MixedModel;
 import com.alibaba.polardbx.executor.balancer.solver.PartitionSplitInfo;

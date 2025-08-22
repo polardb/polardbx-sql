@@ -1574,7 +1574,7 @@ class FieldAccessPairFinder extends RexVisitorImpl<Void> {
             }
         } else {
             for (RexNode rexNode : call.getOperands()) {
-                if (rexNode instanceof RexFieldAccess && call.getOperator() != CAST) {
+                if (rexNode instanceof RexFieldAccess) {
                     throw new NotSupportException(NOT_SUPPORT_SUBQUERY_WITH_FORM + call);
                 }
             }

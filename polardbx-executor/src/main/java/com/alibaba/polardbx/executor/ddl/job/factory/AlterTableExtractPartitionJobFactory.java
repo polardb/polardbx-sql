@@ -40,11 +40,7 @@ import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @author luoyanxin
@@ -54,7 +50,7 @@ public class AlterTableExtractPartitionJobFactory extends AlterTableGroupBaseJob
     public AlterTableExtractPartitionJobFactory(DDL ddl, AlterTableExtractPartitionPreparedData preparedData,
                                                 Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                                 Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                                Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                                Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                                 Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                 Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                                 Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -275,7 +271,7 @@ public class AlterTableExtractPartitionJobFactory extends AlterTableGroupBaseJob
                                           ExecutionContext executionContext) {
         AlterTableExtractPartitionBuilder alterTableExtractPartitionBuilder =
             new AlterTableExtractPartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableExtractPartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableExtractPartitionBuilder.getTargetTablesTopology();

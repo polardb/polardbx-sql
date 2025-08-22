@@ -3,6 +3,6 @@
 
   plan: |
 
-     PhyTableOperation(tables="optest_0000.[TDDL_USERS_01]", sql="INSERT INTO ? (`id`) VALUES(?)", params="`TDDL_USERS_01`,1")
      PhyTableOperation(tables="optest_0001.[TDDL_USERS_03]", sql="INSERT INTO ? (`id`) VALUES(?)", params="`TDDL_USERS_03`,3")
+     PhyTableOperation(tables="optest_0000.[TDDL_USERS_01]", sql="INSERT INTO ? (`id`) VALUES(?)", params="`TDDL_USERS_01`,1")
 

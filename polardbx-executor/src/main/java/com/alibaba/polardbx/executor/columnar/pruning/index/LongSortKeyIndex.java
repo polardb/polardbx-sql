@@ -1,8 +1,10 @@
 package com.alibaba.polardbx.executor.columnar.pruning.index;
 
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
+import groovy.sql.Sql;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.roaringbitmap.RoaringBitmap;
 
@@ -201,7 +203,10 @@ public class LongSortKeyIndex extends SortKeyIndex {
             type != SqlTypeName.INTEGER &&
             type != SqlTypeName.YEAR &&
             type != SqlTypeName.DATE &&
-            type != SqlTypeName.DATETIME) {
+            type != SqlTypeName.DATETIME &&
+            type != SqlTypeName.TIMESTAMP &&
+            type != SqlTypeName.TINYINT &&
+            type != SqlTypeName.MEDIUMINT) {
             return false;
         }
 
@@ -213,4 +218,11 @@ public class LongSortKeyIndex extends SortKeyIndex {
         return data;
     }
 
+    @Override
+    public long getSizeInBytes() {
+        if (data != null) {
+            return (long) data.length * Long.BYTES;
+        }
+        return 0;
+    }
 }

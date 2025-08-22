@@ -31,6 +31,7 @@
 
 package io.airlift.slice;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.io.IOException;
@@ -54,6 +55,11 @@ public class DynamicSliceOutput
 
     public DynamicSliceOutput(int estimatedSize) {
         this.slice = Slices.allocate(estimatedSize);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + FastMemoryCounter.sizeOf(slice);
     }
 
     @Override

@@ -1,15 +1,16 @@
 package com.alibaba.polardbx.executor.vectorized.compare;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.DateBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.TimestampBlockBuilder;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InValuesVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.InputRefVectorizedExpression;
@@ -18,7 +19,9 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -114,7 +117,6 @@ public class FastInVectorizedExpressionTest {
     @Test
     public void testIntInStringWithAutoType() {
         context.setParamManager(new ParamManager(new HashMap()));
-        context.getParamManager().getProps().put(ConnectionProperties.ENABLE_IN_VEC_AUTO_TYPE, "true");
 
         IntegerBlock integerBlock = IntegerBlock.of(1, 2, 100, null, 200, 1000, null, 100, -1000);
         Chunk inputChunk = new Chunk(integerBlock.getPositionCount(), integerBlock);
@@ -135,9 +137,53 @@ public class FastInVectorizedExpressionTest {
     }
 
     @Test
+    public void testDateInString() {
+
+        DateBlockBuilder blockBuilder = new DateBlockBuilder(16, DataTypes.DateType, context);
+        blockBuilder.writeByteArray("0000-00-00".getBytes()); // 1
+        blockBuilder.writeByteArray("2000-02-01".getBytes()); // 0
+        blockBuilder.writeByteArray("2020-12-11".getBytes()); // 1
+        blockBuilder.writeByteArray("2013-09-10".getBytes()); // 0
+        blockBuilder.writeByteArray("2000-10-10".getBytes()); // 1
+        blockBuilder.writeByteArray(null); // null
+        blockBuilder.writeByteArray("2003-06-20".getBytes()); // 0
+        blockBuilder.writeByteArray(null); // null
+        Block block = blockBuilder.build();
+
+        Chunk inputChunk = new Chunk(block.getPositionCount(), block);
+        String[] inValues = {"2000-10-10 11:11:11", "2020-12-11", "0000-00-00 00:00:00", null};
+        LongBlock expectBlock = LongBlock.of(1L, 0L, 1L, 0L, 1L, null, 0L, null);
+
+        doTest(DataTypes.DateType, inputChunk,
+            convertInValues(inValues, TYPE_FACTORY.createSqlType(SqlTypeName.DATE)),
+            expectBlock);
+    }
+
+    @Test
+    public void testDatetimeInString() {
+        TimestampBlockBuilder blockBuilder = new TimestampBlockBuilder(16, DateTimeType.DATE_TIME_TYPE_2, context);
+        blockBuilder.writeByteArray("0000-00-00 00:00:00.00".getBytes()); // 1
+        blockBuilder.writeByteArray("2000-02-01".getBytes()); // 0
+        blockBuilder.writeByteArray("2020-12-11 13:00:00.01".getBytes()); // 1
+        blockBuilder.writeByteArray("2013-09-10".getBytes()); // 0
+        blockBuilder.writeByteArray("2000-10-10 11:11:11.12".getBytes()); // 1
+        blockBuilder.writeByteArray(null); // null
+        blockBuilder.writeByteArray("2003-06-20".getBytes()); // 0
+        blockBuilder.writeByteArray(null); // null
+        Block block = blockBuilder.build();
+
+        Chunk inputChunk = new Chunk(block.getPositionCount(), block);
+        String[] inValues = {"2000-10-10 11:11:11.12", "2020-12-11 13:00:00.01", "0000-00-00 00:00:00", null};
+        LongBlock expectBlock = LongBlock.of(1L, 0L, 1L, 0L, 1L, null, 0L, null);
+
+        doTest(DateTimeType.DATE_TIME_TYPE_2, inputChunk,
+            convertInValues(inValues, TYPE_FACTORY.createSqlType(SqlTypeName.DATETIME, 2)),
+            expectBlock);
+    }
+
+    @Test
     public void testLongInStringWithAutoType() {
         context.setParamManager(new ParamManager(new HashMap()));
-        context.getParamManager().getProps().put(ConnectionProperties.ENABLE_IN_VEC_AUTO_TYPE, "true");
 
         LongBlock longBlock = LongBlock.of(1L, 2L, 100L, null, 200L, 1000L, null, 100L, -1000L);
         Chunk inputChunk = new Chunk(longBlock.getPositionCount(), longBlock);
@@ -279,13 +325,18 @@ public class FastInVectorizedExpressionTest {
     private void doTest(DataType inputType, Chunk inputChunk,
                         List<RexNode> rexLiteralList, RandomAccessBlock expectBlock,
                         int[] sel) {
-        boolean enableInAutoTypeConvert = context.getParamManager().getBoolean(ConnectionParams.ENABLE_IN_VEC_AUTO_TYPE);
+        boolean isLeftIntermediate = false;
 
         int outputIndex = 2;
         VectorizedExpression inputRef = new InputRefVectorizedExpression(inputType, 0, 0);
-        VectorizedExpression inValueExpr = InValuesVectorizedExpression.from(rexLiteralList, 2, enableInAutoTypeConvert);
-        if (enableInAutoTypeConvert) {
-            Assert.assertSame(((InValuesVectorizedExpression) inValueExpr).getInValueSet().getDataType(), inputType);
+        VectorizedExpression inValueExpr = InValuesVectorizedExpression.from(rexLiteralList, 2, isLeftIntermediate);
+        if (isLeftIntermediate) {
+            Assert.assertTrue(
+                DataTypeUtil.equalsSemantically(
+                    ((InValuesVectorizedExpression) inValueExpr).getInValueSet().getDataType(), inputType
+                )
+            );
+
         }
 
         MutableChunk preAllocatedChunk = MutableChunk.newBuilder(inputChunk.getPositionCount())

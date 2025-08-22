@@ -56,7 +56,6 @@ import static com.alibaba.polardbx.common.cdc.ICdcManager.REFRESH_CREATE_SQL_4_P
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SIM_CDC_FAILED;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropTableIfExistsMarkTask.checkTableName;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
-import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.isUseFkOriginalDDL;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 
 /**
@@ -157,7 +156,7 @@ public class CdcDdlMarkTask extends BaseCdcTask {
             executionContext.getExtraCmds().put(ICdcManager.USE_ORIGINAL_DDL, "true");
         }
         if (foreignKeys) {
-            executionContext.getExtraCmds().put(ICdcManager.FOREIGN_KEYS_DDL, "true");
+            executionContext.getExtraCmds().put(ICdcManager.USE_ORIGINAL_DDL, "true");
         }
         if (isCci) {
             executionContext.getExtraCmds().put(ICdcManager.CDC_IS_CCI, true);
@@ -336,7 +335,7 @@ public class CdcDdlMarkTask extends BaseCdcTask {
     }
 
     private Map<String, Object> buildExtendParameterWithNormalizedDdl(ExecutionContext executionContext) {
-        if (null != normalizedOriginalDdl || isUseFkOriginalDDL(executionContext)) {
+        if (null != normalizedOriginalDdl) {
             return buildExtendParameter(executionContext, normalizedOriginalDdl);
         }
         return buildExtendParameter(executionContext);

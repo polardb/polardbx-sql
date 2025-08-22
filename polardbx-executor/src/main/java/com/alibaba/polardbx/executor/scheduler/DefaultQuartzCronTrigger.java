@@ -115,4 +115,18 @@ public class DefaultQuartzCronTrigger implements ScheduledJobsTrigger {
         return cron;
     }
 
+    public static Optional<ZonedDateTime> calcNextFireTimeByNow(ScheduledJobsRecord record) {
+        Cron cron = DefaultQuartzCronTrigger.parseCronExpr(record.getScheduleExpr());
+        ExecutionTime executionTime = ExecutionTime.forCron(cron);
+        ZoneId zoneId = TimeZoneUtils.zoneIdOf(record.getTimeZone());
+        //Misfire Policy: IGNORE
+        ZonedDateTime now = ZonedDateTime.now(zoneId);
+        ZonedDateTime referenceDateTime = now;
+        if (referenceDateTime.isBefore(now)) {
+            referenceDateTime = now;
+        }
+        Optional<ZonedDateTime> optionalNewNextExecutionTime = executionTime.nextExecution(referenceDateTime);
+        return optionalNewNextExecutionTime;
+    }
+
 }

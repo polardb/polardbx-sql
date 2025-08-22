@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.sync.UnlockTableSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
@@ -59,9 +60,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
     public RenameTablesCdcSyncTask(String schemaName,
                                    List<String> tableNames,
                                    boolean preemptive,
-                                   Long initWait,
-                                   Long interval,
-                                   TimeUnit timeUnit,
+                                   PreemptiveTime preemptiveTime,
                                    List<String> oldTableNames,
                                    List<String> newTableNames,
                                    List<String> collates,
@@ -69,7 +68,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
                                    List<Map<String, Set<String>>> newTableTopologies,
                                    List<Long> versionIds
     ) {
-        super(schemaName, tableNames, preemptive, initWait, interval, timeUnit);
+        super(schemaName, tableNames, preemptive, preemptiveTime);
         this.oldTableNames = oldTableNames;
         this.newTableNames = newTableNames;
         this.collates = collates;
@@ -87,7 +86,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         GsiValidator.validateEnableMDL(executionContext);
-
+        long uniqueConnId = executionContext.getConnId() + Long.MAX_VALUE;
         // lock tables
         try {
             LOGGER.info(
@@ -100,10 +99,8 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
                 new LockTablesSyncAction(schemaName,
                     tableNames,
                     executionContext.getTraceId(),
-                    executionContext.getConnId(),
-                    initWait,
-                    interval,
-                    timeUnit
+                    uniqueConnId,
+                    preemptiveTime
                 ),
                 schemaName,
                 SyncScope.ALL,
@@ -147,8 +144,8 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
         // road table meta
         try {
             SyncManagerHelper.sync(
-                new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit,
-                    executionContext.getConnId(), false),
+                new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, preemptiveTime,
+                    uniqueConnId, false),
                 SyncScope.ALL,
                 true);
         } catch (Throwable t) {
@@ -160,6 +157,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
 
     @Override
     public void handleError(ExecutionContext executionContext) {
+        long uniqueConnId = executionContext.getConnId() + Long.MAX_VALUE;
         try {
             LOGGER.info(
                 String.format("start unlock table during rename table for tables: %s.%s", schemaName, tableNames)
@@ -170,7 +168,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
             SyncManagerHelper.sync(
                 new UnlockTableSyncAction(schemaName,
                     tableNames.get(0),
-                    executionContext.getConnId(),
+                    uniqueConnId,
                     executionContext.getTraceId()
                 ),
                 schemaName,

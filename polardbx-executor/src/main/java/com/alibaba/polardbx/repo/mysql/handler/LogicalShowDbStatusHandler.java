@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.group.config.Weight;
@@ -482,6 +483,7 @@ public class LogicalShowDbStatusHandler extends HandlerCommon {
             PreparedStatement ps = null;
             ResultSet rs = null;
             try {
+                StatisticUtils.avoidInformationSchemaCache(conn);
                 ps = conn.prepareStatement(sql.toString());
                 ps.setQueryTimeout(120);
 
@@ -496,6 +498,7 @@ public class LogicalShowDbStatusHandler extends HandlerCommon {
                     Double sizeInMb = rs.getDouble(2);
                     dbSizeMap.put(dbName, sizeInMb);
                 }
+                StatisticUtils.resetInformationSchemaCache(conn);
             } catch (SQLException e) {
                 logger.error("", e);
             } finally {
@@ -513,6 +516,14 @@ public class LogicalShowDbStatusHandler extends HandlerCommon {
                         logger.error("", e);
                     }
                 }
+                try {
+                    if (conn != null && !conn.isClosed()) {
+                        StatisticUtils.resetInformationSchemaCache(conn);
+                    }
+                } catch (Exception ex) {
+                    logger.error("", ex);
+                }
+
             }
         }
 

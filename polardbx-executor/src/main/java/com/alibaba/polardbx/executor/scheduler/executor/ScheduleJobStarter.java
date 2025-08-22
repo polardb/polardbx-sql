@@ -137,7 +137,7 @@ public class ScheduleJobStarter {
         logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
     }
 
-    private static void initStatisticSampleSketchJob() {
+    protected static void initStatisticSampleSketchJob() {
         String tableSchema = VisualConstants.VISUAL_SCHEMA_NAME;
         String tableName = VisualConstants.DUAL_TABLE_NAME;
         String cronExpr = "0 0 0 * * ?";
@@ -157,6 +157,13 @@ public class ScheduleJobStarter {
                 List<ScheduledJobsRecord> list =
                     scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
                 if (list.size() > 0) {
+                    // check scheduleExpr
+                    ScheduledJobsRecord tmp =  list.get(0);
+                    String scheduleExpr = tmp.getScheduleExpr();
+                    if (!scheduleExpr.equals(scheduledJobsRecord.getScheduleExpr())) {
+                        scheduledJobsRecord.setScheduleId(tmp.getScheduleId());
+                        return scheduledJobsAccessor.updateScheduledJobsRecordByScheduleId(scheduledJobsRecord);
+                    }
                     logger.warn("Scheduled Job For STATISTIC_SAMPLE_SKETCH Has Exist");
                     return 0;
                 }

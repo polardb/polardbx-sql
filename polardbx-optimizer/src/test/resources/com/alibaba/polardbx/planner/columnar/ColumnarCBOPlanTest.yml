@@ -1,12 +1,22 @@
 - sql: |
+    select * from t3 where t3.id in (select col from (values (0018708),(10019015),(10031444)) as tmp1(col));
+  plan: |
+
+    semihashjoin(condition="id = column_0", type="semi", build="inner")
+      osstablescan(tables="cci_t3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `name`, `create_time` from `cci_t3` as `cci_t3`")
+      exchange(distribution=broadcast, collation=[])
+        dynamicvalues(tuples=[{ ?0 }, { ?1 }, { ?2 }])
+
+- sql: |
     select * from t4 where exists (select * from t3 where t3.id = t4.id or t3.id > 10);
   plan: |
-    
+
     project(id="id", name="name", create_time="create_time")
       filter(condition="apply_boolean")
         correlateapply(cor=$cor0, leftconditions=[], opkind=null, type=semi)
           logicalview(tables="t4[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `name`, `create_time` from `t4` as `t4`")
           logicalview(tables="t3[p1,p2,p3,...p12]", shardcount=12, sql="select `id`, `name`, `create_time` from `t3` as `t3` where ((`id` = `id`) or (`id` > ?))")
+
 - sql: |
     select *
     from
@@ -18,8 +28,9 @@
                   limit 1
                 )
   plan: |
-    logicalview(tables="ts[p1]", sql="select `id`, `name`, `create_time` from `ts` as `ts` where (`id` = ?)")
 
+    logicalview(tables="ts[p1]", sql="select `id`, `name`, `create_time` from `ts` as `ts` where (`id` = ?)")
+    
     >> individual scalar subquery :
     mergesort(sort="", offset=0, fetch=?0)
       logicalview(tables="t5[p1,p2,p3,...p20]", shardcount=20, sql="select `id` from `t5` as `t5` limit (? + 0)")
@@ -35,7 +46,9 @@
                   limit 1
                 )
   plan: |
+
     logicalview(tables="ts[p1],ts[p1]", sql="select `id`, `name`, `create_time` from `ts` as `ts` where (`id` = (((select `id` from `ts` as `ts0` limit ? offset 0))))")
+
 - sql: |
     select *,
     (
@@ -46,8 +59,9 @@
     from
       t5
   plan: |
-    logicalview(tables="t5[p1,p2,p3,...p20]", shardcount=20, sql="select `id`, `name`, `create_time`, ? as `$f3` from `t5` as `t5`")
 
+    logicalview(tables="t5[p1,p2,p3,...p20]", shardcount=20, sql="select `id`, `name`, `create_time`, ? as `$f3` from `t5` as `t5`")
+    
     >> individual scalar subquery :
     mergesort(sort="", offset=0, fetch=?0)
       logicalview(tables="t5[p1,p2,p3,...p20]", shardcount=20, sql="select `id` from `t5` as `t5` limit (? + 0)")
@@ -62,10 +76,13 @@
     from
       ts
   plan: |
+
     logicalview(tables="ts[p1],ts[p1]", sql="select `id`, `name`, `create_time`, (((select `id` from `ts` as `ts0` limit ? offset 0))) as `$f3` from `ts` as `ts`")
+
 - sql: |
     select * from t4 where exists (select * from t3 where t3.id = t4.id);
   plan: |
+
     semihashjoin(condition="id = id", type="semi", build="inner")
       osstablescan(tables="cci_t4[p1,p2,p3,...p16]", shardcount=16, partition=[remote], sql="select `id`, `name`, `create_time` from `cci_t4` as `cci_t4`")
       exchange(distribution=hash[0]16, collation=[])
@@ -74,13 +91,17 @@
 - sql: |
     select * from ts b where exists (select * from ts a where a.id = b.id);
   plan: |
+
     semihashjoin(condition="id = id", type="semi", build="inner", partition=[local])
       osstablescan(tables="cci_t8[p1,p2,p3,...p32]", shardcount=32, partition=[local, remote], sql="select `id`, `name`, `create_time` from `cci_t8` as `cci_t8`")
       osstablescan(tables="cci_t8[p1,p2,p3,...p32]", shardcount=32, partition=[local, remote], sql="select `id`, `name`, `create_time` from `cci_t8` as `cci_t8`")
+
 - sql: |
     select count(1) from ts a left join ts b on a.id = b.name and a.name in (select name from ts c where c.id = a.id);
   plan: |
+
     logicalview(tables="optest_p00000_group.ts,ts,ts", sql="select count(1) as `count(1)` from `ts` as `a` left join `ts` as `b` on ((`a`.`id` = `b`.`name`) and (`a`.`name` in (select `c`.`name` as `name` from `ts` as `c` where (`c`.`id` = `a`.`id`))))")
+
 - sql: |
     select * from t4 limit 10,20;
   plan: |
@@ -189,7 +210,7 @@
     hashagg(count(1)="sum(count(1))")
       exchange(distribution=single, collation=[])
         partialhashagg(count(1)="count()")
-          hashjoin(condition="id0 = id", type="inner")
+          hashjoin(condition="id = id0", type="inner")
             exchange(distribution=hash[1]16, collation=[])
               hashjoin(condition="id = id", type="left", partition=[local])
                 osstablescan(tables="cci_t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `cci_t4` as `cci_t4`")
@@ -389,76 +410,36 @@
       AND l7.id = l8.id
   plan: |
 
-    project(id="id2")
-      nljoin(condition="id = id", type="inner")
-        nljoin(condition="id = id00", type="inner")
-          project(id="id1", id0="id00", id1="id", id00="id0")
-            nljoin(condition="id = id0", type="inner")
-              nljoin(condition="id = id", type="inner")
+    project(id="id")
+      nljoin(condition="id = id5", type="inner")
+        exchange(distribution=single, collation=[])
+          osstablescan(tables="cci_l1[p1,p2,p3,p4,p5]", shardcount=5, sql="select `id` from `cci_l1` as `cci_l1`")
+        project(id5="id")
+          nljoin(condition="id = id4", type="inner")
+            exchange(distribution=single, collation=[])
+              osstablescan(tables="cci_l2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `cci_l2` as `cci_l2`")
+            project(id4="id")
+              nljoin(condition="id = id3", type="inner")
                 exchange(distribution=single, collation=[])
                   osstablescan(tables="cci_l3[p1,p2,p3,...p12]", shardcount=12, sql="select `id` from `cci_l3` as `cci_l3`")
-                exchange(distribution=single, collation=[])
-                  osstablescan(tables="cci_l2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `cci_l2` as `cci_l2`")
-              project(id="id0", id0="id")
-                nljoin(condition="id = id", type="inner")
-                  exchange(distribution=single, collation=[])
-                    osstablescan(tables="cci_l4[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `cci_l4` as `cci_l4`")
-                  exchange(distribution=single, collation=[])
-                    osstablescan(tables="cci_l5[p1,p2,p3,...p20]", shardcount=20, sql="select `id` from `cci_l5` as `cci_l5`")
-          exchange(distribution=single, collation=[])
-            osstablescan(tables="cci_l1[p1,p2,p3,p4,p5]", shardcount=5, sql="select `id` from `cci_l1` as `cci_l1`")
-        project(id="id1", id0="id", id00="id0")
-          nljoin(condition="id = id", type="inner")
-            project(id="id0", id0="id")
-              nljoin(condition="id = id", type="inner")
-                exchange(distribution=single, collation=[])
-                  osstablescan(tables="cci_l8[p1,p2,p3,...p32]", shardcount=32, sql="select `id` from `cci_l8` as `cci_l8`")
-                exchange(distribution=single, collation=[])
-                  osstablescan(tables="cci_l7[p1,p2,p3,...p28]", shardcount=28, sql="select `id` from `cci_l7` as `cci_l7`")
-            exchange(distribution=single, collation=[])
-              osstablescan(tables="cci_l6[p1,p2,p3,...p24]", shardcount=24, sql="select `id` from `cci_l6` as `cci_l6`")
-
-- sql: |
-    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(fact,l6) HASH_JOIN((fact,l6),l5) HASH_JOIN((fact,l6,l5),l4) HASH_JOIN((fact,l6,l5,l4),l3) HASH_JOIN((fact,l6,l5,l4,l3),l2) HASH_JOIN((fact,l6,l5,l4,l3,l2),l1) */
-    SELECT *
-    FROM  fact left join l1 on l1.id = fact.id1
-    left join l2 on l2.id = fact.id2
-    left join l3 on l3.id = fact.id3
-    left join l4 on l4.id = fact.id4
-    left join l5 on l5.id = fact.id5
-    left join l6 on l6.id = fact.id6
-  plan: |
-
-    project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id11="id11", name0="name00", create_time0="create_time00", id12="id12", name1="name1", create_time1="create_time1", id13="id14", name2="name3", create_time2="create_time3", id15="id", name4="name", create_time4="create_time", id14="id13", name3="name2", create_time3="create_time2")
-      hashjoin(condition="id = id5", type="right")
-        exchange(distribution=hash[0]40, collation=[])
-          osstablescan(tables="cci_l5[p1,p2,p3,...p20]", shardcount=20, sql="select `id`, `name`, `create_time` from `cci_l5` as `cci_l5`")
-        project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id11="id11", name0="name00", create_time0="create_time00", id12="id12", name1="name1", create_time1="create_time1", id14="id", name3="name", create_time3="create_time", id13="id13", name2="name2", create_time2="create_time2")
-          exchange(distribution=hash[8]40, collation=[])
-            hashjoin(condition="id = id4", type="right")
-              exchange(distribution=hash[0]40, collation=[])
-                osstablescan(tables="cci_l4[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `name`, `create_time` from `cci_l4` as `cci_l4`")
-              project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id11="id11", name0="name00", create_time0="create_time00", id13="id", name2="name", create_time2="create_time", id12="id12", name1="name1", create_time1="create_time1")
-                exchange(distribution=hash[7]40, collation=[])
-                  hashjoin(condition="id = id3", type="right")
-                    exchange(distribution=hash[0]40, collation=[])
-                      osstablescan(tables="cci_l3[p1,p2,p3,...p12]", shardcount=12, sql="select `id`, `name`, `create_time` from `cci_l3` as `cci_l3`")
-                    project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id12="id", name1="name", create_time1="create_time", id11="id11", name0="name00", create_time0="create_time00")
-                      exchange(distribution=hash[6]40, collation=[])
-                        hashjoin(condition="id = id2", type="right")
-                          exchange(distribution=hash[0]40, collation=[])
-                            osstablescan(tables="cci_l2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `name`, `create_time` from `cci_l2` as `cci_l2`")
-                          project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id", name0="name", create_time0="create_time", id0="id00", name="name0", create_time="create_time0")
-                            exchange(distribution=hash[5]40, collation=[])
-                              hashjoin(condition="id = id1", type="right")
-                                exchange(distribution=hash[0]40, collation=[])
-                                  osstablescan(tables="cci_l1[p1,p2,p3,p4,p5]", shardcount=5, sql="select `id`, `name`, `create_time` from `cci_l1` as `cci_l1`")
-                                exchange(distribution=hash[1]40, collation=[])
-                                  hashjoin(condition="id = id6", type="left")
-                                    exchange(distribution=hash[6]40, collation=[])
-                                      osstablescan(tables="cci_fact[p1,p2,p3,...p40]", shardcount=40, sql="select `id`, `id1`, `id2`, `id3`, `id4`, `id5`, `id6`, `id7`, `id8`, `id9`, `id10` from `cci_fact` as `cci_fact`")
-                                    exchange(distribution=hash[0]40, collation=[])
-                                      osstablescan(tables="cci_l6[p1,p2,p3,...p24]", shardcount=24, sql="select `id`, `name`, `create_time` from `cci_l6` as `cci_l6`")
+                project(id3="id")
+                  nljoin(condition="id = id", type="inner")
+                    exchange(distribution=single, collation=[])
+                      osstablescan(tables="cci_l4[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `cci_l4` as `cci_l4`")
+                    project(id="id0")
+                      nljoin(condition="id1 = id", type="inner")
+                        exchange(distribution=single, collation=[])
+                          osstablescan(tables="cci_l8[p1,p2,p3,...p32]", shardcount=32, sql="select `id` from `cci_l8` as `cci_l8`")
+                        project(id="id0", id1="id")
+                          nljoin(condition="id0 = id", type="inner")
+                            exchange(distribution=single, collation=[])
+                              osstablescan(tables="cci_l7[p1,p2,p3,...p28]", shardcount=28, sql="select `id` from `cci_l7` as `cci_l7`")
+                            project(id="id0", id0="id")
+                              nljoin(condition="id = id", type="inner")
+                                exchange(distribution=single, collation=[])
+                                  osstablescan(tables="cci_l6[p1,p2,p3,...p24]", shardcount=24, sql="select `id` from `cci_l6` as `cci_l6`")
+                                exchange(distribution=single, collation=[])
+                                  osstablescan(tables="cci_l5[p1,p2,p3,...p20]", shardcount=20, sql="select `id` from `cci_l5` as `cci_l5`")
 
 - sql: |
     /*+TDDL: cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v1,v3) HASH_JOIN(v4,v2) HASH_JOIN((v1,v3),(v4,v2)) */
@@ -674,6 +655,7 @@
     /*+TDDL: cmd_extra()*/
     select count(*) from v3 where v3.id in (select id from v2 where id = 1) group by v3.name3 order by v3.name3
   plan: |
+
     project(count(*)="count(*)")
       exchange(distribution=single, collation=[0 asc-nulls-first])
         memsort(sort="name3 asc")
@@ -684,10 +666,12 @@
                   osstablescan(tables="cci_v3[p11]", partition=[remote], sql="select `id`, `name3` from `cci_v3` as `cci_v3` where (`id` = ?)")
                   exchange(distribution=hash[0]12, collation=[])
                     osstablescan(tables="cci_v2[p7]", sql="select `id` from `cci_v2` as `cci_v2` where (`id` = ?)")
+
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false,enable_nl_join=false, enable_sort_merge_join=false) HASH_JOIN(v2, v3)*/
     select * from v2 left join v3 on v2.id = v3.id limit 2
   plan: |
+
     limit(offset=0, fetch=?0)
       exchange(distribution=single, collation=[])
         hashjoin(condition="id = id", type="left")
@@ -697,10 +681,12 @@
                 limit(fetch=+(?0, 0))
                   osstablescan(tables="cci_v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `cci_v2` as `cci_v2`")
           osstablescan(tables="cci_v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `cci_v3` as `cci_v3`")
+
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
     select * from v2 left join v3 on v2.id = v3.v3_k order by v2.id limit 2
   plan: |
+
     limit(offset=0, fetch=?0)
       exchange(distribution=single, collation=[0 asc-nulls-first])
         memsort(sort="id asc")
@@ -717,6 +703,7 @@
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
     select * from v2 left join v3 on v2.id = v3.id order by v2.id limit 2
   plan: |
+
     limit(offset=0, fetch=?0)
       exchange(distribution=single, collation=[0 asc-nulls-first])
         memsort(sort="id asc")

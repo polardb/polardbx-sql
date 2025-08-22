@@ -41,8 +41,11 @@ public class PipelineFragment {
 
     protected PipelineProperties properties = new PipelineProperties();
 
-    //optimize for ResumeExec
+    // optimize for ResumeExec
     protected boolean containLimit;
+
+    // merge the results from this pipeline without sorting.
+    protected boolean directMerge;
 
     protected boolean holdSingleTonParallelism;
 
@@ -96,6 +99,15 @@ public class PipelineFragment {
                 "This PipelineFragment must keep the parallelism: " + this.parallelism);
         }
         this.parallelism = parallelism;
+    }
+
+    public boolean isDirectMerge() {
+        return directMerge;
+    }
+
+    public PipelineFragment setDirectMerge(boolean directMerge) {
+        this.directMerge = directMerge;
+        return this;
     }
 
     public PipelineFragment setPipelineId(int pipelineId) {

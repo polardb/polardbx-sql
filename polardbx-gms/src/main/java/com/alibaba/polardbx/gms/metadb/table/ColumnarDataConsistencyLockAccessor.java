@@ -41,6 +41,8 @@ public class ColumnarDataConsistencyLockAccessor extends AbstractAccessor {
     private static final String INSERT_NEW_LOCK = "insert into " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE
         + "(entity_id, owner_id, state, last_owner) values(?, ?, ?, ?)";
 
+    private static final String FORCE_INDEX_UK = " force index (uk_entity_id) ";
+
     private static final String WHERE_QUERY_LOCK = " where entity_id = ?";
     private static final String WHERE_QUERY_CHECK_LOCK = " where entity_id = ? and owner_id = ?";
     private static final String WHERE_UPDATE_ACQUIRE_LOCK = " where entity_id = ? and owner_id = ? and state = ?";
@@ -54,20 +56,25 @@ public class ColumnarDataConsistencyLockAccessor extends AbstractAccessor {
     private static final String SELECT_LOCK =
         "select " + ALL_COLUMNS + " from " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + WHERE_QUERY_LOCK;
     private static final String SELECT_LOCK_FOR_UPDATE =
-        "select " + ALL_COLUMNS + " from " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + WHERE_QUERY_LOCK + " for update";
+        "select " + ALL_COLUMNS + " from " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + FORCE_INDEX_UK + WHERE_QUERY_LOCK
+            + " for update";
 
     private static final String SELECT_LOCK_FOR_READ =
-        "select " + ALL_COLUMNS + " from " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + WHERE_QUERY_CHECK_LOCK
+        "select " + ALL_COLUMNS + " from " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + FORCE_INDEX_UK
+            + WHERE_QUERY_CHECK_LOCK
             + " lock in share mode";
 
     private static final String UPDATE_LOCK_OWNER =
-        "update " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + " set state = ? , owner_id = ?" + WHERE_UPDATE_ACQUIRE_LOCK;
+        "update " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + FORCE_INDEX_UK + " set state = ? , owner_id = ?"
+            + WHERE_UPDATE_ACQUIRE_LOCK;
 
     private static final String UPDATE_LOCK_STATE =
-        "update " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + " set state = state + ?" + WHERE_UPDATE_ACQUIRE_LOCK;
+        "update " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + FORCE_INDEX_UK + " set state = state + ?"
+            + WHERE_UPDATE_ACQUIRE_LOCK;
 
     private static final String UPDATE_RELEASE_LOCK =
-        "update " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + " set state = state - ?" + WHERE_UPDATE_RELEASE_LOCK;
+        "update " + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE + FORCE_INDEX_UK + " set state = state - ?"
+            + WHERE_UPDATE_RELEASE_LOCK;
 
     private static final String DELETE_CLEAR_LOCK = "delete from" + COLUMNAR_DATA_CONSISTENCY_LOCK_TABLE;
 

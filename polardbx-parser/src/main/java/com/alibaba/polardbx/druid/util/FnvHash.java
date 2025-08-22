@@ -373,6 +373,7 @@ public final class FnvHash {
         long USING = fnv1a_64_lower("USING");
         long IGNORE = fnv1a_64_lower("IGNORE");
         long FORCE = fnv1a_64_lower("FORCE");
+        long PAGING_FORCE = fnv1a_64_lower("PAGING_FORCE");
         long CROSS = fnv1a_64_lower("CROSS");
         long NATURAL = fnv1a_64_lower("NATURAL");
         long APPLY = fnv1a_64_lower("APPLY");
@@ -1183,6 +1184,10 @@ public final class FnvHash {
         long TTL_EXPR = fnv1a_64_lower("TTL_EXPR");
         long TTL_JOB = fnv1a_64_lower("TTL_JOB");
         long TTL_FILTER = fnv1a_64_lower("TTL_FILTER");
+        long TTL_CLEANUP = fnv1a_64_lower("TTL_CLEANUP");
+        long TTL_CLEANUP_BOUND = fnv1a_64_lower("TTL_CLEANUP_BOUND");
+        long TTL_CLEANUP_POLICY = fnv1a_64_lower("TTL_CLEANUP_POLICY");
+        long TTL_PART_INTERVAL = fnv1a_64_lower("TTL_PART_INTERVAL");
         long ARCHIVE_TYPE = fnv1a_64_lower("ARCHIVE_TYPE");
         long ARCHIVE_TABLE_SCHEMA = fnv1a_64_lower("ARCHIVE_TABLE_SCHEMA");
         long ARCHIVE_TABLE_NAME = fnv1a_64_lower("ARCHIVE_TABLE_NAME");

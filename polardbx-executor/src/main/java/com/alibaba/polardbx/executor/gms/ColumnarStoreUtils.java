@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.gms;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+
 public class ColumnarStoreUtils {
     /**
      * The default column index of `pk` (immutable).
@@ -38,4 +41,15 @@ public class ColumnarStoreUtils {
      * number of implicit column BEFORE real physical column
      */
     public static final int IMPLICIT_COLUMN_CNT = 2;
+
+    public static ExecutionContext newEcForCache() {
+        ExecutionContext ec = new ExecutionContext();
+        if (ConfigDataMode.isColumnarMode()) {
+            ec.setEnableOssCompatible(Boolean.FALSE);
+        } else {
+            ec.setEnableOssCompatible(Boolean.TRUE);
+        }
+
+        return ec;
+    }
 }

@@ -2,6 +2,7 @@
 drop table if exists t_order;
 
 delete from metadb.columnar_config where table_id = 0 and config_key = 'SNAPSHOT_RETENTION_DAYS';
+delete from metadb.columnar_config where table_id = 0 and config_key = 'columnar_purge_save_ms';
 delete from metadb.columnar_config where table_id = 0 and config_key = 'AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL';
 
 CREATE TABLE t_order (
@@ -132,5 +133,16 @@ COLUMNAR_OPTIONS='{
 SHOW FULL CREATE TABLE t_order;
 SHOW CREATE TABLE t_order;
 ALTER TABLE t_order DROP INDEX seller_snapshot;
+
+CALL polardbx.columnar_set_config('columnar_purge_save_ms', '31622400000');
+
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE t_order ADD CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+COLUMNAR_OPTIONS='{
+  "type":"snapshot",
+  "DICTIONARY_COLUMNS":"order_snapshot,order_detail",
+  }';
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
 
 DROP TABLE IF EXISTS t_order;

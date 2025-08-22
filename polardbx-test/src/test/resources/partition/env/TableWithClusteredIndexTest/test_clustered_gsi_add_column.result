@@ -1,0 +1,206 @@
+DROP TABLE IF EXISTS clustered_gsi_add_column_t1
+CREATE TABLE clustered_gsi_add_column_t1 (
+	`a` int PRIMARY KEY,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int,
+	CLUSTERED INDEX `idx1`(`b`) PARTITION BY KEY (`b`),
+	UNIQUE CLUSTERED INDEX `idx2` (`c`) PARTITION BY KEY (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`)
+ALTER TABLE clustered_gsi_add_column_t1
+	SPLIT PARTITION p1
+SHOW FULL CREATE TABLE clustered_gsi_add_column_t1
+Table,Create Table
+clustered_gsi_add_column_t1,CREATE TABLE `clustered_gsi_add_column_t1` (
+	`a` int(11) NOT NULL,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* idx1_$ */ `idx1` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* idx2_$ */ `idx2` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+INSERT INTO clustered_gsi_add_column_t1
+VALUES (1, '2021-01-10 01:01:05', 1),
+	(2, '2022-02-10 02:02:04', 2),
+	(3, '2023-03-10 03:03:03', 3),
+	(4, '2024-04-10 04:04:02', 4),
+	(5, '2025-05-10 05:05:01', 5)
+SELECT *
+FROM clustered_gsi_add_column_t1
+ORDER BY a DESC
+a,b,c
+5,2025-05-10 05:05:01.0,5
+4,2024-04-10 04:04:02.0,4
+3,2023-03-10 03:03:03.0,3
+2,2022-02-10 02:02:04.0,2
+1,2021-01-10 01:01:05.0,1
+ALTER TABLE clustered_gsi_add_column_t1
+	ADD COLUMN `d` bigint DEFAULT 23
+SHOW FULL CREATE TABLE clustered_gsi_add_column_t1
+Table,Create Table
+clustered_gsi_add_column_t1,CREATE TABLE `clustered_gsi_add_column_t1` (
+	`a` int(11) NOT NULL,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int(11) DEFAULT NULL,
+	`d` bigint(20) DEFAULT '23',
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* idx1_$ */ `idx1` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* idx2_$ */ `idx2` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+SELECT *
+FROM clustered_gsi_add_column_t1
+ORDER BY a DESC
+a,b,c,d
+5,2025-05-10 05:05:01.0,5,23
+4,2024-04-10 04:04:02.0,4,23
+3,2023-03-10 03:03:03.0,3,23
+2,2022-02-10 02:02:04.0,2,23
+1,2021-01-10 01:01:05.0,1,23
+ALTER TABLE clustered_gsi_add_column_t1
+	DROP COLUMN d
+SHOW FULL CREATE TABLE clustered_gsi_add_column_t1
+Table,Create Table
+clustered_gsi_add_column_t1,CREATE TABLE `clustered_gsi_add_column_t1` (
+	`a` int(11) NOT NULL,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* idx1_$ */ `idx1` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* idx2_$ */ `idx2` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+ALTER TABLE clustered_gsi_add_column_t1
+	ADD COLUMN e timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+SHOW FULL CREATE TABLE clustered_gsi_add_column_t1
+Table,Create Table
+clustered_gsi_add_column_t1,CREATE TABLE `clustered_gsi_add_column_t1` (
+	`a` int(11) NOT NULL,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int(11) DEFAULT NULL,
+	`e` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* idx1_$ */ `idx1` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* idx2_$ */ `idx2` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+SELECT a, b, c
+FROM clustered_gsi_add_column_t1
+ORDER BY a DESC
+a,b,c
+5,2025-05-10 05:05:01.0,5
+4,2024-04-10 04:04:02.0,4
+3,2023-03-10 03:03:03.0,3
+2,2022-02-10 02:02:04.0,2
+1,2021-01-10 01:01:05.0,1
+ALTER TABLE clustered_gsi_add_column_t1
+	DROP COLUMN e
+SHOW FULL CREATE TABLE clustered_gsi_add_column_t1
+Table,Create Table
+clustered_gsi_add_column_t1,CREATE TABLE `clustered_gsi_add_column_t1` (
+	`a` int(11) NOT NULL,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* idx1_$ */ `idx1` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* idx2_$ */ `idx2` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+ALTER TABLE clustered_gsi_add_column_t1
+	ADD COLUMN `f` int GENERATED ALWAYS AS (a) LOGICAL
+ALTER TABLE clustered_gsi_add_column_t1
+	ADD COLUMN `f2` int GENERATED ALWAYS AS (a) VIRTUAL
+ALTER TABLE clustered_gsi_add_column_t1
+	ADD COLUMN `f3` int GENERATED ALWAYS AS (a) STORED
+SHOW FULL CREATE TABLE clustered_gsi_add_column_t1
+Table,Create Table
+clustered_gsi_add_column_t1,CREATE TABLE `clustered_gsi_add_column_t1` (
+	`a` int(11) NOT NULL,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int(11) DEFAULT NULL,
+	`f` int(11) GENERATED ALWAYS AS (`a`) LOGICAL,
+	`f2` int(11) GENERATED ALWAYS AS (`a`) VIRTUAL,
+	`f3` int(11) GENERATED ALWAYS AS (`a`) STORED,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* idx1_$ */ `idx1` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* idx2_$ */ `idx2` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+SELECT *
+FROM clustered_gsi_add_column_t1
+ORDER BY a DESC
+a,b,c,f,f2,f3
+5,2025-05-10 05:05:01.0,5,5,5,5
+4,2024-04-10 04:04:02.0,4,4,4,4
+3,2023-03-10 03:03:03.0,3,3,3,3
+2,2022-02-10 02:02:04.0,2,2,2,2
+1,2021-01-10 01:01:05.0,1,1,1,1
+ALTER TABLE clustered_gsi_add_column_t1
+	DROP COLUMN f
+ALTER TABLE clustered_gsi_add_column_t1
+	DROP COLUMN f2
+ALTER TABLE clustered_gsi_add_column_t1
+	DROP COLUMN f3
+SHOW FULL CREATE TABLE clustered_gsi_add_column_t1
+Table,Create Table
+clustered_gsi_add_column_t1,CREATE TABLE `clustered_gsi_add_column_t1` (
+	`a` int(11) NOT NULL,
+	`b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* idx1_$ */ `idx1` (`b`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	UNIQUE CLUSTERED INDEX /* idx2_$ */ `idx2` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+SELECT *
+FROM clustered_gsi_add_column_t1
+ORDER BY a DESC
+a,b,c
+5,2025-05-10 05:05:01.0,5
+4,2024-04-10 04:04:02.0,4
+3,2023-03-10 03:03:03.0,3
+2,2022-02-10 02:02:04.0,2
+1,2021-01-10 01:01:05.0,1

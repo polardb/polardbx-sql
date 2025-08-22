@@ -1529,7 +1529,12 @@ public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
                                 partitionDef2, option);
                         JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
 
-                        String sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
+                        // test bug: upsert only insert value
+                        String sql = String.format("insert into %s values (100,200,300) on duplicate key update b = values (b)",
+                            tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+                        sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
                         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
                         sql = String.format("insert into %s values (1,2,3), (2,2,3), (3,5,6), (4,5,6)", tableName2);
                         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);

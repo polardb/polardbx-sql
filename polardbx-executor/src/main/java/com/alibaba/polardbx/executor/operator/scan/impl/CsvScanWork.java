@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.operator.scan.impl;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
@@ -27,6 +26,7 @@ import com.alibaba.polardbx.executor.chunk.BlockConverter;
 import com.alibaba.polardbx.executor.chunk.BlockUtils;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.Converters;
+import com.alibaba.polardbx.executor.chunk.SliceBlock;
 import com.alibaba.polardbx.executor.chunk.TimestampBlock;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.operator.scan.IOStatus;
@@ -39,7 +39,6 @@ import org.apache.hadoop.fs.Path;
 import org.roaringbitmap.RoaringBitmap;
 
 import java.io.IOException;
-import java.time.ZoneId;
 import java.util.BitSet;
 import java.util.Iterator;
 import java.util.List;
@@ -57,6 +56,8 @@ public class CsvScanWork extends AbstractScanWork {
     protected final long tso;
 
     private final Long position;
+
+    private final boolean isFlashBack;
 
     protected final Path csvFile;
 
@@ -78,6 +79,7 @@ public class CsvScanWork extends AbstractScanWork {
                        String workId, RuntimeMetrics metrics, boolean enableMetrics,
                        LazyEvaluator<Chunk, BitSet> lazyEvaluator, RoaringBitmap deletion,
                        int partNum, int nodePartCount, boolean useSelection, boolean enableCompatible,
+                       boolean isFlashBack,
                        OSSColumnTransformer ossColumnTransformer) {
         super(workId, metrics, enableMetrics, lazyEvaluator, null, deletion, null, inputRefsForFilter,
             inputRefsForProject, partNum, nodePartCount, ossColumnTransformer);
@@ -94,13 +96,19 @@ public class CsvScanWork extends AbstractScanWork {
         this.enableDebug =
             LOGGER.isDebugEnabled() || executionContext.getParamManager()
                 .getBoolean(ConnectionParams.ENABLE_COLUMNAR_DEBUG);
+        this.isFlashBack = isFlashBack;
     }
 
     protected void handleNextWork() throws Throwable {
         Iterator<Chunk> chunkIterator;
-        if (position != null) {
-            // Scan from a specific position, for flashback query
-            chunkIterator = columnarManager.csvData(csvFile.getName(), position);
+        if (isFlashBack) {
+            if (position != null && position >= 0) {
+                // Scan from a specific position, for flashback query
+                chunkIterator = columnarManager.csvData(csvFile.getName(), position);
+            } else {
+                // Scan the csv file until the tso column is beyond given tso, for flashback query
+                chunkIterator = columnarManager.flashbackCsvData(tso, csvFile.getName());
+            }
         } else {
             chunkIterator = columnarManager.csvData(tso, csvFile.getName());
         }
@@ -201,6 +209,10 @@ public class CsvScanWork extends AbstractScanWork {
 
             if (block instanceof TimestampBlock) {
                 block = TimestampBlock.from((TimestampBlock) block, targetTimeZone);
+            } else if (block instanceof SliceBlock) {
+                if (executionContext.isEnableOssCompatible() != ((SliceBlock) block).isCompatible()) {
+                    block = SliceBlock.from((SliceBlock) block, executionContext.isEnableOssCompatible());
+                }
             }
             blocks[blockIndex++] = block;
         }

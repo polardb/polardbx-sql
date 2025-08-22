@@ -49,6 +49,7 @@ import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.ZoneId;
@@ -175,13 +176,14 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        ByteBuffer bytes = row.getBytes(columnId);
+        final int pos = bytes.position();
         final int scale = dataType.getScale();
 
         // parse millis second
         long second = 0;
         for (int i = 0; i < 4; i++) {
-            byte b = bytes[i];
+            byte b = bytes.get(pos + i);
             second = (second << 8) | (b >= 0 ? (int) b : (b + 256));
         }
 
@@ -197,7 +199,7 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
         if (length > 0) {
             int fraction = 0;
             for (int i = 4; i < (4 + length); i++) {
-                byte b = bytes[i];
+                byte b = bytes.get(pos + i);
                 fraction = (fraction << 8) | (b >= 0 ? (int) b : (b + 256));
             }
             micro = fraction * (int) Math.pow(100, 3 - length);

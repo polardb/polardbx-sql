@@ -15,27 +15,46 @@ public class TtlInfoRecord implements SystemTableRecord {
     public static final String TTL_STATUS_DISABLE_SCHEDULE_STR_VAL = "OFF";
     public static final String TTL_STATUS_ENABLE_SCHEDULE_STR_VAL = "ON";
 
+    public static final String TTL_CLEANUP_ON = "ON";
+    public static final String TTL_CLEANUP_OFF = "OFF";
+
     public static final int TTL_STATUS_DISABLE_SCHEDULE = 0;
     public static final int TTL_STATUS_ENABLE_SCHEDULE = 1;
     public static final int TTL_BINLOG_CLOSE_BINLOG_DURING_CLEANING_DATA = 0;
     public static final int TTL_BINLOG_OPEN_BINLOG_DURING_CLEANING_DATA = 1;
 
     public static final int ARCHIVE_KIND_UNDEF = 0;// ' ARCHIVE_KIND='' '
-    public static final int ARCHIVE_KIND_COLUMNAR = 1;// ' ARCHIVE_KIND='COLUMNAR' '
+    public static final int ARCHIVE_KIND_ROW = 1;// ' ARCHIVE_KIND='ROW' '
     public static final int ARCHIVE_KIND_PARTITION = 2;// ' ARCHIVE_KIND='PARTITION' '
     public static final int ARCHIVE_KIND_SUBPARTITION = 3;// ' ARCHIVE_KIND='SUBPARTITION' '
 
-    public static final int ARCHIVE_STATUS_DISABLE_OSS_ARCHIVE = 0;
-    public static final int ARCHIVE_STATUS_ENABLE_OSS_ARCHIVE = 1;
+    /**
+     * The bitset value of ARCHIVE_STATUS
+     */
+    public static final int ARCHIVE_STATUS_UNDEF = 0;//b'0000000'
+    public static final int ARCHIVE_STATUS_BIT_OF_CLEANUP_EXPIRED_DATA_OF_TTL_TBL = 0x1;//b'0000000'
+    public static final int ARCHIVE_STATUS_BIT_OF_CLEANUP_EXPIRED_PART_OF_ARC_CCI = 0x2;//b'00000010'
+    public static final int ARCHIVE_STATUS_BIT_OF_OPTIMIZING_TABLE_FOR_TTL = 0x4;//b'000000100'
 
+    /**
+     * The value for undefined expired data
+     */
+    public static final int TTL_EXPIRE_AFTER_UNDEFINED = -1;
+
+    public static final String TTL_UNIT_UNDEFINED = "UNDF";
     public static final String TTL_UNIT_YEAR = "YEAR";
     public static final String TTL_UNIT_MONTH = "MONTH";
     public static final String TTL_UNIT_DAY = "DAY";
     public static final String TTL_UNIT_HOUR = "HOUR";
     public static final String TTL_UNIT_MINUTE = "MINUTE";
     public static final String TTL_UNIT_SECOND = "SECOND";
+    public static final String TTL_UNIT_NUMBER = "NUMBER";
 
-    public static final Integer ARC_PART_MODE_NORMAL = 0;
+    public static final String TTL_EXPR_EXPIRE_DEFAULT_TIME_ZONE = "+08:00";
+    public static final String TTL_JOB_CRON_DEFAULT_TIME_ZONE = "+08:00";
+
+    public static final Integer ARC_PART_MODE_BY_TIME_INTERVAL = 0;
+    public static final Integer ARC_PART_MODE_BY_PARTITION_COUNT = 1;
 
     private Long id;
     private Date gmtCreated;
@@ -49,22 +68,45 @@ public class TtlInfoRecord implements SystemTableRecord {
      */
     private Integer ttlStatus;
     private String ttlExpr;
-    private String ttlFilter;
+    private String ttlFilter = "";
     private String ttlCol;
+
+    /**
+     * The interval of expire after
+     * <pre>
+     *     <= 0 : undefined expired data interval
+     *     > 0 : defined expired data interval
+     * </pre>
+     */
     private Integer ttlInterval;
+
     /**
      * The time unit code of ttl task
      * <pre>
      *     0:year
      *     1:month
      *     2:day
-     *     3:hour
-     *     4:minute
-     *     5:second
+     *     3:hour   (not allowed)
+     *     4:minute (not allowed)
+     *     5:second (not allowed)
+     *     ===to be add:===
+     *     -1 undefined unit
+     *     7:quarter
+     *     8:tenday
+     *     9:week
+     *     10:number
      * </pre>
      */
     private Integer ttlUnit;
+
+    /**
+     * The timezone of ttl_col using in database
+     */
     private String ttlTimezone;
+
+    /**
+     * The QUARTZ cron expr of ttl-job scheduler, using timezone '+08:00'
+     */
     private String ttlCron;
     /**
      * 0-disable gen binlog, 1-enable gen binlog
@@ -73,23 +115,30 @@ public class TtlInfoRecord implements SystemTableRecord {
 
     /**
      * <pre>
-     *  0-arc by oss tbl;
-     *  1-arc by columnar index;
-     *  2-arc by time-based range-part;
-     *  3-arc by time-based range-subpart;
-     *  4-arc by self-def-range-part.
+     *  1 - ary by row-level
+     *  2 - arc by partition-level range-part;
+     *  3 - arc by subpartition-level range-subpart;
      * </pre>
      */
     private Integer arcKind;
 
     /**
-     * The mode of arc part generation
+     * The mode of arc part generation:
+     * 0-expire data by time interval:
+     * add parts: auto add parts newParts by current_datetime 、 arcPrePartCnt  and arcPartInterval for range-based tbl and cci
+     * delete parts: auto drop parts newParts by current_datetime 、 arcPrePartCnt  and arcPartInterval  for range-based tbl and cci
+     * <p>
+     * 1-expire data by partition count:
+     * add parts: auto add parts newParts by curr_partition_count 、 arcPrePartCnt  and arcPartInterval for range-based tbl and cci
+     * delete parts: auto add parts newParts by curr_partition_count 、 arcPrePartCnt  and arcPartInterval for range-based tbl and cci
      */
     private Integer arcPartMode = 0;
+
     /**
      * The interval of arc part generation
      */
     private Integer arcPartInterval = 1;
+
     /**
      * The time unit code of arc part generation
      * <pre>
@@ -99,6 +148,11 @@ public class TtlInfoRecord implements SystemTableRecord {
      *     3:hour
      *     4:minute
      *     5:second
+     *     ===to be add:===
+     *     7:quarter
+     *     8:tenday
+     *     9:week
+     *     10:number
      * </pre>
      */
     private Integer arcPartUnit = 1;
@@ -112,10 +166,48 @@ public class TtlInfoRecord implements SystemTableRecord {
     private Integer arcPostPartCnt = 0;
 
     /**
-     * 0-enable oss arc schedule,
-     * 1-disable oss arc schedule
+     * A bitset of status of archived table
+     *
+     * <pre>
+     *   //-------------
+     *   The first bit is used to label if need
+     *   do deleting the expired data for ttl table:
+     *      0-enable:
+     *          for row-level:
+     *              allow auto deleting the expired-data of ttl table;
+     *              (default value is true for row-level)
+     *          for partition-level/subpartition-level:
+     *              allow auto dropping the partition expired-data of ttl table
+     *              (default value is false for row-level)
+     *      1-disable:
+     *          for row-level:
+     *              NOT allow auto deleting the expired-data of ttl table;
+     *          for partition-level/subpartition-level:
+     *              NOT allow auto dropping the partition expired-data of ttl table
+     *   //-------------
+     *   The second bit is used to label if need
+     *   do deleting the expired data for cci:
+     *      0-enable:
+     *              allowed auto dropping the partition of expired-data of cci
+     *              (default value is false)
+     *      1-disable:
+     *              NOT allowed auto dropping the partition of expired-data of cci
+     *   //-------------
+     *   The three bit is used to label if need
+     *   auto do optimizing table for ttl table:
+     *      0-enable:
+     *              allowed auto do optimizing table for row-leveled ttl table
+     *              (default value is false)
+     *      1-disable:
+     *              NOT allowed auto do optimizing table for row-leveled ttl table
+     * </pre>
      */
-    private Integer arcStatus;
+    private Integer arcStatus = TtlInfoRecord.ARCHIVE_STATUS_UNDEF;
+
+    /**
+     * The arcTmpTblSchema.arcTmpTblName is the global index name
+     * of columnar index of primary index
+     */
     private String arcTmpTblSchema;
     private String arcTmpTblName;
 
@@ -333,6 +425,25 @@ public class TtlInfoRecord implements SystemTableRecord {
 
     public void setArcPartUnit(Integer arcPartUnit) {
         this.arcPartUnit = arcPartUnit;
+    }
+
+    public void setBitValIntoArchiveStatus(int bitFlag, boolean targetVal) {
+        if (targetVal) {
+            this.arcStatus |= bitFlag;
+        } else {
+            this.arcStatus &= ~bitFlag;
+        }
+    }
+
+    public boolean getBitValFromArchiveStatus(int bitFlag) {
+        boolean result = false;
+        int newVal = this.arcStatus & bitFlag;
+        if (newVal > 0) {
+            result = true;
+        } else {
+            result = false;
+        }
+        return result;
     }
 
     @Override

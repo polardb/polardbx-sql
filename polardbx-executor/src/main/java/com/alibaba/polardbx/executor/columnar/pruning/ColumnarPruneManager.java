@@ -37,6 +37,7 @@ import org.apache.orc.impl.OrcIndex;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.alibaba.polardbx.gms.engine.FileStoreStatistics.CACHE_STATS_FIELD_COUNT;
 
@@ -51,12 +52,16 @@ public class ColumnarPruneManager {
 
     private static final int PRUNER_CACHE_TTL_HOURS = 12;
 
+    private static final AtomicLong PRUNER_CACHE_SIZE_IN_BYTES = new AtomicLong(0);
+
     private static final Cache<Path, IndexPruner> PRUNER_CACHE =
         CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(PRUNER_CACHE_MAX_ENTRY)
             .expireAfterAccess(PRUNER_CACHE_TTL_HOURS, TimeUnit.HOURS)
-            .softValues()
+            .removalListener(removalNotification -> {
+                PRUNER_CACHE_SIZE_IN_BYTES.addAndGet(-((IndexPruner) removalNotification.getValue()).getSizeInBytes());
+            })
             .build();
 
     public static IndexPruner getIndexPruner(Path targetFile,
@@ -137,7 +142,9 @@ public class ColumnarPruneManager {
             }
 
             builder.setRgNum(rgNum);
-            return builder.build();
+            IndexPruner pruner = builder.build();
+            PRUNER_CACHE_SIZE_IN_BYTES.getAndAdd(pruner.getSizeInBytes());
+            return pruner;
         });
     }
 
@@ -169,5 +176,9 @@ public class ColumnarPruneManager {
         results[pos++] = String.valueOf(PRUNER_CACHE_MAX_ENTRY).getBytes();
         results[pos++] = new StringBuilder().append(-1).append(" BYTES").toString().getBytes();
         return results;
+    }
+
+    public static long getPruneCacheUsedSize() {
+        return PRUNER_CACHE_SIZE_IN_BYTES.get();
     }
 }

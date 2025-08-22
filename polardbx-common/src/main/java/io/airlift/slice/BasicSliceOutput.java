@@ -31,6 +31,7 @@
 
 package io.airlift.slice;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.io.IOException;
@@ -55,6 +56,11 @@ public class BasicSliceOutput
 
     protected BasicSliceOutput(Slice slice) {
         this.slice = requireNonNull(slice, "slice is null");
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + FastMemoryCounter.sizeOf(slice);
     }
 
     @Override

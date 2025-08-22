@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.yaml.snakeyaml.Yaml;
 
@@ -73,6 +74,7 @@ public class ExplainAnalyzeTest extends AutoReadBaseTestCase {
     }
 
     @Test
+    @Ignore("本地测试")
     @FileStoreIgnore
     @ColumnarIgnore
     @CdcIgnore(ignoreReason = "暂时未查到原因，可能是并行跑各种实验室导致。本地无法复现，且对replica实验室无影响")

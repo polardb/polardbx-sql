@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.util.Optional;
 
@@ -61,8 +62,8 @@ public class BitColumnProvider extends IntegerColumnProvider {
         if (row.isNullAt(columnId)) {
             blockBuilder.appendNull();
         } else {
-            byte[] bytes = row.getBytes(columnId);
-            int intVal = ColumnProvider.intFromByte(bytes, bytes.length);
+            ByteBuffer bytes = row.getBytes(columnId);
+            int intVal = ColumnProvider.intFromByte(bytes);
             blockBuilder.writeInt(intVal);
         }
     }

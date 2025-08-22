@@ -95,6 +95,9 @@ public class LogicalTableDataMigrationBackfillHandler extends HandlerCommon {
 
         // Check target table immediately after backfill by default.
         boolean doCheck = ec.getParamManager().getBoolean(ConnectionParams.CREATE_DATABASE_AS_USE_FASTCHECKER);
+        if (ec.getParamManager().getBoolean(ConnectionParams.ROLLBACK_ON_CHECKER)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " force rollback on checker!");
+        }
         if (doCheck) {
             //check primary table
             boolean fastCheckSucc = fastcheck(srcSchemaName, dstSchemaName, srcLogicalTable, dstLogicalTable, ec);

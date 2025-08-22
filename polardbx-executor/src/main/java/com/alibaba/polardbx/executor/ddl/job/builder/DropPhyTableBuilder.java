@@ -31,13 +31,14 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class DropPhyTableBuilder extends DdlPhyPlanBuilder {
 
     private final DropTablePreparedData preparedData;
 
     public DropPhyTableBuilder(DDL ddl, DropTablePreparedData preparedData,
-                               Map<String, List<List<String>>> tableTopology, ExecutionContext executionContext) {
+                               TreeMap<String, List<List<String>>> tableTopology, ExecutionContext executionContext) {
         super(ddl, preparedData, executionContext);
         this.preparedData = preparedData;
         this.tableTopology = tableTopology;
@@ -46,7 +47,7 @@ public class DropPhyTableBuilder extends DdlPhyPlanBuilder {
     public static DropPhyTableBuilder createBuilder(String schemaName,
                                                     String logicalTableName,
                                                     boolean ifExists,
-                                                    Map<String, List<List<String>>> tableTopology,
+                                                    TreeMap<String, List<List<String>>> tableTopology,
                                                     ExecutionContext executionContext) {
         ReplaceTableNameWithQuestionMarkVisitor visitor =
             new ReplaceTableNameWithQuestionMarkVisitor(schemaName, executionContext);

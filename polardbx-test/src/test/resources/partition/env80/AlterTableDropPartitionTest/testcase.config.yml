@@ -1,0 +1,9 @@
+test_drop_hash_ntp
+test_drop_hash_tp
+test_drop_key_ntp
+test_drop_list_ntp
+test_drop_list_tp
+test_drop_partition
+test_drop_partition_group
+test_drop_range_ntp
+test_drop_range_tp

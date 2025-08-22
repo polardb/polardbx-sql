@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -238,7 +239,10 @@ public class StringBlock extends AbstractCommonBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data) + sizeOf(offsets);
-        elementUsedBytes = Byte.BYTES * positionCount + sizeOf(data) + Integer.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(data))
+            + VMSupport.align((int) sizeOf(offsets));
+        estimatedSize = elementUsedBytes;
     }
 }

@@ -5,6 +5,7 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.exception.TtlJobRuntimeException;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.TtlLoggerUtil;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;

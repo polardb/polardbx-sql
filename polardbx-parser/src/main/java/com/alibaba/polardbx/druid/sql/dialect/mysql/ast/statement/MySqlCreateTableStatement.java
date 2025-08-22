@@ -161,6 +161,12 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
         }
     }
 
+    public void removeCciIfNeed() {
+        tableElementList.removeIf(element ->
+            element instanceof MySqlTableIndex && ((MySqlTableIndex) element).isColumnar()
+        );
+    }
+
     public List<SQLCommentHint> getHints() {
         return hints;
     }

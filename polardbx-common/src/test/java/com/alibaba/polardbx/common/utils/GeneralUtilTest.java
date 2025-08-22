@@ -1,14 +1,23 @@
 package com.alibaba.polardbx.common.utils;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.formatSampleRate;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -175,5 +184,42 @@ public class GeneralUtilTest {
     public void testIsWithinPercentageLargeNumbers() {
         // Design: Test with large numbers to ensure correct calculation of threshold.
         assertEquals(true, GeneralUtil.isWithinPercentage(1000000, 1000100, 0.1));
+    }
+
+    @Test
+    public void testMapToList() {
+        // test empty param
+        assertEquals(Collections.emptyList(), GeneralUtil.mapToList(null, false));
+
+        // test normal param map to list
+        Map<Integer, ParameterContext> paramMap = new HashMap<>();
+        List<String> list = Arrays.asList("test1", "pruned");
+        RawString r1 = new RawString(list);
+        RawString r2 = new PruneRawString(list, PruneRawString.PRUNE_MODE.RANGE, 0, 1, null);
+
+        assert r1.getObjList().size() == 2;
+        assert r2.getObjList().size() == 1;
+
+        paramMap.put(1, new ParameterContext(ParameterMethod.setObject1, new Object[] {1, "arg1"}));
+        paramMap.put(2, new ParameterContext(ParameterMethod.setObject1, new Object[] {2, r1}));
+        paramMap.put(3, new ParameterContext(ParameterMethod.setObject1, new Object[] {3, r2}));
+        paramMap.put(4, null);
+
+        // no batch test
+        List<ParameterContext> result = GeneralUtil.mapToList(paramMap, false);
+
+        assertEquals(4, result.size());
+        assertEquals(r1, result.get(1).getValue());
+        assertEquals(r2, result.get(2).getValue());
+        assertNull(result.get(3));
+
+        // batch test
+        result = GeneralUtil.mapToList(paramMap, true);
+
+        assertEquals(4, result.size());
+        assertEquals(r1, result.get(1).getValue());
+        assert result.get(2).getValue() instanceof RawString;
+        assert ((RawString) result.get(2).getValue()).getObjList().size() == 2;
+        assertNull(result.get(3));
     }
 }

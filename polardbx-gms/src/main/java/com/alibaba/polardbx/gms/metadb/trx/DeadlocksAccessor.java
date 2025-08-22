@@ -47,8 +47,9 @@ public class DeadlocksAccessor extends AbstractAccessor {
                 current = rs.getLong(1);
             }
             if (current > maxKeepLogs) {
+                long deleteLimit = Math.min(100, (current - maxKeepLogs));
                 return stmt.executeUpdate(
-                    "DELETE FROM " + DEADLOCKS + " ORDER BY gmt_created LIMIT " + (current - maxKeepLogs));
+                    "DELETE FROM " + DEADLOCKS + " ORDER BY gmt_created LIMIT " + deleteLimit);
             } else {
                 return 0;
             }

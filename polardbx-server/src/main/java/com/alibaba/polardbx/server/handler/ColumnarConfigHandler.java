@@ -16,6 +16,7 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -37,7 +38,8 @@ public class ColumnarConfigHandler {
             .put(ColumnarOptions.DICTIONARY_COLUMNS, new ColumnarOption(
                 ColumnarOptions.DICTIONARY_COLUMNS, null,
                 "Columnar index dictionary columns.",
-                null, null, null
+                null, null, null,
+                ColumnarOption.CaseSensitive.UPPERCASE_KEY
             ))
 
             .put(ColumnarOptions.TYPE, new ColumnarOption(
@@ -45,7 +47,8 @@ public class ColumnarConfigHandler {
                 "Columnar index type, choices: default, snapshot.",
                 ColumnarConfigHandler::setIndexType,
                 null,
-                ColumnarConfigHandler::validateType
+                ColumnarConfigHandler::validateType,
+                ColumnarOption.CaseSensitive.UPPERCASE_KEY_UPPERCASE_VALUE
             ))
 
             .put(ColumnarOptions.SNAPSHOT_RETENTION_DAYS, new ColumnarOption(
@@ -53,7 +56,8 @@ public class ColumnarConfigHandler {
                 "Columnar snapshot retention days, default is 7 days.",
                 ColumnarConfigHandler::setParamAndUpdateMeta,
                 ColumnarConfigHandler::setColumnarConfig,
-                ColumnarConfigHandler::validateSnapshotRetentionDays
+                ColumnarConfigHandler::validateSnapshotRetentionDays,
+                ColumnarOption.CaseSensitive.UPPERCASE_KEY_UPPERCASE_VALUE
             ))
 
             .put(ColumnarOptions.AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL, new ColumnarOption(
@@ -61,7 +65,26 @@ public class ColumnarConfigHandler {
                 "Columnar snapshot retention auto generated interval (in minutes), default is -1 (not auto-generated).",
                 ColumnarConfigHandler::setParamAndUpdateMeta,
                 ColumnarConfigHandler::setColumnarConfig,
-                ColumnarConfigHandler::validateAutoGenColumnarSnapshotInterval
+                ColumnarConfigHandler::validateAutoGenColumnarSnapshotInterval,
+                ColumnarOption.CaseSensitive.UPPERCASE_KEY_UPPERCASE_VALUE
+            ))
+
+            .put(ColumnarOptions.COLUMNAR_HEARTBEAT_INTERVAL_MS_SELF_ADAPTION, new ColumnarOption(
+                ColumnarOptions.COLUMNAR_HEARTBEAT_INTERVAL_MS_SELF_ADAPTION, "true",
+                "Columnar heartbeat interval self adaption, default: true.",
+                null,
+                ColumnarConfigHandler::setColumnarConfig,
+                ColumnarConfigHandler::validateBoolean,
+                ColumnarOption.CaseSensitive.LOWERCASE_KEY
+            ))
+
+            .put(ColumnarOptions.COLUMNAR_BACKUP_ENABLE, new ColumnarOption(
+                ColumnarOptions.COLUMNAR_BACKUP_ENABLE, "false",
+                "Whether enable columnar backup for this columnar index.",
+                null,
+                ColumnarConfigHandler::setColumnarConfig,
+                ColumnarConfigHandler::validateBoolean,
+                ColumnarOption.CaseSensitive.LOWERCASE_KEY
             ))
 
             .build();
@@ -90,6 +113,7 @@ public class ColumnarConfigHandler {
                     if (ColumnarConfig.DEFAULT.equalsIgnoreCase(currentType)) {
                         // default -> snapshot
                         Preconditions.checkArgument(ColumnarConfig.SNAPSHOT.equalsIgnoreCase(param.value));
+                        // If SNAPSHOT_RETENTION_DAYS not set, set a default one.
                         if (null == indexConfig || !indexConfig.containsKey(
                             ColumnarOptions.SNAPSHOT_RETENTION_DAYS)) {
                             ColumnarOption.Param tmpParam = param.shallowCopy();
@@ -105,11 +129,20 @@ public class ColumnarConfigHandler {
                             }
                             setColumnarConfig(tmpParam, connection);
                         }
+                        // If AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL not set, set a default one.
                         if (null == indexConfig || !indexConfig.containsKey(
                             ColumnarOptions.AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL)) {
                             ColumnarOption.Param tmpParam = param.shallowCopy();
                             tmpParam.key = ColumnarOptions.AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL;
                             tmpParam.value = ColumnarConfig.getValue(tmpParam.key, null, globalConfig);
+                            setColumnarConfig(tmpParam, connection);
+                        }
+                        // Force backup.
+                        {
+                            ColumnarOption.Param tmpParam = param.shallowCopy();
+                            tmpParam.key = ColumnarOptions.COLUMNAR_BACKUP_ENABLE;
+                            tmpParam.value = "true";
+                            tmpParam.caseSensitive = ColumnarOption.CaseSensitive.LOWERCASE_KEY;
                             setColumnarConfig(tmpParam, connection);
                         }
                         ColumnarTableMappingAccessor accessor = new ColumnarTableMappingAccessor();
@@ -175,6 +208,28 @@ public class ColumnarConfigHandler {
         param.value = Long.toString(minutes);
     }
 
+    private static void validateBoolean(ColumnarOption.Param param) {
+        param.value = String.valueOf(parseBoolean(param.value));
+    }
+
+    private static boolean parseBoolean(String v) {
+        String stripVal = StringUtils.strip(v, "'\"");
+        if (stripVal == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "Value should be boolean.");
+        }
+        if ("true".equalsIgnoreCase(stripVal)
+            || "on".equalsIgnoreCase(stripVal)
+            || "1".equalsIgnoreCase(stripVal)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(stripVal)
+            || "off".equalsIgnoreCase(stripVal)
+            || "0".equalsIgnoreCase(stripVal)) {
+            return false;
+        }
+        throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "Value should be boolean.");
+    }
+
     private static boolean isOneOfString(Object val, String... args) {
         if (val == null) {
             return false;
@@ -219,8 +274,31 @@ public class ColumnarConfigHandler {
         ColumnarConfigAccessor accessor = new ColumnarConfigAccessor();
         accessor.setConnection(connection);
         ColumnarConfigRecord record = new ColumnarConfigRecord();
-        record.configKey = param.key.toUpperCase();
-        record.configValue = param.value.toUpperCase();
+        switch (param.caseSensitive) {
+        case LOWERCASE_KEY:
+            record.configKey = param.key.toLowerCase();
+            record.configValue = param.value;
+            break;
+        case UPPERCASE_KEY:
+            record.configKey = param.key.toUpperCase();
+            record.configValue = param.value;
+            break;
+        case LOWERCASE_KEY_LOWERCASE_VALUE:
+            record.configKey = param.key.toLowerCase();
+            record.configValue = param.value.toLowerCase();
+            break;
+        case UPPERCASE_KEY_UPPERCASE_VALUE:
+            record.configKey = param.key.toUpperCase();
+            record.configValue = param.value.toUpperCase();
+            break;
+        case DEFAULT:
+        default:
+            record.configKey = param.key;
+            record.configValue = param.value;
+            break;
+        }
+        param.key = record.configKey;
+        param.value = record.configValue;
         record.tableId = param.tableId;
         accessor.insert(ImmutableList.of(record));
     }

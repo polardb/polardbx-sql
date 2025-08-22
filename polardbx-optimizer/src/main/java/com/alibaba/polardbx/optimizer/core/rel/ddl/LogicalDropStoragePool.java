@@ -48,7 +48,7 @@ public class LogicalDropStoragePool extends BaseDdlOperation {
 
     public void prepareData() {
         DropStoragePoolPrepareData preparedData = new DropStoragePoolPrepareData();
-        preparedData.setStoragePoolName(dropStoragePool.getStoragePoolName().toString());
+        preparedData.setStoragePoolName(dropStoragePool.getStoragePoolName().toString().toLowerCase());
         if (dropStoragePool.getStoragePoolName().toString().equalsIgnoreCase(StoragePoolManager.ALL_STORAGE_POOL)) {
             preparedData.setDestroyAllStoragePoolInfo(true);
         } else {

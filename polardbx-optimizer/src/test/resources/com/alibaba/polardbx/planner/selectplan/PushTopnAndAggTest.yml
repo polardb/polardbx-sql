@@ -1,0 +1,172 @@
+SQL:
+  - sql: |
+      select max(col0) as max, sum(col5) as sum from t1 where col4 = 100 group by col2 order by max limit 10, 1;
+    plan: |
+      topn(sort="max asc", offset=?1, fetch=?2)
+        project(max="max", sum="sum")
+          hashagg(group="col2", max="max(max)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2`")
+  - sql: |
+      select max(col0) as max, hyperloglog(col5) as hyperloglog from t1 where col4 = 100 group by col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", hyperloglog="hyperloglog")
+        topn(sort="col2 asc", offset=?1, fetch=?2)
+          hashagg(group="col2", max="max(col0)", hyperloglog="hyperloglog(col5)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, `col0`, `col5` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?)")
+  - sql: |
+      /*+TDDL:enable_sort_agg=false*/select max(col0) as max, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col2;
+    plan: |
+      project(max="max", sum="sum")
+        memsort(sort="col2 asc")
+          hashagg(group="col2", max="max(max)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2`")
+  - sql: |
+        select max(col0) as max, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col3 limit 10, 1;
+    plan: |
+        project(max="max", sum="sum")
+          topn(sort="$f3 asc", offset=?1, fetch=?2)
+            project(max="max", sum="sum", $f3="$f3")
+              hashagg(group="col2", max="max(max)", sum="sum(sum)", $f3="__first_value($f3)")
+                gather(concurrent=true)
+                  logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col5`) as `sum`, (`col3`) as `$f3` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2`")
+  - sql: |
+      select max(col0) as max, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col2 + 1 limit 10, 1;
+    plan: |
+      project(max="max", sum="sum")
+        topn(sort="$f3 asc", offset=?2, fetch=?3)
+          project(max="max", sum="sum", $f3="$f3")
+            hashagg(group="col2", max="max(max)", sum="sum(sum)", $f3="__first_value($f3)")
+              gather(concurrent=true)
+                logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col5`) as `sum`, ((`col2` + ?)) as `$f3` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2`")
+  - sql: |
+      select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 where col4 = 100 group by col4, col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", avg="avg", sum="sum")
+        topn(sort="col2 asc", offset=?1, fetch=?2)
+          project(max="max", avg="$f3 / $f4", sum="sum", col2="col2")
+            hashagg(group="col4,col2", max="max(max)", $f3="sum($f3)", $f4="sum($f4)", sum="sum(sum)")
+              gather(concurrent=true)
+                logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col4`, `col2`, max(`col0`) as `max`, sum(`col3`) as `$f3`, count(`col3`) as `$f4`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2`, `col4`")
+  - sql: |
+      select max(col0) as max, sum(col5) as sum from t1 where col4 = 100  order by col2 limit 10, 1;
+    plan: |
+      project(max="max", sum="sum")
+        topn(sort="$f2 asc", offset=?1, fetch=?2)
+          hashagg(max="max(max)", sum="sum(sum)", $f2="__first_value($f2)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select max(`col0`) as `max`, sum(`col5`) as `sum`, (`col2`) as `$f2` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?)")
+  - sql: |
+      /*+TDDL:enable_push_topn_and_agg=false*/select max(col0) as max, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", sum="sum")
+        topn(sort="col2 asc", offset=?1, fetch=?2)
+          hashagg(group="col2", max="max(max)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2`")  
+
+  - sql: |
+      select max(col0) as max, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", sum="sum")
+        topn(sort="col2 asc", offset=?1, fetch=?2)
+          hashagg(group="col2", max="max(max)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2` order by `col2` limit (? + ?)")
+  - sql: |
+      /*+TDDL:enable_push_agg=false*/select max(col0) as max, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", sum="sum")
+        topn(sort="col2 asc", offset=?1, fetch=?2)
+          hashagg(group="col2", max="max(max)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2` order by `col2` limit (? + ?)")
+  - sql: |
+      /*+TDDL:enable_sort_agg=false*/select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f2 / $f3", sum="sum")
+        topn(sort="col2 asc", offset=?1, fetch=?2)
+          hashagg(group="col2", max="max(max)", $f2="sum($f2)", $f3="sum($f3)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col3`) as `$f2`, count(`col3`) as `$f3`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2` order by `col2` limit (? + ?)")
+  - sql: |
+      /*+TDDL:enable_push_agg=false enable_sort_agg=false*/select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 where col4 = 100 group by col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f2 / $f3", sum="sum")
+        topn(sort="col2 asc", offset=?1, fetch=?2)
+          hashagg(group="col2", max="max(max)", $f2="sum($f2)", $f3="sum($f3)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col2`, max(`col0`) as `max`, sum(`col3`) as `$f2`, count(`col3`) as `$f3`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) where (`col4` = ?) group by `col2` order by `col2` limit (? + ?)")
+  - sql: |
+      select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 group by col4, col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f3 / $f4", sum="sum")
+        topn(sort="col2 asc", offset=?0, fetch=?1)
+          hashagg(group="col4,col2", max="max(max)", $f3="sum($f3)", $f4="sum($f4)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col4`, `col2`, max(`col0`) as `max`, sum(`col3`) as `$f3`, count(`col3`) as `$f4`, sum(`col5`) as `sum` from `t1` as `t1` group by `col2`, `col4` order by `col2` limit (? + ?)")
+  - sql: |
+      /*+TDDL:enable_push_agg=false*/select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 group by col4, col2 order by col2 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f3 / $f4", sum="sum")
+        topn(sort="col2 asc", offset=?0, fetch=?1)
+          hashagg(group="col4,col2", max="max(max)", $f3="sum($f3)", $f4="sum($f4)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col4`, `col2`, max(`col0`) as `max`, sum(`col3`) as `$f3`, count(`col3`) as `$f4`, sum(`col5`) as `sum` from `t1` as `t1` group by `col2`, `col4` order by `col2` limit (? + ?)")
+  - sql: |
+      select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 group by col4, col2 order by col4, col2 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f3 / $f4", sum="sum")
+        topn(sort="col4 asc,col2 asc", offset=?0, fetch=?1)
+          hashagg(group="col4,col2", max="max(max)", $f3="sum($f3)", $f4="sum($f4)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col4`, `col2`, max(`col0`) as `max`, sum(`col3`) as `$f3`, count(`col3`) as `$f4`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) group by `col2`, `col4` order by `col4`, `col2` limit (? + ?)")
+  - sql: |
+      /*+TDDL:enable_push_agg=false*/select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 group by col4, col2 order by col4, col2 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f3 / $f4", sum="sum")
+        topn(sort="col4 asc,col2 asc", offset=?0, fetch=?1)
+          hashagg(group="col4,col2", max="max(max)", $f3="sum($f3)", $f4="sum($f4)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col4`, `col2`, max(`col0`) as `max`, sum(`col3`) as `$f3`, count(`col3`) as `$f4`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) group by `col2`, `col4` order by `col4`, `col2` limit (? + ?)")
+  - sql: |
+      /*+TDDL:enable_sort_agg=false*/select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 group by col4 order by col4 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f2 / $f3", sum="sum")
+        topn(sort="col4 asc", offset=?0, fetch=?1)
+          hashagg(group="col4", max="max(max)", $f2="sum($f2)", $f3="sum($f3)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col4`, max(`col0`) as `max`, sum(`col3`) as `$f2`, count(`col3`) as `$f3`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) group by `col4` order by `col4` limit (? + ?)")
+  - sql: |
+      /*+TDDL:enable_push_agg=false enable_sort_agg=false*/select max(col0) as max, avg(col3) as avg, sum(col5) as sum from t1 group by col4 order by col4 limit 10, 1;
+    plan: |
+      project(max="max", avg="$f2 / $f3", sum="sum")
+        topn(sort="col4 asc", offset=?0, fetch=?1)
+          hashagg(group="col4", max="max(max)", $f2="sum($f2)", $f3="sum($f3)", sum="sum(sum)")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1,p2,p3]", shardcount=3, sql="select `col4`, max(`col0`) as `max`, sum(`col3`) as `$f2`, count(`col3`) as `$f3`, sum(`col5`) as `sum` from `t1` as `t1` force index(`col4_2_idx`) group by `col4` order by `col4` limit (? + ?)")
+
+
+DDL:
+  t1:
+    CREATE TABLE `t1` (
+      `col0` int(11) DEFAULT NULL,
+      `col1` int(11) DEFAULT NULL,
+      `col2` int(11) DEFAULT NULL,
+      `col3` int(11) DEFAULT NULL,
+      `col4` int(11) DEFAULT NULL,
+      `col5` int(11) DEFAULT NULL,
+      KEY `auto_shard_key_col1` USING BTREE (`col1`),
+      KEY `col4_2_idx` (`col4`, `col2`)
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+    PARTITION BY KEY(`col1`)
+    PARTITIONS 3
+STATISTICS:
+  t1:
+    100000
+CONFIG:
+  ENABLE_HASH_AGG:
+      true
+

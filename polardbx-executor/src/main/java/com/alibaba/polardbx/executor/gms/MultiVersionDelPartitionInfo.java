@@ -105,7 +105,7 @@ public class MultiVersionDelPartitionInfo implements Purgeable {
                     logicalSchema,
                     logicalTable,
                     partitionName,
-                    lastTso,
+                    minTso,
                     tso
                 ).forEach(record -> {
                     recordsForEachDelFile.computeIfAbsent(record.fileName, s -> new ArrayList<>());

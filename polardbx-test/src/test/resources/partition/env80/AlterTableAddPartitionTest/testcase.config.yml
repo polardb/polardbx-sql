@@ -1,0 +1,9 @@
+test_add_hash_ntp
+test_add_hash_tp
+test_add_key_ntp
+test_add_list_ntp
+test_add_list_tp
+test_add_partition
+test_add_partition_group
+test_add_range_ntp
+test_add_range_tp

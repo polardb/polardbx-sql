@@ -104,7 +104,7 @@ public class DdlEngineShowDdlEngineStatusHandler extends DdlEngineJobsHandler {
             List<String> runningTasks = new ArrayList<>();
             ddlEngineResourceStatus.detail = resourceContainer.getOwnerMap().toString();
             for (String owner : resourceContainer.getOwnerMap().keySet()) {
-                totalAmount += resourceContainer.getOwnerMap().get(owner).getValue();
+                totalAmount += resourceContainer.getOwnerMap().get(owner).getKey();
                 runningTasks.add(owner);
             }
             ddlEngineResourceStatus.totalAmount = totalAmount;

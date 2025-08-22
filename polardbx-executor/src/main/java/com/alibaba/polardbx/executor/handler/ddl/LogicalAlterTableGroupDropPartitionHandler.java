@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupDropPartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
@@ -33,6 +34,8 @@ public class LogicalAlterTableGroupDropPartitionHandler extends LogicalCommonDdl
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        executionContext.getParamManager().getProps()
+                .put(ConnectionProperties.ENABLE_PREEMPTIVE_MDL, Boolean.FALSE.toString());
         LogicalAlterTableGroupDropPartition logicalAlterTableGroupDropPartition =
             (LogicalAlterTableGroupDropPartition) logicalDdlPlan;
         logicalAlterTableGroupDropPartition.preparedData(executionContext);

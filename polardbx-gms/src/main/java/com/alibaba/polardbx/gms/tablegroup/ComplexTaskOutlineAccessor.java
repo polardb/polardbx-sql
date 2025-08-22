@@ -248,6 +248,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
         }
     }
 
+    @Deprecated
     public void deleteScaleOutSubTaskByJobId(Long jobId, int type) {
         try {
 

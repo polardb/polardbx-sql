@@ -56,6 +56,7 @@ public class DDLExtInfo {
     private String originalDdl = null;
     private Boolean isGsi = false;
     private Boolean isCci = false;
+    private Boolean isArchiveDropPart = false;
     private String groupName = null;
     @Getter
     private Boolean foreignKeysDdl = false;
@@ -188,6 +189,14 @@ public class DDLExtInfo {
 
     public Map<String, Object> getPolarxVariables() {
         return polarxVariables;
+    }
+
+    public void setArchiveDropPart(Boolean archiveDropPart) {
+        isArchiveDropPart = archiveDropPart;
+    }
+
+    public Boolean getArchiveDropPart() {
+        return isArchiveDropPart;
     }
 
     public void addPolarxVariable(String key, Object value) {

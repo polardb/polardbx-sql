@@ -42,6 +42,10 @@ public abstract class SliceOutput
     extends OutputStream
     implements DataOutput {
 
+    public abstract long getMemoryUsage();
+    /**
+     * Resets this stream to the initial position.
+     */
     public abstract void reset();
 
     public abstract void reset(int position);

@@ -42,6 +42,7 @@ import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.sql.Types;
 import java.time.ZoneId;
 import java.util.Map;
@@ -140,7 +141,7 @@ class TimeColumnProvider implements ColumnProvider<Long> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        ByteBuffer bytes = row.getBytes(columnId);
 
         final int scale = dataType.getScale();
 

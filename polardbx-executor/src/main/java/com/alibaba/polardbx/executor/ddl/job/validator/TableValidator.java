@@ -109,8 +109,13 @@ public class TableValidator {
     }
 
     public static void validateTableName(String logicalTableName) {
-        if (TStringUtil.isEmpty(logicalTableName)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Empty table name is invalid");
+        if (TStringUtil.isEmpty(logicalTableName) || TStringUtil.isBlank(logicalTableName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format("Incorrect table name '%s'", logicalTableName));
+        }
+        if ("``".equalsIgnoreCase(logicalTableName) || "''".equalsIgnoreCase(logicalTableName)
+            || "\"\"".equalsIgnoreCase(logicalTableName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Incorrect table name ''");
         }
     }
 

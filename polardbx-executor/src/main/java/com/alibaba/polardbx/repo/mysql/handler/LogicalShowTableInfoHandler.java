@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -89,6 +90,8 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
         result.addColumn("GROUP_NAME", DataTypes.StringType);
         result.addColumn("TABLE_NAME", DataTypes.StringType);
         result.addColumn("SIZE_IN_MB", DataTypes.DoubleType);
+        result.addColumn("TABLE_ROWS", DataTypes.LongType);
+        result.addColumn("AVG_ROW_LENGTH", DataTypes.LongType);
         result.initMeta();
         return result;
     }
@@ -112,7 +115,7 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
 
         TopologyHandler topologyHandler =
             ExecutorContext.getContext(executionContext.getSchemaName()).getTopologyHandler();
-        Map<String, Map<String, Object>> resultMap = new HashMap<>();
+        Map<String, Map<String, List<Object>>> resultMap = new HashMap<>();
 
         for (Group group : topologyHandler.getMatrix().getGroups()) {
             String groupName = group.getName();
@@ -122,7 +125,7 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
             TGroupDataSource groupDataSource = dsGetter.getDataSource(groupName);
 
             StringBuilder sql = new StringBuilder(
-                "SELECT TABLE_SCHEMA, TABLE_NAME, (DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (");
+                "SELECT TABLE_SCHEMA, TABLE_NAME, (DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024 AS LEN, TABLE_ROWS, AVG_ROW_LENGTH  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (");
             for (String phyTableName : topologyMap.get(groupName)) {
                 sql.append("'" + phyTableName + "',");
             }
@@ -135,23 +138,35 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
             PreparedStatement ps = null;
             try {
                 conn = groupDataSource.getConnection();
-                ps = conn.prepareStatement(sql.toString());
+                StatisticUtils.avoidInformationSchemaCache(conn);ps = conn.prepareStatement(sql.toString());
                 rs = ps.executeQuery();
 
                 while (rs.next()) {
-                    String resultTableSchema = rs.getString(1);
-                    String resultTableName = rs.getString(2);
-                    Object resultSize = rs.getObject(3);
+                    String resultTableSchema = rs.getString("TABLE_SCHEMA");
+                    String resultTableName = rs.getString("TABLE_NAME");
+                    Object resultSize = rs.getObject("LEN");
+                        Object tableRows = rs.getObject("TABLE_ROWS");
+                        Object avgRowLength = rs.getObject("AVG_ROW_LENGTH");
+                        List<Object> rows = new ArrayList<>(3);
+                        rows.add(resultSize);
+                        rows.add(tableRows);
+                        rows.add(avgRowLength);
 
                     if (!resultMap.containsKey(resultTableSchema)) {
                         resultMap.put(resultTableSchema, new HashMap<>());
                     }
-                    resultMap.get(resultTableSchema).put(resultTableName, resultSize);
+                    resultMap.get(resultTableSchema).put(resultTableName, rows);
                 }
             } catch (Throwable t) {
                 logger.error(t);
             } finally {
-                JdbcUtils.close(rs);
+                try {
+                        if (conn != null && !conn.isClosed()) {
+                            StatisticUtils.resetInformationSchemaCache(conn);
+                        }
+                    } catch (Exception ex) {
+                        logger.error("", ex);
+                    }JdbcUtils.close(rs);
                 JdbcUtils.close(ps);
                 JdbcUtils.close(conn);
             }
@@ -159,13 +174,15 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
 
         ArrayResultCursor result = getTableInfoResultCursor();
 
-        for (Map.Entry<String, Map<String, Object>> mapEntry : resultMap.entrySet()) {
-            for (Map.Entry<String, Object> entry : mapEntry.getValue().entrySet()) {
+        for (Map.Entry<String, Map<String, List<Object>>> mapEntry : resultMap.entrySet()) {
+            for (Map.Entry<String, List<Object>> entry : mapEntry.getValue().entrySet()) {
                 result.addRow(new Object[] {
                     rowCnt++,
                     mapEntry.getKey(),  // group_name
                     entry.getKey(),     // table_name
-                    entry.getValue()    // size_in_mb
+                    entry.getValue().get(0),    // size_in_mb
+                    entry.getValue().get(1),    // table_rows
+                    entry.getValue().get(2)    // avg_row_length
                 });
             }
         }
@@ -194,7 +211,7 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
 
             TGroupDataSource groupDataSource = dsGetter.getDataSource(groupName);
             StringBuilder sql = new StringBuilder(
-                "SELECT TABLE_SCHEMA, TABLE_NAME, (DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (");
+                "SELECT TABLE_SCHEMA, TABLE_NAME, (DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, TABLE_ROWS, AVG_ROW_LENGTH FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (");
             for (String phyTable : phyPartItem.getValue()) {
                 sql.append(TStringUtil.quoteString(phyTable)).append(",");
             }
@@ -205,6 +222,7 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
             PreparedStatement ps = null;
             try {
                 conn = groupDataSource.getConnection();
+                    StatisticUtils.avoidInformationSchemaCache(conn);
                 ps = conn.prepareStatement(sql.toString());
                 rs = ps.executeQuery();
 
@@ -213,13 +231,20 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
                         rowCnt++,
                         rs.getObject(1),
                         rs.getObject(2),
-                        rs.getObject(3)
-                    });
+                        rs.getObject(3),
+                    rs.getObject(4),
+                            rs.getObject(5)});
                 }
             } catch (Throwable t) {
                 logger.error(t);
             } finally {
-                JdbcUtils.close(rs);
+                try {
+                        if (conn != null && !conn.isClosed()) {
+                            StatisticUtils.resetInformationSchemaCache(conn);
+                        }
+                    } catch (Exception ex) {
+                        logger.error("", ex);
+                    }JdbcUtils.close(rs);
                 JdbcUtils.close(ps);
                 JdbcUtils.close(conn);
             }

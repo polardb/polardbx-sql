@@ -1,0 +1,49 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLON
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+
+create table auto_rng_part_tc3_t6(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than('2021-02-01'),
+partition p2 values less than('2021-02-02'),
+partition p3 values less than('2021-02-03'),
+partition pmax values less than(maxvalue)
+)
+;
+
+alter table auto_rng_part_tc3_t6 modify ttl set TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00',ARCHIVE_TABLE_PRE_ALLOCATE = 2,ARCHIVE_TABLE_POST_ALLOCATE = 2, ARCHIVE_TYPE='ROW';
+show create table auto_rng_part_tc3_t6;
+
+create table auto_rng_part_tc3_t6_bk like auto_rng_part_tc3_t6 engine='columnar' archive_mode='ttl';
+alter table auto_rng_part_tc3_t6 cleanup expired data;
+show create table auto_rng_part_tc3_t6;
+
+alter table auto_rng_part_tc3_t6 modify ttl TTL_ENABLE = 'ON', TTL_CLEANUP='ON',TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE='PARTITION';
+show create table auto_rng_part_tc3_t6;
+
+alter table auto_rng_part_tc3_t6 cleanup expired data;
+show create table auto_rng_part_tc3_t6;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-28 00:00:00';
+alter table auto_rng_part_tc3_t6 cleanup expired data;
+show create table auto_rng_part_tc3_t6;
+
+
+alter table auto_rng_part_tc3_t6 modify ttl TTL_ENABLE = 'ON', TTL_CLEANUP='ON',TTL_PART_INTERVAL = INTERVAL(3, DAY), ARCHIVE_TYPE='PARTITION';
+show create table auto_rng_part_tc3_t6;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-07-01 00:00:00';
+alter table auto_rng_part_tc3_t6 cleanup expired data;
+show create table auto_rng_part_tc3_t6;
+
+/*TDDL:cmd_extra(TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false)*/drop table auto_rng_part_tc3_t6;
+

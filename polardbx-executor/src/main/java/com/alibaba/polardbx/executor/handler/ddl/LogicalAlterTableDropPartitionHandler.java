@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableDropPartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
@@ -50,6 +51,8 @@ public class LogicalAlterTableDropPartitionHandler extends LogicalCommonDdlHandl
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        executionContext.getParamManager().getProps()
+                .put(ConnectionProperties.ENABLE_PREEMPTIVE_MDL, Boolean.FALSE.toString());
         LogicalAlterTableDropPartition logicalAlterTableDropPartition =
             (LogicalAlterTableDropPartition) logicalDdlPlan;
         logicalAlterTableDropPartition.preparedData(executionContext);
@@ -108,7 +111,7 @@ public class LogicalAlterTableDropPartitionHandler extends LogicalCommonDdlHandl
                 partitionInfo.getTableGroupId());
 
         AlterTableGroupUtils.alterTableGroupDropPartitionCheck(sqlAlterTableDropPartition, tableGroupConfig,
-            executionContext);
+            executionContext, true, logicalTableName);
 
         // can't drop partition where referencing by other tables
         final boolean checkForeignKey =

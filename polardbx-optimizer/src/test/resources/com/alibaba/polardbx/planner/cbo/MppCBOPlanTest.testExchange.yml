@@ -174,13 +174,13 @@
     /*+TDDL: BKA_JOIN(v3, v2)*/
     select count(*) from v3 join v2 on v3.id = v2.id group by v3.name3
   plan: |
-
     project(count(*)="count(*)")
-      sortagg(group="name3", count(*)="count()")
-        exchange(distribution=hash[1], collation=[1 asc-nulls-first])
-          bkajoin(condition="id = id", type="inner")
-            logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `name3` from `v3` as `v3` order by `name3`")
-            logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` force index(`primary`) where (`id` in (...))")
+      hashagg(group="name3", count(*)="sum(count(*))")
+        exchange(distribution=hash[0], collation=[])
+          partialhashagg(group="name3", count(*)="count()")
+            bkajoin(condition="id = id", type="inner")
+              logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `name3` from `v3` as `v3`")
+              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` force index(`primary`) where (`id` in (...))")
 
 -
   sql: |
@@ -279,7 +279,7 @@
 
 -
   sql: |
-    /*+TDDL:cmd_extra(ENABLE_HASH_AGG=FALSE)*/
+    /*+TDDL:cmd_extra(ENABLE_HASH_AGG=FALSE, enable_push_topn_and_agg=false)*/
     select count(*) from v3 group by v3.name3 order by v3.name3 desc limit 1,2
   plan: |
 
@@ -332,16 +332,18 @@
     /*+TDDL: MATERIALIZED_SEMI_JOIN(v3, v2)*/
     select count(*) from v3 where v3.id in (select id from v2) group by v3.name3 order by v3.name3
   plan: |
-
     project(count(*)="count(*)")
       exchange(distribution=single, collation=[0 asc-nulls-first])
-        sortagg(group="name3", count(*)="count()")
-          memsort(sort="name3 asc")
-            exchange(distribution=hash[1], collation=[])
-              materializedsemijoin(condition="id = id", type="semi")
-                logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `name3` from `v3` as `v3` force index(`primary`) where (`id` in (...))")
-                exchange(distribution=broadcast, collation=[])
-                  logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2`")
+        memsort(sort="name3 asc")
+          hashagg(group="name3", count(*)="sum(count(*))")
+            exchange(distribution=hash[0], collation=[])
+              partialhashagg(group="name3", count(*)="count()")
+                materializedsemijoin(condition="id = id", type="semi")
+                  logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `name3` from `v3` as `v3` force index(`primary`) where (`id` in (...))")
+                  exchange(distribution=broadcast, collation=[])
+                    logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2`")
+
+
 
 -
   sql: |

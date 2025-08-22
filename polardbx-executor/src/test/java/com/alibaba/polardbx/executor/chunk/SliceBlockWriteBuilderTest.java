@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
 import com.alibaba.polardbx.executor.operator.scan.impl.LocalBlockDictionary;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -206,6 +207,7 @@ public class SliceBlockWriteBuilderTest extends SliceBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         return (SliceBlock) blockBuilder.build();
     }
 

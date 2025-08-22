@@ -1,0 +1,21 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `t1` (
+`c1` int(11) NOT NULL,
+`c2` int(11) DEFAULT NULL,
+`c3`  int(11) DEFAULT NULL,
+KEY `auto_shard_key_c1` USING BTREE (`c1`),
+KEY `idx_c3` USING BTREE (`c3`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 3
+insert into t1 values (1,1,1), (1,null,1), (1,2,1), (2,2,2), (3,3,3), (4,4,4)
+select * from t1 where pre_filter(c3) and c3 > 3 order by c1
+c1,c2,c3
+4,4,4
+select * from t1 where pre_filter(c3) and c1 < 3 and c3 >= 3 order by c1
+c1,c2,c3
+select * from t1 where pre_filter(c3) and c1 > 1 and  c3 between 2 and 4 order by c1
+c1,c2,c3
+2,2,2
+3,3,3
+4,4,4

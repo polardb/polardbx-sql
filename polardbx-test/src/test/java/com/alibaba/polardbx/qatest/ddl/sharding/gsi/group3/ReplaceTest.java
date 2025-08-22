@@ -3071,7 +3071,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
 
         String replace = "replace into " + tableName + " values (1,2,3),(2,2,3)";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE") + replace);
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE", "DML_GET_DUP_USING_UNION_EQUAL=FALSE") + replace);
         List<List<String>> trace = getTrace(tddlConnection);
         String phySql = trace.get(0).get(trace.get(0).size() - 4);
         Assert.assertFalse(phySql.contains("UNION"));
@@ -3080,6 +3081,47 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         trace = getTrace(tddlConnection);
         phySql = trace.get(0).get(trace.get(0).size() - 4);
         Assert.assertTrue(phySql.contains("UNION"));
+    }
+
+    /**
+     * 检查使用 UNION EQUAL 代替 UNION 的 HINT 是否生效
+     */
+    @Test
+    public void testSelectUseUnionEqualHint() throws SQLException {
+        final String tableName = "test_tb_use_union_equal";
+        dropTableIfExists(tableName);
+
+        final String gsiName = "test_tb_use_union_equal_gsi";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `pk` bigint(11) NOT NULL,\n"
+            + "  `c1` bigint(20) DEFAULT NULL,\n"
+            + "  `c2` bigint(20) DEFAULT NULL ,\n"
+            + "  PRIMARY KEY (`pk`),"
+            + "  GLOBAL INDEX " + gsiName + "(`c1`) DBPARTITION BY HASH(`c1`)"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " dbpartition by hash(`c1`)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String replace = "replace into " + tableName + " values (1,2,3),(2,2,3)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "trace " + buildCmdExtra("DML_GET_DUP_USING_UNION_EQUAL=TRUE") + replace);
+        List<List<String>> trace = getTrace(tddlConnection);
+        String phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertTrue(phySql, phySql.contains("UNION"));
+        Assert.assertTrue(phySql, phySql.contains("="));
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE", "DML_GET_DUP_USING_UNION_EQUAL=FALSE") + replace);
+        trace = getTrace(tddlConnection);
+        phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertFalse(phySql, phySql.contains("UNION"));
+        Assert.assertFalse(phySql, phySql.contains("="));
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + replace);
+        trace = getTrace(tddlConnection);
+        phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertTrue(phySql, phySql.contains("UNION"));
+        Assert.assertFalse(phySql, phySql.contains("="));
     }
 
     /**
@@ -3111,35 +3153,35 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
 
         // no limit, no partition pruning on primary table
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));
 
         // limit 1
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 12 * 2 + gsiTopology.size() * 3));
 
         // limit 3
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 4 * 2 + gsiTopology.size() * 3));
 
         // limit 5
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 5 + gsiTopology.size() * 3));
 
         // limit -1, same as no limit
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));

@@ -50,7 +50,9 @@ public class SelectPolardbVersionTest {
         String versionInPacket = new String(packet.fieldValues.get(1));
         String releaseDateInPacket = new String(packet.fieldValues.get(2));
         Assert.assertEquals(type, typeInPacket);
-        Assert.assertEquals("PolarDB V2_2.5.0_5.4.20-20241015_8.4.20-20241015 (Distributed Edition)", versionInPacket);
+        Assert.assertEquals(
+            "PolarDB V2_" + Version.PRODUCT_VERSION + "_5.4.20-20241015_8.4.20-20241015 (Distributed Edition)",
+            versionInPacket);
         Assert.assertEquals("20241015", releaseDateInPacket);
     }
 

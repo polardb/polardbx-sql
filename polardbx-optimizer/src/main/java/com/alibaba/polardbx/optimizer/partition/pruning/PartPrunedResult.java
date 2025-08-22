@@ -18,16 +18,20 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.optimizer.partition.PartSpecSearcher;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.BitSetLevel;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.amazonaws.services.dynamodbv2.xspec.S;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Calendar;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * @author chenghui.lch
@@ -172,8 +176,54 @@ public class PartPrunedResult {
 
     }
 
-    public List<PhysicalPartitionInfo> getPrunedParttions() {
+    public List<PhysicalPartitionInfo> getPrunedPartitions() {
         return getPrunedPartInfosFromBitSet();
+    }
+
+    public List<String> getPrunedPartitionNamesOfPartLevel(PartKeyLevel targetPartLevel,
+                                                           Boolean extractSubPartTempNameOnly) {
+        List<String> partNames = new ArrayList<>();
+        Set<String> partNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        List<PhysicalPartitionInfo> prunedPhyPartInfos = getPrunedPartInfosFromBitSet();
+        if (prunedPhyPartInfos.isEmpty()) {
+            return partNames;
+        }
+        PhysicalPartitionInfo phy0 = prunedPhyPartInfos.get(0);
+        PartKeyLevel phyPartLevel = phy0.getPartLevel();
+
+        boolean extractParentPartName = false;
+        boolean extractSubPartTempName = false;
+        if (phyPartLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            if (targetPartLevel == PartKeyLevel.SUBPARTITION_KEY) {
+                // do nothing
+                extractParentPartName = false;
+                if (extractSubPartTempNameOnly) {
+                    extractSubPartTempName = true;
+                }
+            } else {
+                extractParentPartName = true;
+            }
+        } else {
+            // do nothing
+            extractParentPartName = false;
+        }
+
+        for (int i = 0; i < prunedPhyPartInfos.size(); i++) {
+            PhysicalPartitionInfo phyPartInfo = prunedPhyPartInfos.get(i);
+            String targetPartName = phyPartInfo.getPartName();
+            if (extractParentPartName) {
+                targetPartName = phyPartInfo.getParentPartName();
+            } else {
+                if (extractSubPartTempName) {
+                    targetPartName = phyPartInfo.getSubPartTempName();
+                }
+            }
+            if (!partNameSet.contains(targetPartName)) {
+                partNameSet.add(targetPartName);
+                partNames.add(targetPartName);
+            }
+        }
+        return partNames;
     }
 
     public boolean isEmpty() {
@@ -187,7 +237,10 @@ public class PartPrunedResult {
         List<PartitionSpec> phyPartitions = partInfo.getPartitionBy().getPhysicalPartitions();
         List<PartitionSpec> firstLevelParts = partInfo.getPartitionBy().getPartitions();
         boolean useSubPartBy = phyPartKeyLevel == PartKeyLevel.SUBPARTITION_KEY;
-
+        boolean useSubPartTemp = false;
+        if (useSubPartBy) {
+            useSubPartTemp = partInfo.getPartitionBy().getSubPartitionBy().isUseSubPartTemplate();
+        }
         int partCnt = phyPartitions.size();
         BitSet phyPartBitSet = getPhysicalPartBitSet();
         for (int i = phyPartBitSet.nextSetBit(0); i >= 0; i = phyPartBitSet.nextSetBit(i + 1)) {
@@ -199,10 +252,14 @@ public class PartPrunedResult {
             PartitionSpec ps = phyPartitions.get(i);
             PartitionSpec parentPs = null;
             String parentPartName = null;
+            String subPartTempName = null;
             if (useSubPartBy) {
                 Integer parentPartPosi = ps.getParentPartPosi().intValue() - 1;
                 parentPs = firstLevelParts.get(parentPartPosi);
                 parentPartName = parentPs.getName();
+                if (useSubPartTemp) {
+                    subPartTempName = ps.getTemplateName();
+                }
             }
             PhysicalPartitionInfo prunedPartInfo = new PhysicalPartitionInfo();
             prunedPartInfo.setPartLevel(phyPartKeyLevel);
@@ -211,6 +268,7 @@ public class PartPrunedResult {
                 Long parentPartPosi = ps.getParentPartPosi();
                 PartitionSpec parentPartSpec = partInfo.getPartitionBy().getNthPartition(parentPartPosi.intValue());
                 prunedPartInfo.setParentPartName(parentPartSpec.getName());
+                prunedPartInfo.setSubPartTempName(subPartTempName);
             } else {
                 prunedPartInfo.setParentPartName(null);
             }

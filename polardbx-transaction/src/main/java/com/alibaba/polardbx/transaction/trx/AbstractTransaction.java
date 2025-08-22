@@ -60,6 +60,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -68,6 +69,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.StampedLock;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CONTINUE_AFTER_WRITE_FAIL;
@@ -928,5 +930,59 @@ public abstract class AbstractTransaction extends BaseTransaction implements IDi
         } finally {
             lock.unlock();
         }
+    }
+
+    public void releaseDirtyReadConnections(Consumer<TransactionConnectionHolder.HeldConnection> rollback) {
+        final Lock lock = this.lock;
+        lock.lock();
+
+        try {
+            final AsyncTaskQueue asyncQueue = getManager().getTransactionExecutor().getAsyncQueue();
+            connectionHolder.releaseDirtyReadConnectionIfNoWriteConnection(asyncQueue, heldConn -> {
+                final IConnection conn = heldConn.getRawConnection();
+                try {
+                    rollback.accept(heldConn);
+                } catch (Throwable e) {
+                    logger.error("connection rollback failed, connection is " + conn, e);
+                    try {
+                        conn.discard(e);
+                    } catch (Throwable ex) {
+                        logger.error("connection discard failed, connection is " + conn, ex);
+                    }
+                }
+                try {
+                    if (!conn.isClosed()) {
+                        try {
+                            if (connectionHolder.isKilled()) {
+                                // If Phy Conn is killed, this conn should discard instead of being reusing
+                                conn.discard(new Exception("discard current connection"));
+                            }
+                        } catch (Throwable ex) {
+                            logger.info("ignore to discard conn, connection is " + conn, ex);
+                        }
+                        conn.close();
+                    }
+                } catch (Throwable e) {
+                    logger.error("connection close failed, connection is " + conn, e);
+                }
+            });
+        } catch (Throwable t) {
+            logger.error("releaseDirtyReadConnections failed", t);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public void releaseDirtyReadConnections() {
+        releaseDirtyReadConnections(heldConn -> {
+            if (TransactionConnectionHolder.ParticipatedState.NONE == Objects.requireNonNull(
+                heldConn.getParticipated())) {
+                rollbackNonParticipantSync(heldConn.getGroup(), heldConn.getRawConnection());
+            } else {
+                throw new UnsupportedOperationException(
+                    "Unexpected trx conn type: " + heldConn.getParticipated());
+            }
+        });
     }
 }

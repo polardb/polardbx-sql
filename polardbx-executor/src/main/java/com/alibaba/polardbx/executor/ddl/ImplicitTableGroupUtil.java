@@ -29,6 +29,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTablePartitionCount;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableTruncatePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
@@ -294,7 +295,8 @@ public class ImplicitTableGroupUtil {
     private static boolean isAlterTableWithPartition(SQLAlterTableItem item) {
         return (item instanceof SQLAlterTableGroupItem && !(item instanceof SQLAlterTableTruncatePartition))
             || item instanceof DrdsAlterTableSingle
-            || item instanceof DrdsAlterTableBroadcast;
+            || item instanceof DrdsAlterTableBroadcast
+            || item instanceof SQLAlterTablePartitionCount;
     }
 
     private static boolean process4Repartition(String schemaName, String tableName,

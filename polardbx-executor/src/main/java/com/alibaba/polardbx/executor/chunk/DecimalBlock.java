@@ -22,6 +22,8 @@ import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
 import com.alibaba.polardbx.common.datatype.RawBytesDecimalUtils;
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.MathUtils;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
@@ -36,6 +38,7 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DERIVED_FRACTIONS_OFFSET;
@@ -89,6 +92,7 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
      */
     private DecimalBlockState state;
 
+    @FieldMemoryCounter(value = false)
     private DriverObjectPool<long[]> objectPool = null;
 
     /**
@@ -1554,19 +1558,59 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
     public void updateSizeInfo() {
         if (isUnalloc()) {
             // maybe not allocated yet, or all nulls
-            estimatedSize = INSTANCE_SIZE + sizeOf(isNull);
-            elementUsedBytes = Byte.BYTES * positionCount;
+            elementUsedBytes = INSTANCE_SIZE
+                + (state == null ? 0 : state.memorySize())
+                + VMSupport.align((int) sizeOf(isNull))
+                + VMSupport.align((int) sizeOf(selection));
+
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeTmpBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeResultBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(regionTmpBuffer);
+
+            estimatedSize = elementUsedBytes;
             return;
         }
         if (isDecimal64()) {
-            estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(decimal64Values);
-            elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+
+            elementUsedBytes = INSTANCE_SIZE
+                + (state == null ? 0 : state.memorySize())
+                + VMSupport.align((int) sizeOf(isNull))
+                + VMSupport.align((int) sizeOf(decimal64Values))
+                + VMSupport.align((int) sizeOf(selection));
+
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeTmpBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeResultBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(regionTmpBuffer);
+
+            estimatedSize = elementUsedBytes;
+
         } else if (isDecimal128()) {
-            estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(decimal64Values) + sizeOf(decimal128HighValues);
-            elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount * 2;
+
+            elementUsedBytes = INSTANCE_SIZE
+                + (state == null ? 0 : state.memorySize())
+                + VMSupport.align((int) sizeOf(isNull))
+                + VMSupport.align((int) sizeOf(decimal64Values))
+                + VMSupport.align((int) sizeOf(decimal128HighValues))
+                + VMSupport.align((int) sizeOf(selection));
+
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeTmpBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeResultBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(regionTmpBuffer);
+
+            estimatedSize = elementUsedBytes;
+
         } else {
-            estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + memorySegments.length();
-            elementUsedBytes = Byte.BYTES * positionCount + DECIMAL_MEMORY_SIZE * positionCount;
+            elementUsedBytes = INSTANCE_SIZE
+                + (state == null ? 0 : state.memorySize())
+                + VMSupport.align((int) sizeOf(isNull))
+                + FastMemoryCounter.sizeOf(memorySegments)
+                + VMSupport.align((int) sizeOf(selection));
+
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeTmpBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(hashCodeResultBuffer);
+            elementUsedBytes += FastMemoryCounter.sizeOf(regionTmpBuffer);
+
+            estimatedSize = elementUsedBytes;
         }
     }
 

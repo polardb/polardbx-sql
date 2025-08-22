@@ -83,6 +83,16 @@ public class RebuildTablePrepareData {
     List<String> dropColumns = new ArrayList<>();
 
     /**
+     * for alter table modify column
+     */
+    List<String> modifyColumns = new ArrayList<>();
+
+    /**
+     * for prefix index, the length of new column def
+     */
+    Map<String, Long> columnLengthMap = new HashMap<>();
+
+    /**
      * for cci
      */
     long versionId;

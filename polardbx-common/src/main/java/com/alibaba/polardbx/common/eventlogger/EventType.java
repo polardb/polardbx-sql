@@ -44,6 +44,15 @@ public enum EventType {
     DDL_WARN(EventLevel.WARN),
 
     DDL_PAUSED(EventLevel.INFO),
+    DDL_PAUSED_NEW(EventLevel.INFO),
+    /**
+     * DDL执行成功，DDL JOB进入 COMPLETED 状态
+     */
+    DDL_COMPLETED(EventLevel.INFO),
+    /**
+     * DDL执行失败，DDL JOB进入 ROLLBACK_COMPLETED 状态
+     */
+    DDL_ROLLBACK_COMPLETED(EventLevel.INFO),
     /**
      * CN发生切主，停止原先leader节点中的DDL
      */
@@ -87,6 +96,10 @@ public enum EventType {
     XRPC_KILL_CLIENT(EventLevel.WARN),
     XPLAN_FEEDBACK_DISABLE(EventLevel.INFO),
 
+    SMOOTH_SWITCHOVER(EventLevel.INFO),
+    HA_DONE(EventLevel.INFO),
+    SMOOTH_SWITCHOVER_SUMMARY(EventLevel.INFO),
+
     DML_ERROR(EventLevel.WARN),
 
     /*
@@ -109,6 +122,7 @@ public enum EventType {
     CLEANUP_EXPIRED_DATA(EventLevel.INFO),
 
     OPTIMIZER_ALERT(EventLevel.INFO),
+    STATISTIC_ALERT(EventLevel.INFO),
 
     AUTO_SP(EventLevel.INFO),
     AUTO_SP_OPT(EventLevel.INFO),
@@ -120,8 +134,12 @@ public enum EventType {
     TRX_ERR(EventLevel.INFO),
     COLUMNAR_ERR(EventLevel.INFO),
     CCI_SNAPSHOT(EventLevel.INFO),
+    COLUMNAR_READ_ALERT(EventLevel.WARN),
     METRICS(EventLevel.INFO),
-    CDC_WARN(EventLevel.WARN);
+    CDC_WARN(EventLevel.WARN),
+
+    // Full columnar status and extra infos.
+    COLUMNAR_STATUS(EventLevel.INFO);
 
     private final EventLevel level;
 

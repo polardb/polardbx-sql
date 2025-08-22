@@ -55,13 +55,15 @@ public class JdbcSplit implements ConnectorSplit {
     protected transient List<ParameterContext> flattenParams;
     protected transient String hintSql;
     protected transient long limit = -1;
-    private transient List<List<ParameterContext>> params;
+    protected transient List<List<ParameterContext>> params;
 
     /**
      * For galaxy protocol.
      */
     protected final byte[] galaxyDigest;
     protected boolean supportGalaxyPrepare; // will set to false if dynamic or stream jdbc split
+    protected final String select;
+    protected final BytesSql startSql;
 
     public JdbcSplit(
         String catalogName,
@@ -77,7 +79,9 @@ public class JdbcSplit implements ConnectorSplit {
         boolean containSelect,
         Long intraGroupSortKey,
         byte[] galaxyDigest,
-        boolean supportGalaxyPrepare) {
+        boolean supportGalaxyPrepare,
+        String select,
+        BytesSql startSql) {
         this.catalogName = catalogName;
         this.schemaName = schemaName;
         this.dbIndex = dbIndex;
@@ -92,6 +96,8 @@ public class JdbcSplit implements ConnectorSplit {
         this.intraGroupSortKey = intraGroupSortKey;
         this.galaxyDigest = galaxyDigest;
         this.supportGalaxyPrepare = supportGalaxyPrepare;
+        this.select = select;
+        this.startSql = startSql;
     }
 
     @JsonCreator
@@ -108,7 +114,9 @@ public class JdbcSplit implements ConnectorSplit {
         @JsonProperty("rw") String rw,
         @JsonProperty("containSelect") boolean containSelect,
         @JsonProperty("galaxyDigest") byte[] galaxyDigest,
-        @JsonProperty("supportGalaxyPrepare") boolean supportGalaxyPrepare) {
+        @JsonProperty("supportGalaxyPrepare") boolean supportGalaxyPrepare,
+        @JsonProperty("select") String select,
+        @JsonProperty("startSql") BytesSql startSql) {
         this.catalogName = catalogName;
         this.schemaName = schemaName;
         this.dbIndex = dbIndex;
@@ -122,6 +130,8 @@ public class JdbcSplit implements ConnectorSplit {
         this.containSelect = containSelect;
         this.galaxyDigest = galaxyDigest;
         this.supportGalaxyPrepare = supportGalaxyPrepare;
+        this.select = select;
+        this.startSql = startSql;
     }
 
     public JdbcSplit(JdbcSplit jdbcSplit) {
@@ -129,7 +139,7 @@ public class JdbcSplit implements ConnectorSplit {
             jdbcSplit.getSqlTemplate(), jdbcSplit.getOrderBy(),
             jdbcSplit.getParams(), jdbcSplit.getHostAddress(), jdbcSplit.getTableNames(), jdbcSplit.getTransactionRw(),
             jdbcSplit.isContainSelect(), jdbcSplit.getIntraGroupSortKey(), jdbcSplit.getGalaxyDigest(),
-            jdbcSplit.isSupportGalaxyPrepare());
+            jdbcSplit.isSupportGalaxyPrepare(), jdbcSplit.getSelect(), jdbcSplit.startSql);
     }
 
     @JsonProperty("rw")
@@ -292,6 +302,16 @@ public class JdbcSplit implements ConnectorSplit {
         Long grpParallelism = ec.getGroupParallelism();
         return PhyTableOperationUtil.computeGrpConnIdByGrpConnKey(this.intraGroupSortKey, enableGrpParallelism,
             grpParallelism);
+    }
+
+    @JsonProperty
+    public String getSelect() {
+        return select;
+    }
+
+    @JsonProperty
+    public BytesSql getStartSql() {
+        return startSql;
     }
 
 }

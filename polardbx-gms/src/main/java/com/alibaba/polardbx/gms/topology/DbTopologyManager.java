@@ -78,6 +78,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -133,6 +134,13 @@ public class DbTopologyManager {
     private static final ReentrantLock groupTopologyMappingLock = new ReentrantLock();
     private static volatile Map<String, String> groupTopologyMapping =
         new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
+    /**
+     * <pre>
+     *     connId -> ddlContext
+     * </pre>
+     */
+    protected static final Map<Long, DatabaseDdlContext> connIdToDatabaseDdlContextMapping = new ConcurrentHashMap<>();
 
     public static void initDbTopologyManager(SchemaMetaCleaner cleanerImpl) {
         schemaMetaCleaner = cleanerImpl;
@@ -280,17 +288,64 @@ public class DbTopologyManager {
         }
     }
 
+    protected static void registerDdlContextIntoDbTopologyManager(DatabaseDdlContext ddlContext) {
+        connIdToDatabaseDdlContextMapping.put(ddlContext.getConnId(), ddlContext);
+    }
+
+    protected static void unregisterDdlContextFromDbTopologyManager(DatabaseDdlContext ddlContext) {
+        connIdToDatabaseDdlContextMapping.remove(ddlContext.getConnId());
+    }
+
+    public static void killDdlQueryByConnId(Long connId) {
+        DatabaseDdlContext databaseDdlContext = getDdlContextFromDbTopologyManager(connId);
+        if (databaseDdlContext != null) {
+            databaseDdlContext.setInterrupted(true);
+        }
+    }
+
+    public static DatabaseDdlContext getDdlContextFromDbTopologyManager(Long connId) {
+        return connIdToDatabaseDdlContextMapping.get(connId);
+    }
+
+    protected static void initDatabaseDdlContextIfNeedForCreateDb(CreateDbInfo createDbInfo) {
+        if (createDbInfo.getConnId() != null) {
+            DatabaseDdlContext databaseDdlContext = new DatabaseDdlContext();
+            databaseDdlContext.setConnId(createDbInfo.getConnId());
+            databaseDdlContext.setTraceId(createDbInfo.getTraceId());
+            createDbInfo.setDdlContext(databaseDdlContext);
+            registerDdlContextIntoDbTopologyManager(databaseDdlContext);
+        }
+    }
+
+    protected static void initDatabaseDdlContextIfNeedForDropDb(DropDbInfo dropDbInfo) {
+        if (dropDbInfo.getConnId() != null) {
+            DatabaseDdlContext databaseDdlContext = new DatabaseDdlContext();
+            databaseDdlContext.setConnId(dropDbInfo.getConnId());
+            databaseDdlContext.setTraceId(dropDbInfo.getTraceId());
+            databaseDdlContext.setDropDb(true);
+            dropDbInfo.setDdlContext(databaseDdlContext);
+            registerDdlContextIntoDbTopologyManager(databaseDdlContext);
+        }
+    }
+
     public static long createLogicalDb(CreateDbInfo createDbInfo) {
         long dbId = -1;
-
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection();
             Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
+
+            // register ddlCtx into DbTopologyManger
+            initDatabaseDdlContextIfNeedForCreateDb(createDbInfo);
 
             // acquire MetaDb Lock by for update, to avoiding concurrent create & drop databases
             metaDbLockConn.setAutoCommit(false);
 
-            LockUtil.waitToAcquireMetaDbLock(String.format("Get metaDb lock interrupted during creating db[%s]",
-                createDbInfo.getDbName()), metaDbLockConn);
+//            LockUtil.waitToAcquireMetaDbLock(String.format("Get metaDb lock interrupted during creating db[%s]",
+//                createDbInfo.getDbName()), metaDbLockConn);
+
+            LockUtil.waitToAcquireMetaDbLock(
+                String.format("Get metaDb lock interrupted during creating db[%s], connId[%s], traceId[%s]",
+                    createDbInfo.getDbName(), createDbInfo.getConnId(), createDbInfo.getTraceId()), metaDbLockConn,
+                createDbInfo.getDdlContext());
 
             // ---- check if logical db exists ----
             String dbName = createDbInfo.dbName;
@@ -335,7 +390,7 @@ public class DbTopologyManager {
                     ts = System.currentTimeMillis() << BITS_LOGICAL_TIME;
 
                     dropLogicalDbWithConn(dbName, true, metaDbConn, metaDbLockConn, createDbInfo.socketTimeout, ts,
-                        false, false, DEFAULT_DDL_VERSION_ID);
+                        false, false, DEFAULT_DDL_VERSION_ID, createDbInfo.getDdlContext());
                     hasDbConfig = false;
                 }
             }
@@ -388,6 +443,10 @@ public class DbTopologyManager {
             return dbId;
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
+        } finally {
+            if (createDbInfo.getDdlContext() != null) {
+                unregisterDdlContextFromDbTopologyManager(createDbInfo.getDdlContext());
+            }
         }
     }
 
@@ -399,9 +458,16 @@ public class DbTopologyManager {
         }
     }
 
-    protected static void dropLogicalDbWithConn(String dbName, boolean isDropIfExists, Connection metaDbConn,
-                                                Connection metaDbLockConn, long socketTimeout, long ts,
-                                                boolean allowDropForce, boolean reservePhyDb, long versionId)
+    protected static void dropLogicalDbWithConn(String dbName,
+                                                boolean isDropIfExists,
+                                                Connection metaDbConn,
+                                                Connection metaDbLockConn,
+                                                long socketTimeout,
+                                                long ts,
+                                                boolean allowDropForce,
+                                                boolean reservePhyDb,
+                                                long versionId,
+                                                DatabaseDdlContext ddlContext)
         throws SQLException {
 
         // acquire MetaDb Lock by for update, to avoiding concurrent create & drop databases
@@ -413,8 +479,10 @@ public class DbTopologyManager {
 //            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex,
 //                String.format("Get metaDb lock timeout during drop db[%s], please retry", dbName));
 //        }
-        LockUtil.waitToAcquireMetaDbLock(String.format("Get metaDb lock timeout during drop db[%s]", dbName),
-            metaDbLockConn);
+        LockUtil.waitToAcquireMetaDbLock(
+            String.format("Get metaDb lock timeout during drop db[%s], connId[%s], traceId[%s]", dbName,
+                ddlContext.getConnId(), ddlContext.getTraceId()),
+            metaDbLockConn, ddlContext);
 
         if (!allowDropForce) {
             if (checkDbExists(dbName)) {
@@ -527,14 +595,20 @@ public class DbTopologyManager {
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection();
             Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
 
+            initDatabaseDdlContextIfNeedForDropDb(dropDbInfo);
+
             dropLogicalDbWithConn(dbName, isDropIfExists, metaDbConn, metaDbLockConn, socketTimeout, dropDbInfo.getTs(),
-                dropDbInfo.isAllowDropForce(), dropDbInfo.isReservePhyDb(), dropDbInfo.getVersionId());
+                dropDbInfo.isAllowDropForce(), dropDbInfo.isReservePhyDb(), dropDbInfo.getVersionId(),
+                dropDbInfo.getDdlContext());
 
             // release meta db lock
             LockUtil.releaseMetaDbLockByCommit(metaDbLockConn);
-
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
+        } finally {
+            if (dropDbInfo.getDdlContext() != null) {
+                DbTopologyManager.unregisterDdlContextFromDbTopologyManager(dropDbInfo.getDdlContext());
+            }
         }
     }
 

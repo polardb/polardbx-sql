@@ -2,6 +2,7 @@
 drop database if exists inspect_lsi_auto;
 create database inspect_lsi_auto mode=auto;
 use inspect_lsi_auto;
+set transaction_policy = TSO;
 
 # has same effect as primary key
 create table tb1(
@@ -124,4 +125,4 @@ create table tb10(
 
 inspect full index from tb10;
 
-
+select count(0) from information_schema.polardbx_trx where schema = 'inspect_lsi_auto';

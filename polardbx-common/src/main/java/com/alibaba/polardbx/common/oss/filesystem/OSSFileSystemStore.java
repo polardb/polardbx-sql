@@ -76,6 +76,8 @@ import java.util.NoSuchElementException;
 
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.CANNED_ACL_DEFAULT;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.CANNED_ACL_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.CONNECTION_REQUEST_TIMEOUT_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.CONNECTION_REQUEST_TIMEOUT_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ENDPOINT_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ESTABLISH_TIMEOUT_DEFAULT;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ESTABLISH_TIMEOUT_KEY;
@@ -93,6 +95,8 @@ import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_PASSWOR
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_PORT_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_USERNAME_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_WORKSTATION_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.REQUEST_TIMEOUT_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.REQUEST_TIMEOUT_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.SECURE_CONNECTIONS_DEFAULT;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.SECURE_CONNECTIONS_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.SERVER_SIDE_ENCRYPTION_ALGORITHM_KEY;
@@ -138,6 +142,12 @@ public class OSSFileSystemStore {
             ESTABLISH_TIMEOUT_DEFAULT));
         clientConf.setSocketTimeout(conf.getInt(SOCKET_TIMEOUT_KEY,
             SOCKET_TIMEOUT_DEFAULT));
+        clientConf.setConnectionRequestTimeout(
+            conf.getInt(CONNECTION_REQUEST_TIMEOUT_KEY, CONNECTION_REQUEST_TIMEOUT_DEFAULT));
+        if (conf.get(REQUEST_TIMEOUT_KEY) != null) {
+            clientConf.setRequestTimeout(conf.getInt(REQUEST_TIMEOUT_KEY, REQUEST_TIMEOUT_DEFAULT));
+            clientConf.setRequestTimeoutEnabled(true);
+        }
         clientConf.setUserAgent(
             conf.get(USER_AGENT_PREFIX, USER_AGENT_PREFIX_DEFAULT) + ", Hadoop/"
                 + VersionInfo.getVersion());

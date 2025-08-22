@@ -370,6 +370,8 @@ public class SortMergeJoinExec extends AbstractJoinExec {
 
     private interface ResultsIterator {
         Row next();
+
+        boolean isDone();
     }
 
     private class JoinResultsIterator implements ResultsIterator {
@@ -384,6 +386,11 @@ public class SortMergeJoinExec extends AbstractJoinExec {
         JoinResultsIterator(List<ChunkRow> outerRows, List<ChunkRow> innerRows) {
             this.outerRows = outerRows;
             this.innerRows = innerRows;
+        }
+
+        @Override
+        public boolean isDone() {
+            return !(outerIndex < outerRows.size() && innerIndex < innerRows.size());
         }
 
         @Override
@@ -481,6 +488,11 @@ public class SortMergeJoinExec extends AbstractJoinExec {
             }
             return null;
         }
+
+        @Override
+        public boolean isDone() {
+            return !(outerIndex < outerRows.size());
+        }
     }
 
     private Row makeNullRow(Row outerRow) {
@@ -568,7 +580,8 @@ public class SortMergeJoinExec extends AbstractJoinExec {
 
     @Override
     public boolean produceIsFinished() {
-        return passNothing || (outerSide.isDone() && innerSide.isDone());
+        return passNothing || (outerSide.isDone() && innerSide.isDone() && (resultsIter != null &&
+            resultsIter.isDone()));
     }
 
     @Override

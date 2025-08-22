@@ -177,3 +177,13 @@ customer:
   KEY `IDX_CUSTOMER_NATIONKEY` (`C_NATIONKEY`),
   GLOBAL INDEX `customer_idx_name`(`c_name`) COVERING (`c_custkey`) DBPARTITION BY HASH(`c_name`)
   ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by hash(`c_custkey`) tbpartition by hash(`c_custkey`) tbpartitions 4;
+
+t_decimal:
+  CREATE TABLE `t_decimal` (
+  `a` decimal(18,2) NOT NULL,
+  `b` int(11) DEFAULT NULL,
+  `c` int(11) DEFAULT NULL,
+  PRIMARY KEY (`a`),
+  GLOBAL INDEX `gsi_b` (`b`) dbpartition by hash(`b`) tbpartition by hash(`b`) tbpartitions 4
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  dbpartition by hash(`a`) tbpartition by hash(`a`) tbpartitions 4;

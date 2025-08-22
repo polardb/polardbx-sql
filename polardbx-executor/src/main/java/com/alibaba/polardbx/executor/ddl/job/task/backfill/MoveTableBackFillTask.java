@@ -31,6 +31,8 @@ import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
 import lombok.Getter;
 import org.apache.calcite.rel.RelNode;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -103,4 +105,10 @@ public class MoveTableBackFillTask extends BaseBackfillTask implements RemoteExe
         return "MoveTableBackFillTask";
     }
 
+    public List<String> explainInfo() {
+        String backfillTask = "LOGICAL_BACKFILL_AND_CHECK(" + logicalTableName + ")";
+        List<String> command = new ArrayList<>(1);
+        command.add(backfillTask);
+        return command;
+    }
 }

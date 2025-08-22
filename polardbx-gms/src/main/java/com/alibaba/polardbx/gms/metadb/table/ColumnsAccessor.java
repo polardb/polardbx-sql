@@ -189,7 +189,7 @@ public class ColumnsAccessor extends AbstractAccessor {
 
     private static final String UPDATE_COLUMNS_RENAME = UPDATE_COLUMNS + "`table_name` = ?" + WHERE_SCHEMA_TABLE;
 
-    private static final String DELETE_COLUMNS = "delete from " + COLUMNS_TABLE;
+    private static final String DELETE_COLUMNS = "delete t from " + COLUMNS_TABLE + " as t force index(`table_schema`)";
 
     private static final String DELETE_COLUMNS_ALL = DELETE_COLUMNS + WHERE_SCHEMA;
 

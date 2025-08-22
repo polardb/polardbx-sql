@@ -1,0 +1,47 @@
+CREATE TABLE `omc_clustered_t1` (
+`a` bigint(20) NOT NULL,
+`b` varchar(10) DEFAULT NULL,
+`c` int(11) DEFAULT NULL,
+`d` int(11) DEFAULT NULL,
+`e` int(11) DEFAULT NULL,
+PRIMARY KEY (`a`),
+index `idx_b` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3;
+
+alter table omc_clustered_t1 add unique clustered index idx_omc_clustered_c(c) partition by key(c);
+
+alter table omc_clustered_t1 add clustered index idx_omc_clustered_d(d) partition by key(d);
+
+alter table omc_clustered_t1 add local index idx_e(e);
+
+show create table omc_clustered_t1;
+
+show create table idx_omc_clustered_c;
+
+show create table idx_omc_clustered_d;
+
+alter table omc_clustered_t1 modify column b varchar(20),algorithm=omc;
+
+show create table omc_clustered_t1;
+
+show create table idx_omc_clustered_c;
+
+show create table idx_omc_clustered_d;
+
+alter table omc_clustered_t1 remove partitioning;
+
+show create table omc_clustered_t1;
+
+show create table idx_omc_clustered_c;
+
+show create table idx_omc_clustered_d;
+
+alter table omc_clustered_t1 partitions 5;
+
+show create table omc_clustered_t1;
+
+show create table idx_omc_clustered_c;
+
+show create table idx_omc_clustered_d;

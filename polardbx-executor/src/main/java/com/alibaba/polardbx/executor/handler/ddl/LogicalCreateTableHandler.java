@@ -48,7 +48,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.oss.CreatePartitionOssTable
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.CheckAndPrepareColumnarIndexPartDefTask;
-import com.alibaba.polardbx.executor.ddl.job.task.ttl.PrepareCleanupIntervalTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.PreparingFormattedCurrDatetimeTask;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlJobContext;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.job.validator.ColumnValidator;
@@ -236,9 +236,19 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             if (needIgnoreArchiveCciForCreateTableLike) {
                 stmt.removeArchiveCciInfoForTtlDefinitionOptionIfNeed();
             }
+            // remove cci if not need in create table like
+            if (executionContext.getParamManager().getBoolean(ConnectionParams.IGNORE_CCI_WHEN_CREATE_SHADOW_TABLE)) {
+                stmt.removeCciIfNeed();
+            }
             // change table name to new created tbl
             stmt.getTableSource()
                 .setSimpleName(SqlIdentifier.surroundWithBacktick(logicalCreateTable.getTableName()));
+            // set table engine
+            String shadowTableEngine =
+                executionContext.getParamManager().getString(ConnectionParams.CREATE_SHADOW_TABLE_ENGINE);
+            if (!shadowTableEngine.isEmpty()) {
+                stmt.setEngine(Engine.of(shadowTableEngine).name());
+            }
 
             // create table ast of target
             final String targetCreateTableSql = stmt.toString();
@@ -258,6 +268,10 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             Engine engine;
             if ((engine = sqlCreateTable.getEngine()) != null) {
                 createTableLikeSqlAst.setEngine(engine);
+            }
+            // set table engine
+            if (!shadowTableEngine.isEmpty()) {
+                createTableLikeSqlAst.setEngine(Engine.of(shadowTableEngine));
             }
 
             // set archive mode if there is engine option in user sql
@@ -495,7 +509,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             }
 
             normlizePartitionBy(tableGroupSqlPartitionBy);
-            normlizeSubPartitionBy(sqlSubPartitionBy);
+            normalizeSubPartitionBy(sqlSubPartitionBy);
 
             sqlCreateTable.setSqlPartition(tableGroupSqlPartitionBy);
 
@@ -817,6 +831,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             logicalCreateTable.getCreateTableWithGsiPreparedData();
         createTableWithGsiPreparedData.getPrimaryTablePreparedData().setLikeTableInfo(likeTableInfo);
 
+        executionContext.setForbidBuildLocalIndexLater(true);
         CreateTableWithGsiJobFactory ret = new CreateTableWithGsiJobFactory(
             logicalCreateTable.relDdl,
             createTableWithGsiPreparedData,
@@ -836,6 +851,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             logicalCreateTable.getCreateTableWithGsiPreparedData();
         createTableWithGsiPreparedData.getPrimaryTablePreparedData().setLikeTableInfo(likeTableInfo);
 
+        executionContext.setForbidBuildLocalIndexLater(true);
         CreatePartitionTableWithGsiJobFactory ret = new CreatePartitionTableWithGsiJobFactory(
             logicalCreateTable.relDdl,
             createTableWithGsiPreparedData,
@@ -1118,7 +1134,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         }
     }
 
-    protected void normlizeSubPartitionBy(SqlSubPartitionBy subPartitionBy) {
+    protected void normalizeSubPartitionBy(SqlSubPartitionBy subPartitionBy) {
         if (subPartitionBy == null) {
             return;
         }
@@ -1170,9 +1186,14 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
 
         String ttlTblSchema = ttlInfo.getTtlInfoRecord().getTableSchema();
         String ttlTblName = ttlInfo.getTtlInfoRecord().getTableName();
+        TtlArchiveKind currArcKind = TtlArchiveKind.of(ttlInfo.getTtlInfoRecord().getArcKind());
+        TtlArchiveKind newArcKindToBeSet = currArcKind;
+        if (currArcKind == TtlArchiveKind.UNDEFINED) {
+            newArcKindToBeSet = TtlArchiveKind.ROW;
+        }
         String modifyTtlBindArcTblSql =
             TtlTaskSqlBuilder.buildModifyTtlSqlForBindArcTbl(ttlTblSchema, ttlTblName, targetTableSchema,
-                targetTableName, TtlArchiveKind.COLUMNAR);
+                targetTableName, newArcKindToBeSet);
         String modifyTtlBindArcTblSqlForRollback =
             TtlTaskSqlBuilder.buildModifyTtlSqlForBindArcTbl(ttlTblSchema, ttlTblName, "", "",
                 TtlArchiveKind.UNDEFINED);
@@ -1181,23 +1202,21 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         modifyTtlForBindArcTblSubTask.setParentAcquireResource(true);
 
         TtlJobContext jobContext = TtlJobContext.buildFromTtlInfo(ttlInfo);
-        PrepareCleanupIntervalTask prepareClearIntervalTask =
-            new PrepareCleanupIntervalTask(sourceTableSchema, sourceTableName);
-        prepareClearIntervalTask.setJobContext(jobContext);
-
+        PreparingFormattedCurrDatetimeTask preparingFormattedCurrDatetimeTask =
+            new PreparingFormattedCurrDatetimeTask(sourceTableSchema, sourceTableName);
+        preparingFormattedCurrDatetimeTask.setJobContext(jobContext);
         CheckAndPrepareColumnarIndexPartDefTask prepareCreateCiSqlTask =
             new CheckAndPrepareColumnarIndexPartDefTask(sourceTableSchema, sourceTableName, targetTableSchema,
                 targetTableName);
         String createCiSqlForArcTblSubJobName =
-            TtlTaskSqlBuilder.buildSubJobTaskNameForCreateColumnarIndexBySpecifySubjobStmt();
+            TtlTaskSqlBuilder.buildSubJobTaskNameForCreateColumnarIndexBySpecifySubJobStmt();
         String dropCiSqlForArcTbl =
             TtlTaskSqlBuilder.buildDropColumnarIndexSqlForArcTbl(ttlInfo, targetTableSchema, targetTableName);
         SubJobTask createCiSubJobTask =
             new SubJobTask(sourceTableSchema, createCiSqlForArcTblSubJobName, dropCiSqlForArcTbl);
         createCiSubJobTask.setParentAcquireResource(true);
 
-        // taskList.add();
-        taskList.add(prepareClearIntervalTask);
+        taskList.add(preparingFormattedCurrDatetimeTask);
         taskList.add(prepareCreateCiSqlTask);
         taskList.add(createCiSubJobTask);// create cci sql
         taskList.add(createViewSubJobTask);// create view sql
@@ -1275,7 +1294,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
                         .getBoolean(ConnectionParams.ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI);
                     TtlDefinitionInfo ttlInfo =
                         TtlUtil.fetchTtlInfoFromCreateTableLikeAst(sqlCreateTable, executionContext);
-                    if (ttlInfo.performArchiveByColumnarIndex()) {
+                    if (ttlInfo.needPerformExpiredDataArchiving()) {
                         if (!allowCreateTblLikeIgnoreTtlDef) {
                             throw GeneralUtil.nestedException(
                                 "cannot create table like a ttl-defined table, please use the hint /*TDDL:cmd_extra(ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI=true)*/ to do table creating");

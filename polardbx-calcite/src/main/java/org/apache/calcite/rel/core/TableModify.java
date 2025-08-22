@@ -157,6 +157,7 @@ public abstract class TableModify extends SingleRel {
   protected final TableInfo tableInfo;
   protected final List<String> sourceTableNames;
   protected final List<String> targetTableNames;
+  protected final boolean sourceSelect;
 
   /**
    * Foreign key cascade plans
@@ -201,6 +202,7 @@ public abstract class TableModify extends SingleRel {
       Set<Integer> appendedColumnIndex,
       SqlNodeList hints,
       OptimizerHint hintContext,
+      boolean sourceSelect,
       TableInfo tableInfo) {
     super(cluster, traitSet, input);
     this.table = table;
@@ -229,6 +231,7 @@ public abstract class TableModify extends SingleRel {
     this.tables = tableInfo.getRefTables();
     this.sourceTableNames = tableInfo.getRefTableNames();
     this.targetTableNames = tableInfo.getTargetTableNames();
+    this.sourceSelect = sourceSelect;
   }
 
   protected TableModify(
@@ -244,9 +247,10 @@ public abstract class TableModify extends SingleRel {
           int batchSize,
           Set<Integer> appendedColumnIndex,
           SqlNodeList hints,
+          boolean sourceSelect,
           TableInfo tableInfo) {
     this(cluster, traitSet, table, catalogReader, input, operation, updateColumnList, sourceExpressionList, flattened,
-        batchSize, appendedColumnIndex, hints, new OptimizerHint(), tableInfo);
+        batchSize, appendedColumnIndex, hints, new OptimizerHint(), sourceSelect, tableInfo);
   }
 
   protected TableModify(
@@ -271,6 +275,7 @@ public abstract class TableModify extends SingleRel {
         0,
         null,
         new SqlNodeList(SqlParserPos.ZERO),
+          !operation.equals(Operation.INSERT) && !operation.equals(Operation.REPLACE),
         TableInfo.singleSource(table));
   }
 
@@ -300,6 +305,7 @@ public abstract class TableModify extends SingleRel {
             batchSize,
             appendedColumnIndex,
             hints,
+            !operation.equals(Operation.INSERT) && !operation.equals(Operation.REPLACE),
             tableInfos);
         this.keywords = keywords;
   }
@@ -318,6 +324,7 @@ public abstract class TableModify extends SingleRel {
                         Set<Integer> appendedColumnIndex,
                         SqlNodeList hints,
                         OptimizerHint hintContext,
+                        boolean sourceSelect,
                         TableInfo tableInfos) {
     this(cluster,
             traitSet,
@@ -332,6 +339,7 @@ public abstract class TableModify extends SingleRel {
             appendedColumnIndex,
             hints,
             hintContext,
+            sourceSelect,
             tableInfos);
     this.keywords = keywords;
   }

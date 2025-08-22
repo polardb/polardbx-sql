@@ -96,7 +96,7 @@ public class AlterTableGroupRepartitionTest extends DDLBaseNewDBTestCase {
             }
         }
 
-        String ignoreErr = "Please use SHOW DDL";
+        String ignoreErr = "The DDL job has been cancelled or interrupted";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         StringBuilder sb = new StringBuilder();

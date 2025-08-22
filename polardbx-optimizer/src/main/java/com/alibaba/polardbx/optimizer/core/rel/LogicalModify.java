@@ -140,6 +140,7 @@ public class LogicalModify extends TableModify {
             null,
             hints,
             hintContext,
+            true,
             tableInfo);
         this.schemaName = table.getQualifiedName().size() == 2 ? table.getQualifiedName().get(0) : null;
         this.dbType = DbType.MYSQL;
@@ -174,6 +175,7 @@ public class LogicalModify extends TableModify {
             null,
             hints,
             hintContext,
+            true,
             tableInfo);
         this.schemaName = table.getQualifiedName().size() == 2 ? table.getQualifiedName().get(0) : null;
         this.dbType = DbType.MYSQL;

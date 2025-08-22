@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.common;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -267,6 +268,7 @@ public class RecycleBin extends AbstractLifecycle {
         try {
             connection = dataSource.getConnection();
             statement = connection.createStatement();
+            connection.setTrxId(TrxIdGenerator.getInstance().nextId());
             String sql =
                 "select `table_name` from information_schema.key_column_usage where referenced_table_name = %s and "
                     + "table_schema= %s and referenced_table_schema = %s";

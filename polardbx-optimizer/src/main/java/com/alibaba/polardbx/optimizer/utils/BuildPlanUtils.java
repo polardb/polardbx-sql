@@ -715,7 +715,7 @@ public class BuildPlanUtils {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_NO_FOUND,
                 "GSI table or temp table has no partition corresponding the value from primary table");
         }
-        List<PhysicalPartitionInfo> prunedParts = routeResult.getPrunedParttions();
+        List<PhysicalPartitionInfo> prunedParts = routeResult.getPrunedPartitions();
         return prunedParts;
     }
 

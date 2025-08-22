@@ -16,11 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
-import com.alibaba.polardbx.common.ColumnarTableOptions;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.ColumnarOptions;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
@@ -52,9 +48,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
-import com.alibaba.polardbx.optimizer.ttl.TtlMetaValidationUtil;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import org.apache.calcite.rel.core.DDL;
@@ -62,8 +56,6 @@ import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,7 +78,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     private final DDL ddl;
     private final CreateTableWithGsiPreparedData preparedData;
 
-    Map<String, List<List<String>>> primaryTableTopology;
+    TreeMap<String, List<List<String>>> primaryTableTopology;
     List<PhyDdlTableOperation> primaryTablePhysicalPlans;
     Map<String, List<PhyDdlTableOperation>> indexTablePhysicalPlansMap;
     private CreatePartitionTableWithGsiBuilder createPartitionTableWithGsiBuilder;
@@ -117,7 +109,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
         createTableWithGsiBuilder.build();
         this.createPartitionTableWithGsiBuilder = createTableWithGsiBuilder;
 
-        Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
+        TreeMap<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
 
         this.ddl = ddl;
@@ -145,7 +137,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             String archiveTableName = ttlDefinitionInfo.getArchiveTableName();
             String archiveTableSchema = ttlDefinitionInfo.getArchiveTableSchema();
 
-            if (ttlDefinitionInfo.needPerformExpiredDataArchivingByCci()) {
+            if (ttlDefinitionInfo.needPerformExpiredDataArchiving()) {
                 boolean foundTargetCciName = false;
                 String tarArcCciIdxName = null;
                 String arcTmpName = ttlDefinitionInfo.getTmpTableName().toLowerCase();
@@ -316,7 +308,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
         if (preparedData.getPrimaryTablePreparedData().getTtlDefinitionInfo() != null) {
             TtlDefinitionInfo ttlDefinitionInfo = preparedData.getPrimaryTablePreparedData().getTtlDefinitionInfo();
 
-            if (ttlDefinitionInfo.needPerformExpiredDataArchivingByCci()) {
+            if (ttlDefinitionInfo.needPerformExpiredDataArchiving()) {
                 boolean foundTargetIdxName = false;
                 String arcTmpName = ttlDefinitionInfo.getTmpTableName().toLowerCase();
                 Set<String> allIndexTableNameSet = preparedData.getIndexTablePreparedDataMap().keySet();

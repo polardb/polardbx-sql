@@ -50,8 +50,6 @@ public class FetchAllTransSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        TransactionManager tm = TransactionManager.getInstance(schema);
-        Collection<ITransaction> transactions = tm.getTransactions().values();
         ArrayResultCursor result = new ArrayResultCursor("TRANSACTIONS");
         result.addColumn("TRANS_ID", DataTypes.LongType);
         result.addColumn("GROUP", DataTypes.StringType);
@@ -63,6 +61,7 @@ public class FetchAllTransSyncAction implements ISyncAction {
         }
         result.addColumn("DDL", DataTypes.BooleanType);
 
+        Collection<ITransaction> transactions = TransactionManager.getTransactions(schema);
         for (ITransaction tran : transactions) {
             long frontendConnId = tran.getExecutionContext().getConnId();
 

@@ -62,6 +62,11 @@ public class DdlResponse {
         private ResponseType responseType;
         private String responseContent;
 
+
+        private String ddlStmt;
+        private String startTime;
+        private String endTime;
+
         private Object warning;
         private SQLTracer tracer;
 
@@ -86,6 +91,9 @@ public class DdlResponse {
                         String ddlType,
                         ResponseType responseType,
                         String responseContent,
+                        String ddlStmt,
+                        String startTime,
+                        String endTime,
                         Object warning,
                         SQLTracer tracer) {
             this.jobId = jobId;
@@ -94,6 +102,9 @@ public class DdlResponse {
             this.ddlType = ddlType;
             this.responseType = responseType;
             this.responseContent = responseContent;
+            this.ddlStmt = ddlStmt;
+            this.startTime = startTime;
+            this.endTime = endTime;
             this.warning = warning;
             this.tracer = tracer;
         }
@@ -160,6 +171,31 @@ public class DdlResponse {
 
         public void setTracer(final SQLTracer tracer) {
             this.tracer = tracer;
+        }
+
+
+        public String getDdlStmt() {
+            return ddlStmt;
+        }
+
+        public void setDdlStmt(String ddlStmt) {
+            this.ddlStmt = ddlStmt;
+        }
+
+        public String getStartTime() {
+            return startTime;
+        }
+
+        public void setStartTime(String startTime) {
+            this.startTime = startTime;
+        }
+
+        public String getEndTime() {
+            return endTime;
+        }
+
+        public void setEndTime(String endTime) {
+            this.endTime = endTime;
         }
     }
 

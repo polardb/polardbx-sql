@@ -1,6 +1,7 @@
 package com.alibaba.polardbx.qatest.ddl.cdc;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import org.junit.Test;
 
 import java.sql.SQLException;
@@ -8,6 +9,7 @@ import java.sql.Statement;
 
 public class CdcSetServerIdTest extends CdcBaseTest {
     @Test
+    @CdcIgnore(ignoreReason = "该测试用例会导致binlog重建前后server id不一致")
     public void testSetServerIdTest() throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
             try {

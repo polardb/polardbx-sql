@@ -142,12 +142,12 @@ public class CallHandler implements PlCommandHandler {
         handleProcedure(procedure, callStatement, parentParams, connection, parentPool);
     }
 
-    private static void handleProcedure(RuntimeProcedure procedure,
+    public static void handleProcedure(RuntimeProcedure procedure,
                                         SQLCallStatement callStatement, Map<String, SpParameter> parentParams,
                                         ServerConnection connection, MemoryPool parentPool) {
         // set current memory pool to pl context
         procedure.getPlContext().setCurrentMemoryPool(procedure.getMemoryPool());
-
+        long lastActiveTime = connection.getLastActiveTime();
         try {
             procedure.open(parentPool);
             // init procedure for its context, may be inside a procedure
@@ -156,6 +156,7 @@ public class CallHandler implements PlCommandHandler {
             procedure.run();
         } finally {
             procedure.close();
+            connection.setLastActiveTime(lastActiveTime);
         }
 
         // process out type variable

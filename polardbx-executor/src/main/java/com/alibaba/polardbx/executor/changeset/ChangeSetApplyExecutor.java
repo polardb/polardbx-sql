@@ -117,6 +117,7 @@ public class ChangeSetApplyExecutor {
                                     changeSetApplyInfo.taskType,
                                     changeSetApplyInfo.catchUpStatus,
                                     changeSetApplyInfo.changeSetId,
+                                    null,
                                     changeSetApplyInfo.ec
                                 );
                             }, null);

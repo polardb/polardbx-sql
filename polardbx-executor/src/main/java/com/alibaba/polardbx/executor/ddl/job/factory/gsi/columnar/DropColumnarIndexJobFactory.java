@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory.gsi.columnar;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropColumnarIndexTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CciSchemaEvolutionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.DropColumnarTableRemoveMetaTask;
@@ -28,6 +29,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateGsiExistenceTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
+import com.alibaba.polardbx.executor.ddl.job.validator.TtlValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -38,6 +40,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.google.common.collect.Lists;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -101,7 +104,7 @@ public class DropColumnarIndexJobFactory extends DdlJobFactory {
 
     @Override
     protected void validate() {
-        GsiValidator.validateIfDroppingCciOfArcTableOfTtlTable(schemaName, primaryTableName, indexTableName,
+        TtlValidator.validateIfDroppingCciOfArcTableOfTtlTable(schemaName, primaryTableName, indexTableName,
             executionContext);
     }
 
@@ -167,8 +170,9 @@ public class DropColumnarIndexJobFactory extends DdlJobFactory {
             taskList.add(syncTableGroup);
         }
 
-        // 5. sync after drop columnar index table
-        TableSyncTask finalSyncTask = new TableSyncTask(schemaName, primaryTableName);
+        // 5.1 sync columnar index table & primary table
+        TablesSyncTask finalSyncTask =
+            new TablesSyncTask(schemaName, Lists.newArrayList(primaryTableName, indexTableName));
         taskList.add(finalSyncTask);
 
         final ExecutableDdlJob4DropColumnarIndex executableDdlJob = new ExecutableDdlJob4DropColumnarIndex();

@@ -42,8 +42,8 @@ public class RebuildTableChangeMetaTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         EventLogger.log(EventType.DDL_INFO,
-            "Online modify column start, schema: " + schemaName + ", table: " + logicalTableName + ", sql: \"" + sql
-                + "\"");
+            "Online modify column start, schema: " + schemaName + ", table: " + logicalTableName + ", job_id: "
+                + jobId + ", sql: \"" + sql + "\"");
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);

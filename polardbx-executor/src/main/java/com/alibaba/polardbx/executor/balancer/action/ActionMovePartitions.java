@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.executor.balancer.action;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
@@ -31,10 +33,16 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.aliyun.oss.common.utils.CaseInsensitiveMap;
 import com.google.common.collect.Sets;
+import org.apache.calcite.sql.SqlSavepoint;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,11 +61,17 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
 
     private final String schema;
     //key:tableGroup, val:alter tablegroup move partitions
-    private final Map<String, List<ActionMovePartition>> actions;
+    private final List<Pair<String, List<ActionMovePartition>>> actions;
+
+    public ActionMovePartitions(String schema, List<Pair<String, List<ActionMovePartition>>> actions) {
+        this.schema = schema;
+        this.actions = actions;
+    }
 
     public ActionMovePartitions(String schema, Map<String, List<ActionMovePartition>> actions) {
         this.schema = schema;
-        this.actions = actions;
+        this.actions = actions.entrySet().stream()
+            .map(o -> Pair.of(o.getKey(), o.getValue())).collect(Collectors.toList());
     }
 
     @Override
@@ -73,15 +87,15 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
     @Override
     public String getStep() {
         List<ActionMovePartition> actionMovePartitions = new ArrayList<>();
-        GeneralUtil.emptyIfNull(actions.entrySet()).stream().forEach(o -> actionMovePartitions.addAll(o.getValue()));
+        GeneralUtil.emptyIfNull(actions).stream().forEach(o -> actionMovePartitions.addAll(o.getValue()));
         return StringUtils.join(actionMovePartitions, ",");
     }
 
     @Override
     public Long getBackfillRows() {
         Long backfillRows = 0L;
-        for (String toGroup : actions.keySet()) {
-            backfillRows += actions.get(toGroup).stream().map(o -> o.getBackfillRows()).mapToLong(o -> o).sum();
+        for (Pair<String, List<ActionMovePartition>> toGroupActions : actions) {
+            backfillRows += toGroupActions.getValue().stream().map(o -> o.getBackfillRows()).mapToLong(o -> o).sum();
         }
         return backfillRows;
     }
@@ -89,8 +103,8 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
     @Override
     public Long getDiskSize() {
         Long diskSize = 0L;
-        for (String toGroup : actions.keySet()) {
-            diskSize += actions.get(toGroup).stream().map(o -> o.getDiskSize()).mapToLong(o -> o).sum();
+        for (Pair<String, List<ActionMovePartition>> toGroupActions : actions) {
+            diskSize += toGroupActions.getValue().stream().map(o -> o.getDiskSize()).mapToLong(o -> o).sum();
         }
         return diskSize;
     }
@@ -98,8 +112,8 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
     @Override
     public double getLogicalTableCount() {
         double tableCount = 0;
-        for (String toGroup : actions.keySet()) {
-            tableCount += actions.get(toGroup).get(0).getLogicalTableCount();
+        for (Pair<String, List<ActionMovePartition>> toGroupActions : actions) {
+            tableCount += toGroupActions.getValue().get(0).getLogicalTableCount();
         }
 
         return Math.max(1.0, tableCount / actions.size());
@@ -122,179 +136,192 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
         ExecutableDdlJob job = new ExecutableDdlJob();
         job.setMaxParallelism(ec.getParamManager().getInt(ConnectionParams.REBALANCE_TASK_PARALISM));
         EmptyTask headTask = new EmptyTask(schema);
+        EmptyTask tailTask = new EmptyTask(schema);
         job.addTask(headTask);
         job.labelAsHead(headTask);
-
-        Map<String, Pair<Pair<List<DdlTask>, List<DdlTask>>, Set<String>>> tableGroupTaskInfo =
-            new TreeMap<>(String::compareToIgnoreCase);
-        TableGroupInfoManager tableGroupInfoManager = OptimizerContext.getContext(schema).getTableGroupInfoManager();
-        Map<String, Set<String>> tableGroupPrimaryTables = new TreeMap<>(String::compareToIgnoreCase);
-
-        for (Map.Entry<String, List<ActionMovePartition>> entry : actions.entrySet()) {
-            ExecutableDdlJob subJob = new ExecutableDdlJob();
-            if (ec.getParamManager().getBoolean(ConnectionParams.SCALE_OUT_GENERATE_MULTIPLE_TO_GROUP_JOB)) {
-                ExecutableDdlJob ddlTask = ActionMovePartition.movesToDdlJob(entry.getKey(), entry.getValue(), ec);
-                subJob.appendJob2(ddlTask);
-            } else {
-                for (ActionMovePartition move : entry.getValue()) {
-                    ExecutableDdlJob ddlTask = move.toDdlJob(ec);
-                    subJob.appendJob2(ddlTask);
-                }
-
-            }
-            Set<String> relatedTableGroup;
-            if (!tableGroupTaskInfo.containsKey(entry.getKey())) {
-                relatedTableGroup = getRelatedTableGroupNames(entry.getKey(), tableGroupInfoManager, ec);
-                tableGroupPrimaryTables.put(entry.getKey(), getPrimaryTables(entry.getKey()));
-
-            } else {
-                relatedTableGroup = tableGroupTaskInfo.get(entry.getKey()).getValue();
-            }
-            job.appendJobAfter2(headTask, subJob);
-            addDependencyRelationship(job, tableGroupTaskInfo, subJob, entry.getKey(), relatedTableGroup,
-                tableGroupPrimaryTables);
-
-            if (!tableGroupTaskInfo.containsKey(entry.getKey())) {
-                List<DdlTask> headNodes = subJob.getAllZeroInDegreeVertexes().stream().map(o -> o.getObject()).collect(
-                    Collectors.toList());
-                List<DdlTask> tailNodes = subJob.getAllZeroOutDegreeVertexes().stream().map(o -> o.getObject()).collect(
-                    Collectors.toList());
-
-                Pair<Pair<List<DdlTask>, List<DdlTask>>, Set<String>> tableGroupInfo =
-                    Pair.of(Pair.of(headNodes, tailNodes), relatedTableGroup);
-                tableGroupTaskInfo.put(entry.getKey(), tableGroupInfo);
-            }
-        }
-
-        ExecutableDdlJob tailJob = new ExecutableDdlJob();
-        EmptyTask tailTask = new EmptyTask(schema);
-        tailJob.addTask(tailTask);
-        job.appendJob2(tailJob);
-
+        job.addTask(tailTask);
         job.labelAsTail(tailTask);
-        boolean removeRedundancyRelation =
-            ec.getParamManager().getBoolean(ConnectionParams.REMOVE_DDL_JOB_REDUNDANCY_RELATIONS);
-        if (removeRedundancyRelation) {
-            job.removeRedundancyRelations();
+
+        Map<String, List<List<ActionMovePartition>>> actionTableGroups = new CaseInsensitiveMap<>();
+        for (Pair<String, List<ActionMovePartition>> toGroupActions : actions) {
+            actionTableGroups.computeIfAbsent(toGroupActions.getKey(), k -> new ArrayList<>())
+                .add(toGroupActions.getValue());
         }
+
+        TreeSet<String> tableGroupNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        tableGroupNames.addAll(actionTableGroups.keySet());
+        Map<String, Set<String>> relatedTableGroupMap = buildRelatedTableGroupMap(ec, schema);
+        String dumpRelatedTableGroupMap = JSON.toJSONString(relatedTableGroupMap);
+        SQLRecorderLogger.ddlLogger.warn(
+            "related table group map in schema " + schema + " :" + dumpRelatedTableGroupMap);
+        List<List<String>> sequentialTableGroupNames = buildSequentialTableGroup(tableGroupNames, relatedTableGroupMap);
+        String dumpSequentialTableGroupNames = JSON.toJSONString(sequentialTableGroupNames);
+        SQLRecorderLogger.ddlLogger.warn(
+            "sequential table group names in schema " + schema + " :" + dumpSequentialTableGroupNames);
+        String comparedDumpRelatedTableGroupMap = JSON.toJSONString(relatedTableGroupMap);
+        Assert.assertTrue(comparedDumpRelatedTableGroupMap.equals(dumpRelatedTableGroupMap));
+
+        Map<String, List<ExecutableDdlJob>> tableGroupSubJobMap = new HashMap<>();
+
+        for (String tableGroup : actionTableGroups.keySet()) {
+            List<List<ActionMovePartition>> actions = actionTableGroups.get(tableGroup);
+            List<ExecutableDdlJob> subJobs = new ArrayList<>();
+            for (List<ActionMovePartition> action : actions) {
+                subJobs.add(convertToSubJob(tableGroup, action, ec));
+            }
+            for (ExecutableDdlJob subJob : subJobs) {
+                job.appendJobAfterHead(headTask, subJob);
+            }
+            tableGroupSubJobMap.put(tableGroup, subJobs);
+        }
+
+        Set<String> allTableGroups = new TreeSet<>(actionTableGroups.keySet());
+        for (List<String> tableGroups : sequentialTableGroupNames) {
+            for (String tableGroup : tableGroups) {
+                if (!actionTableGroups.containsKey(tableGroup)) {
+                    continue;
+                }
+                for (String relatedTableGroup : relatedTableGroupMap.get(tableGroup)) {
+                    if (allTableGroups.contains(relatedTableGroup)) {
+                        appendDependencyForAllSubJob(job, tableGroupSubJobMap.get(tableGroup),
+                            tableGroupSubJobMap.get(relatedTableGroup));
+                    }
+                }
+                allTableGroups.remove(tableGroup);
+            }
+        }
+
+        for (String tableGroup : sequentialTableGroupNames.get(sequentialTableGroupNames.size() - 1)) {
+            for (ExecutableDdlJob subJob : tableGroupSubJobMap.get(tableGroup)) {
+                job.addTaskRelationship(subJob.getTail(), tailTask);
+            }
+        }
+
+        job.removeRedundancyRelations();
         return job;
     }
 
-    private Set<String> getPrimaryTables(String tableGroupName) {
-        Set<String> primaryTables = new TreeSet<>(String::compareToIgnoreCase);
+    private ExecutableDdlJob convertToSubJob(String tableGroupName, List<ActionMovePartition> moves,
+                                             ExecutionContext ec) {
+        ExecutableDdlJob subJob = new ExecutableDdlJob();
+        if (ec.getParamManager().getBoolean(ConnectionParams.SCALE_OUT_GENERATE_MULTIPLE_TO_GROUP_JOB)) {
+            ExecutableDdlJob ddlTask = ActionMovePartition.movesToDdlJob(tableGroupName, moves, ec);
+            subJob.appendJob2(ddlTask);
+            subJob.labelAsHead(ddlTask.getHead());
+            subJob.labelAsTail(ddlTask.getTail());
+        } else {
+            Boolean first = true, last = false;
+            for (int i = 0; i < moves.size(); i++) {
+                ActionMovePartition move = moves.get(i);
+                ExecutableDdlJob ddlTask = move.toDdlJob(ec);
+                subJob.appendJob2(ddlTask);
+                if (i == 0) {
+                    subJob.labelAsHead(ddlTask.getHead());
+                }
+                if (i == moves.size() - 1) {
+                    subJob.labelAsTail(ddlTask.getTail());
+                }
+            }
+        }
+        return subJob;
+    }
+
+    private List<List<String>> buildSequentialTableGroup(TreeSet<String> tableGroupNames,
+                                                         final Map<String, Set<String>> relatedTableGroupMap) {
+        // full scan
+        List<List<String>> sequentialTableGroupNames = new ArrayList<>();
+        TreeSet<String> residueTableGroupNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        while (!CollectionUtils.isEmpty(tableGroupNames)) {
+            List<String> firstTableGroups = new ArrayList<>();
+            while (!CollectionUtils.isEmpty(tableGroupNames)) {
+                String tableGroupName = tableGroupNames.pollFirst();
+                firstTableGroups.add(tableGroupName);
+                Set<String> relatedTableGroupNames = relatedTableGroupMap.get(tableGroupName);
+                if (relatedTableGroupNames != null && !relatedTableGroupNames.isEmpty()) {
+                    final Set<String> finalTableGroupNames = tableGroupNames;
+                    // TODO(residue => related)
+                    relatedTableGroupNames =
+                        residueTableGroupNames.stream().filter(o -> finalTableGroupNames.contains(o)).collect(
+                            Collectors.toSet());
+                    tableGroupNames.removeAll(relatedTableGroupNames);
+                    residueTableGroupNames.addAll(relatedTableGroupNames);
+                }
+            }
+            sequentialTableGroupNames.add(firstTableGroups);
+            tableGroupNames = residueTableGroupNames;
+            residueTableGroupNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        }
+        return sequentialTableGroupNames;
+    }
+
+    private Map<String, Set<String>> buildRelatedTableGroupMap(ExecutionContext ec, String schema) {
+        Map<String, Set<String>> relatedTableGroupMap = new CaseInsensitiveMap<>();
         TableGroupInfoManager tableGroupInfoManager = OptimizerContext.getContext(schema).getTableGroupInfoManager();
-        TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         SchemaManager schemaManager = OptimizerContext.getContext(schema).getLatestSchemaManager();
-        for (String tableName : tableGroupConfig.getAllTables()) {
-            TableMeta tableMeta = schemaManager.getTable(tableName);
-            String primaryTableName = tableMeta.getTableName();
+        Map<String, List<String>> primaryTable2gsiMap = new CaseInsensitiveMap<>();
+        Map<String, String> table2TableGroupMap = new CaseInsensitiveMap<>();
+        for (TableMeta tableMeta : schemaManager.getAllTables()) {
+            String gsiName = tableMeta.getTableName().toLowerCase();
             if (tableMeta.isGsi()) {
                 assert
                     tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
-                primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
-            }
-            primaryTables.add(primaryTableName);
-        }
-        return primaryTables;
-    }
-
-    private Set<String> getRelatedTableGroupNames(String tableGroup, TableGroupInfoManager tableGroupInfoManager,
-                                                  ExecutionContext executionContext) {
-        Set<String> tableGroups = new TreeSet<>(String::compareToIgnoreCase);
-        tableGroups.add(tableGroup);
-        TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroup);
-        if (tableGroupConfig != null) {
-            for (String tableName : GeneralUtil.emptyIfNull(tableGroupConfig.getAllTables())) {
-                TableMeta tableMeta = executionContext.getSchemaManager(schema).getTable(tableName);
-                if (tableMeta.isGsi()) {
-                    String primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
-                    tableMeta = OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(primaryTableName);
-                    TableGroupConfig curTableConfig =
-                        tableGroupInfoManager.getTableGroupConfigById(tableMeta.getPartitionInfo().getTableGroupId());
-                    if (curTableConfig != null) {
-                        tableGroups.add(curTableConfig.getTableGroupRecord().getTg_name());
-                    }
-                }
+                String primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName.toLowerCase();
+                primaryTable2gsiMap.computeIfAbsent(primaryTableName, k -> new ArrayList<>()).add(gsiName);
             }
         }
-        return tableGroups;
+        List<String> tableGroups = new ArrayList<>();
+        tableGroupInfoManager.getTableGroupConfigInfoCache().values()
+            .forEach(tableGroupConfigInfo -> tableGroups.add(
+                tableGroupConfigInfo.getTableGroupRecord().getTg_name().toLowerCase()));
+        for (String tableGroup : tableGroups) {
+            TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroup);
+            for (String tableName : tableGroupConfig.getAllTables()) {
+                table2TableGroupMap.put(tableName.toLowerCase(), tableGroup);
+            }
+        }
+
+        SQLRecorderLogger.ddlLogger.warn(
+            "table2tableGroup map in schema " + schema + " :" + JSON.toJSONString(table2TableGroupMap));
+        SQLRecorderLogger.ddlLogger.warn(
+            "table2gsi map in schema " + schema + " :" + JSON.toJSONString(primaryTable2gsiMap));
+        for (TableMeta tableMeta : schemaManager.getAllTables()) {
+            String primaryTableName = tableMeta.getTableName().toLowerCase();
+            if (!tableMeta.isGsi()) {
+                String tableGroupName = table2TableGroupMap.get(primaryTableName);
+                if (tableGroupName != null) {
+                    tableGroupName = tableGroupName.toLowerCase();
+                    Set<String> relatedTableGroups =
+                        primaryTable2gsiMap.getOrDefault(primaryTableName, new ArrayList<>()).stream()
+                            .map(o -> table2TableGroupMap.get(o)).collect(
+                                Collectors.toSet());
+                    relatedTableGroups.remove(tableGroupName);
+                    relatedTableGroupMap.computeIfAbsent(tableGroupName,
+                            k -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
+                        .addAll(relatedTableGroups);
+                    for (String relatedTableGroup : relatedTableGroups) {
+                        if (!relatedTableGroup.equalsIgnoreCase(tableGroupName)) {
+                            relatedTableGroupMap.computeIfAbsent(relatedTableGroup,
+                                    k -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
+                                .add(tableGroupName);
+                            relatedTableGroupMap.computeIfAbsent(relatedTableGroup,
+                                    k -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
+                                .addAll(relatedTableGroups);
+                            relatedTableGroupMap.get(relatedTableGroup).remove(relatedTableGroup);
+                        }
+                    }
+                }
+            }
+        }
+        return relatedTableGroupMap;
     }
 
-    /**
-     * parentJob: the parent job
-     * tableGroupTask: the exists tableGroup subJobs
-     * ddlTask: the current tableGroup subJob to be added
-     * if there are some dependency between ddlTask and
-     * the exists tableGroup subJobs, need to add the relationship
-     * for them.
-     * relatedTableGroup: the related tableGroups for tables in current tableGroup
-     */
-    private void addDependencyRelationship(ExecutableDdlJob parentJob,
-                                           Map<String, Pair<Pair<List<DdlTask>, List<DdlTask>>, Set<String>>> tableGroupTaskInfo,
-                                           ExecutableDdlJob ddlTask, String curTableGroup,
-                                           Set<String> relatedTableGroup,
-                                           Map<String, Set<String>> tableGroupPrimaryTables) {
-
-        for (Map.Entry<String, Pair<Pair<List<DdlTask>, List<DdlTask>>, Set<String>>> entry : tableGroupTaskInfo.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(curTableGroup)) {
-                continue;
-            }
-            boolean match = entry.getValue().getValue().contains(curTableGroup);
-            if (match) {
-                for (DirectedAcyclicGraph.Vertex vertex : ddlTask.getAllZeroOutDegreeVertexes()) {
-                    for (DdlTask head : entry.getValue().getKey().getKey()) {
-                        parentJob.addTaskRelationship(vertex.getObject(), head);
-                        if (!parentJob.isValid()) {
-                            parentJob.removeTaskRelationship(vertex.getObject(), head);
-                        } else {
-                            parentJob.removeTaskRelationship(parentJob.getHead(), head);
-                        }
-                    }
-                }
-            } else {
-                match = relatedTableGroup.contains(entry.getKey());
-                if (match) {
-                    for (DirectedAcyclicGraph.Vertex vertex : ddlTask.getAllZeroInDegreeVertexes()) {
-                        for (DdlTask tail : entry.getValue().getKey().getValue()) {
-                            parentJob.addTaskRelationship(tail, vertex.getObject());
-                            if (!parentJob.isValid()) {
-                                parentJob.removeTaskRelationship(tail, vertex.getObject());
-                            } else {
-                                parentJob.removeTaskRelationship(parentJob.getHead(), vertex.getObject());
-                            }
-                        }
-                    }
-                }
-            }
-            if (!match) {
-                match = entry.getValue().getValue().stream().anyMatch(o -> relatedTableGroup.contains(o));
-                if (match) {
-                    Set<String> sourcePrimaryTables;
-                    Set<String> targetPrimaryTables;
-                    if (tableGroupPrimaryTables.containsKey(curTableGroup)) {
-                        sourcePrimaryTables = tableGroupPrimaryTables.get(curTableGroup);
-                    } else {
-                        sourcePrimaryTables = getPrimaryTables(curTableGroup);
-                        tableGroupPrimaryTables.put(curTableGroup, sourcePrimaryTables);
-                    }
-                    if (tableGroupPrimaryTables.containsKey(entry.getKey())) {
-                        targetPrimaryTables = tableGroupPrimaryTables.get(entry.getKey());
-                    } else {
-                        targetPrimaryTables = getPrimaryTables(entry.getKey());
-                        tableGroupPrimaryTables.put(entry.getKey(), targetPrimaryTables);
-                    }
-                    if (GeneralUtil.isNotEmpty(Sets.intersection(sourcePrimaryTables, targetPrimaryTables))) {
-                        for (DirectedAcyclicGraph.Vertex vertex : ddlTask.getAllZeroOutDegreeVertexes()) {
-                            for (DdlTask head : entry.getValue().getKey().getKey()) {
-                                parentJob.addTaskRelationship(vertex.getObject(), head);
-                                if (!parentJob.isValid()) {
-                                    parentJob.removeTaskRelationship(vertex.getObject(), head);
-                                } else {
-                                    parentJob.removeTaskRelationship(parentJob.getHead(), head);
-                                }
-                            }
-                        }
-                    }
+    private void appendDependencyForAllSubJob(ExecutableDdlJob parentJob,
+                                              List<ExecutableDdlJob> beforeSubjobs,
+                                              List<ExecutableDdlJob> afterSubjobs) {
+        if (beforeSubjobs != null && afterSubjobs != null) {
+            for (ExecutableDdlJob beforeSubjob : beforeSubjobs) {
+                for (ExecutableDdlJob afterSubjob : afterSubjobs) {
+                    parentJob.addTaskRelationship(beforeSubjob.getTail(), afterSubjob.getHead());
                 }
             }
         }
@@ -325,17 +352,18 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
             '}';
     }
 
-    public Map<String, List<ActionMovePartition>> getActions() {
+    public List<Pair<String, List<ActionMovePartition>>> getActions() {
         return actions;
     }
 
     @Override
     public int compareTo(ActionMovePartitions o) {
         if (actions.size() == o.actions.size()) {
-            for (Map.Entry<String, List<ActionMovePartition>> entry : actions.entrySet()) {
-                if (o.getActions().get(entry.getKey()) != null) {
-                    for (int i = 0; i < Math.min(entry.getValue().size(), o.actions.get(entry.getKey()).size()); i++) {
-                        int res = entry.getValue().get(i).compareTo(o.actions.get(entry.getKey()).get(i));
+            for (int i = 0; i < actions.size(); i++) {
+                Pair<String, List<ActionMovePartition>> entry = actions.get(i);
+                if (o.getActions().get(i) != null) {
+                    for (int j = 0; j < Math.min(entry.getValue().size(), o.actions.get(j).getValue().size()); j++) {
+                        int res = entry.getValue().get(i).compareTo(o.actions.get(j).getValue().get(j));
                         if (res != 0) {
                             return res;
                         }

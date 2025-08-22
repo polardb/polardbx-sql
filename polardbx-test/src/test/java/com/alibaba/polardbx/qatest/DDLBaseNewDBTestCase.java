@@ -38,6 +38,7 @@ import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
@@ -126,6 +127,18 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         "/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS=\"WaitColumnarTableCreationTask\")*/ ";
     protected static final String HINT_PURE_MODE = "/*+TDDL:CMD_EXTRA(PURE_ASYNC_DDL_MODE=TRUE)*/";
     protected static final String HINT_DDL_FAIL_POINT_TMPL = "/*+TDDL:CMD_EXTRA(%s='%s')*/";
+    protected static final String DISABLE_GET_DUP_USING_GSI = "DML_GET_DUP_USING_GSI=FALSE";
+    protected static final String DISABLE_RETURNING = "DML_USE_RETURNING=FALSE";
+    protected static final String DISABLE_SKIP_DUPLICATE_CHECK_FOR_PK = "DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE";
+    public static final String DML_EXECUTION_STRATEGY_LOGICAL = "DML_EXECUTION_STRATEGY=LOGICAL";
+    public static final String ENABLE_DML_COMPUTE_ALL_DYNAMIC_IMPLICIT_DEFAULT_REF_IN_ONE_GO = "DML_COMPUTE_ALL_DYNAMIC_IMPLICIT_DEFAULT_REF_IN_ONE_GO=TRUE";
+    public static final String DISABLE_DML_COMPUTE_ALL_DYNAMIC_IMPLICIT_DEFAULT_REF_IN_ONE_GO = "DML_COMPUTE_ALL_DYNAMIC_IMPLICIT_DEFAULT_REF_IN_ONE_GO=FALSE";
+    protected static final String DML_WRITE_ONLY = "GSI_DEBUG=\"GsiStatus2\"";
+    protected static final String DML_USE_NEW_DUP_CHECKER = "DML_USE_NEW_DUP_CHECKER=TRUE";
+    protected static final String DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = "DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY=TRUE";
+    protected static final String DML_GET_DUP_FOR_PK_FROM_GSI = "DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY=FALSE";
+    protected static final String DML_FORCE_PUSHDOWN_RC_REPLACE = "DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE";
+    protected static final String DISABLE_DML_SKIP_TRIVIAL_UPDATE = "DML_SKIP_TRIVIAL_UPDATE=FALSE";
 
     protected static String META_DB_HINT = "/*TDDL:NODE='__META_DB__'*/";
 
@@ -809,6 +822,29 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         return phyTables;
     }
 
+    public Map<String, List<String>> showTopologyByStorage(Connection conn, String tbName) {
+        Map<String, List<String>> storageAndPartitions = new HashMap<>();
+        String sql = "show topology " + tbName;
+        ResultSet rs = JdbcUtil.executeQuerySuccess(conn, sql);
+        try {
+            while (rs.next()) {
+                String partitionName = rs.getString("PARTITION_NAME");
+                String subpartitionName = rs.getString("SUBPARTITION_NAME");
+                String storageId = rs.getString("DN_ID");
+                if (StringUtils.isEmpty(subpartitionName)) {
+                    storageAndPartitions.computeIfAbsent(storageId, k -> new ArrayList<>()).add(partitionName);
+                } else {
+                    storageAndPartitions.computeIfAbsent(storageId, k -> new ArrayList<>()).add(subpartitionName);
+                }
+            }
+        } catch (SQLException e) {
+            logger.error(e.getMessage(), e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+        return storageAndPartitions;
+    }
+
     public List<String> showTopology(Connection conn, String tbName) {
         List<String> phyTables = new ArrayList<>();
         String sql = "show topology " + tbName;
@@ -1284,7 +1320,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                     indexName,
                     IndexStatus.PUBLIC.getValue(),
                     0l, 0l,
-                    IndexVisibility.VISIBLE.getValue()));
+                    IndexVisibility.VISIBLE.getValue(),
+                    LackLocalIndexStatus.NO_LACKIING.getValue()));
             }
             Assert.assertFalse(rows.isEmpty());
             return new ShowIndexChecker(rows);
@@ -1733,6 +1770,16 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                 return true;
             }
 
+            Comparator<Pair<SqlIdentifier, SqlIndexDefinition>> comparator =
+                new Comparator<Pair<SqlIdentifier, SqlIndexDefinition>>() {
+                    @Override
+                    public int compare(Pair<SqlIdentifier, SqlIndexDefinition> o1,
+                                       Pair<SqlIdentifier, SqlIndexDefinition> o2) {
+                        return o1.getKey().toString().compareTo(o2.getKey().toString());
+                    }
+                };
+            expected.sort(comparator);
+            actual.sort(comparator);
             for (int i = 0; i < expected.size(); i++) {
                 if (!identicalIndexDef(expected.get(i), actual.get(i))) {
                     System.out.println("unmatched index def: ");
@@ -2194,6 +2241,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
 
     private static boolean checkDdlResultByTable(String schemaName, String tableName, Connection conn)
         throws SQLException {
+        JdbcUtil.executeUpdateSuccess(conn, "set global MAX_SHOW_DDL_RESULT_STMT_LENGTH=10240");
         ResultSet rs = JdbcUtil.executeQuery("show ddl result", conn);
         SortedMap<Long, String> results = new TreeMap<>();
         while (rs.next()) {
@@ -2352,6 +2400,23 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     }
 
     @NotNull
+    public List<CdcDdlRecord> queryDdlRecordBySchemaTable(String schema, String table) throws SQLException {
+        final String sqlQueryDdlRecord =
+            "select * from __cdc__." + CdcTableUtil.CDC_DDL_RECORD_TABLE + " where SCHEMA_NAME = ? and TABLE_NAME = ? order by id DESC";
+
+        try (PreparedStatement stmt = tddlConnection.prepareStatement(sqlQueryDdlRecord)) {
+            stmt.setObject(1, schema);
+            stmt.setObject(2, table);
+            final ResultSet rs = stmt.executeQuery();
+            final List<CdcDdlRecord> result = new ArrayList<>();
+            while (rs.next()) {
+                result.add(CdcDdlRecord.fill(rs));
+            }
+            return result;
+        }
+    }
+
+    @NotNull
     public List<CdcDdlRecord> queryDdlRecordByCciName(String cciName) throws SQLException {
         final String sqlQueryDdlRecord =
             "select * from __cdc__." + CdcTableUtil.CDC_DDL_RECORD_TABLE + " where ddl_sql like ?";
@@ -2449,8 +2514,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     }
 
     protected List<ColumnarTableMappingRecord> queryDropColumnarTableMappingRecordByIndexName(String schemaName,
-                                                                                               String tableName,
-                                                                                               String indexName)
+                                                                                              String tableName,
+                                                                                              String indexName)
         throws SQLException {
         final List<ColumnarTableMappingRecord> result;
         try (final Connection metaConn = getMetaConnection()) {
@@ -2602,6 +2667,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         public String state;
         public String traceId;
         public String responseNode;
+        public String backfillProgress;
     }
 
     protected JobInfo fetchCurrentJob(String expectedTableName) throws SQLException {
@@ -2625,6 +2691,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                 currentJob.state = rs.getString("STATE");
                 currentJob.traceId = rs.getString("TRACE_ID");
                 currentJob.responseNode = rs.getString("RESPONSE_NODE");
+                currentJob.backfillProgress = rs.getString("TOTAL_BACKFILL_PROGRESS");
 
                 if (currentJob.responseNode.contains("subjob")) {
                     subJobs.add(currentJob);
@@ -2760,14 +2827,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     }
 
     protected List<List<String>> checkTraceRowCount(Matcher<Integer> matcher) {
-        final List<List<String>> trace = getTrace(tddlConnection);
-
-        Assert.assertThat("Unexpected trace count: \n" + Optional
-            .ofNullable(trace)
-            .map(tu -> tu.stream().map(r -> String.join(", ", r)).collect(Collectors.joining("\n")))
-            .orElse("show trace result is null"), trace.size(), matcher);
-
-        return trace;
+        return checkTraceRowCount(matcher, tddlConnection);
     }
 
     protected static @NotNull String buildSqlCheckData(List<String> columnNames, String tableName) {
@@ -2804,6 +2864,21 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         return selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
     }
 
+    protected @NotNull List<List<Object>> executeOnceThenCheckGsiDataAndTraceResult(String hint,
+                                                                                    String insert,
+                                                                                    String tableName,
+                                                                                    String gsiName,
+                                                                                    Matcher<Integer> traceCountMatcher)
+        throws SQLException {
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null, true);
+        checkTraceRowCount(traceCountMatcher);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
+
+        return selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+    }
+
     protected void executeTwiceThenCheckDataAndTraceResult(String hint,
                                                            String insert,
                                                            String sqlCheckData,
@@ -2832,16 +2907,26 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                                                               String tableName,
                                                               String gsiName,
                                                               int traceCount) throws SQLException {
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("*"), tableName), traceCount);
+    }
+
+    protected void executeTwiceThenCheckGsiDataAndTraceResult(String hint,
+                                                              String insert,
+                                                              String tableName,
+                                                              String gsiName,
+                                                              String sqlCheckData,
+                                                              int traceCount) throws SQLException {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + insert, null, true);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null, true);
         checkTraceRowCountIs(traceCount);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -2883,5 +2968,16 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
+    }
+
+    protected void assertTraceContains(List<List<String>> trace, String targetStr, int count) {
+        int c = 0;
+        for (List<String> item : trace) {
+            if (org.apache.commons.lang3.StringUtils.containsIgnoreCase(item.get(11), targetStr)) {
+                c++;
+            }
+        }
+        //make sure now() is pushed down, instead of logical execution
+        org.junit.Assert.assertEquals(count, c);
     }
 }

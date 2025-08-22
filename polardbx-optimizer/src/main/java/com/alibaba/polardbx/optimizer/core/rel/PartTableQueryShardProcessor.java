@@ -43,9 +43,17 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
 
     protected PartitionPruneStep pruneStepInfo;
     protected PartitionTupleRouteInfo tupleRouteInfo;
+    /**
+     * The ecOfPlan is from PlannerContext,
+     * so it is just read only
+     * and not allow using to do any partition pruning. !!!
+     * here, the ecOfPlan is used to reading the ConnectionConnections/ConnectionParams.
+     */
+    private ExecutionContext ecOfPlan;
 
-    protected PartTableQueryShardProcessor(PartitionPruneStep pruneStepInfo) {
+    protected PartTableQueryShardProcessor(PartitionPruneStep pruneStepInfo, ExecutionContext ecOfPlan) {
         super(null);
+        this.ecOfPlan = ecOfPlan;
         this.pruneStepInfo = pruneStepInfo;
         /**
          * When a plan do sharding by using PartTableQueryShardProcessor,
@@ -61,7 +69,7 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
     protected PartitionTupleRouteInfo tryConvertPruneStepToTupleRouteIfNeed() {
         try {
             PartitionTupleRouteInfo tupleRouteInfo =
-                PartitionTupleRouteInfoBuilder.genTupleRoutingInfoFromPruneStep(pruneStepInfo);
+                PartitionTupleRouteInfoBuilder.genTupleRoutingInfoFromPruneStep(pruneStepInfo, ecOfPlan);
             return tupleRouteInfo;
         } catch (Throwable ex) {
             logger.warn("Failed to convert point query to tuple route, exception is " + ex.getMessage(), ex);
@@ -74,12 +82,22 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
                                ExecutionContext executionContext) {
         List<PhysicalPartitionInfo> phyPartInfos = null;
         PartPrunedResult prunedResult = null;
+        boolean needPerformPruningByStepInfo = false;
         if (tupleRouteInfo != null) {
-            prunedResult = PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0, executionContext);
-            phyPartInfos = prunedResult.getPrunedParttions();
+            try {
+                prunedResult = PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0, executionContext);
+                phyPartInfos = prunedResult.getPrunedPartitions();
+            } catch (Throwable ex) {
+                logger.warn("Failed to do point select routing by tupleRouteInfo, exception is " + ex.getMessage(), ex);
+                needPerformPruningByStepInfo = true;
+            }
         } else {
+            needPerformPruningByStepInfo = true;
+        }
+
+        if (needPerformPruningByStepInfo) {
             prunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, executionContext);
-            phyPartInfos = prunedResult.getPrunedParttions();
+            phyPartInfos = prunedResult.getPrunedPartitions();
         }
 
         String grpKey = null;

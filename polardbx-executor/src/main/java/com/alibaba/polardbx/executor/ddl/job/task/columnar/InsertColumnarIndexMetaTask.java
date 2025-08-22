@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.sync.SyncScope;
@@ -101,11 +102,13 @@ public class InsertColumnarIndexMetaTask extends BaseGmsTask {
             primaryTableMeta,
             indexName,
             columns,
+            null,
             coverings,
             !unique,
             indexComment,
             indexType,
             indexStatus,
+            LackLocalIndexStatus.NO_LACKIING,
             clusteredIndex,
             true,
             null,

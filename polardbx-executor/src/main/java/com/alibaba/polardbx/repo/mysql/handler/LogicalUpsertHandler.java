@@ -660,7 +660,7 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             int paramIndex;
             RexNode valueCall;
             // Source part of DUPLICATE KEY UPDATE list should already be wrapped with RexCallParam or RexDynamicParam
-            if (rexNode instanceof RexCallParam) {
+            if (rexNode instanceof RexCallParam && !((RexCallParam) rexNode).isCommonImplicitDefault()) {
                 final RexCallParam callParam = (RexCallParam) rexNode;
                 paramIndex = callParam.getIndex();
                 // Replace function VALUES() with RexNode in VALUES part of INSERT
@@ -821,7 +821,9 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         if (writer != null) {
             final SourceRows duplicatedRows = rowBuilder.apply(writer);
             for (DuplicateCheckResult duplicateCheckResult : duplicatedRows.valueRows) {
-                values.add(duplicateCheckResult.updateSource);
+                if (!duplicateCheckResult.updateSource.isEmpty()) {
+                    values.add(duplicateCheckResult.updateSource);
+                }
             }
         }
 
@@ -903,10 +905,14 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             // Get update values
             final List<Object> updateValues = new ArrayList<>();
             final ArrayRow currentRow = new ArrayRow(meta, this.after.toArray());
-            this.duplicateUpdateParam =
-                buildParamForDuplicateKeyUpdate(upsert, duplicateKeyUpdateValues, currentRow, newRow,
-                    columnValueMapping,
-                    upsertEc, updateValues, beforeUpdateMapping);
+            this.duplicateUpdateParam = buildParamForDuplicateKeyUpdate(upsert,
+                duplicateKeyUpdateValues,
+                currentRow,
+                newRow,
+                columnValueMapping,
+                upsertEc,
+                updateValues,
+                beforeUpdateMapping);
 
             // Do update
             final List<Object> withoutAppended = new ArrayList<>(this.after);

@@ -34,6 +34,9 @@ public enum ShareReadViewPolicy {
                 && isolationLevel == Connection.TRANSACTION_READ_COMMITTED);
     }
 
+    /**
+     * Share readview is supported under RR or RC level.
+     */
     public static void checkTxIsolation(int isolationLevel) {
         if (!supportTxIsolation(isolationLevel)) {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS,

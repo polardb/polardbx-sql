@@ -58,7 +58,7 @@ public class ColumnarTsoManager extends AbstractLifecycle {
     @Override
     protected void doInit() {
         // TDOD(siyun): purge TSO on readonly node?
-        if (ConfigDataMode.isPolarDbX() && ConfigDataMode.isMasterMode()) {
+        if (ConfigDataMode.isPolarDbX()) {
             enableColumnarTsoPurge();
         }
 

@@ -538,7 +538,7 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
         }
     }
 
-    private static class DnInfo {
+    public static class DnInfo {
         // DN host:port
         public String dnAddress;
         // (physical_db, physical_tb) -> logical_tb, all in lower case

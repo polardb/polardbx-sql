@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.handler;
 
-import com.alibaba.polardbx.common.ColumnarTableOptions;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
@@ -173,7 +172,12 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         }
 
         if (tableMeta.getTtlDefinitionInfo() != null) {
-            sql += tableMeta.getTtlDefinitionInfo().buildShowCreateTableOptions();
+            boolean hideTtlDefInNormalShowCreateTbl = executionContext.getParamManager()
+                .getBoolean(ConnectionParams.HIDE_TTL_DEFINITION_IN_SHOW_CREATE_TABLE);
+            boolean isShowFull = showCreateTable.isFull();
+            if (isShowFull || !hideTtlDefInNormalShowCreateTbl) {
+                sql += tableMeta.getTtlDefinitionInfo().buildShowCreateTableOptions();
+            }
         }
         StringBuilder partitionStr = new StringBuilder();
         TddlRuleManager tddlRuleManager = OptimizerContext.getContext(schemaName).getRuleManager();

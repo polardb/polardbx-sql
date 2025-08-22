@@ -5,13 +5,13 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.oss.ColumnarFileType;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.columnar.DeletionFileReader;
 import com.alibaba.polardbx.executor.columnar.SimpleCSVFileReader;
 import com.alibaba.polardbx.executor.columnar.SimpleDeletionFileReader;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
+import com.alibaba.polardbx.executor.gms.ColumnarStoreUtils;
 import com.alibaba.polardbx.executor.gms.FileVersionStorage;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
@@ -27,17 +27,14 @@ import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import io.airlift.slice.Slice;
 import org.roaringbitmap.RoaringBitmap;
 
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -155,8 +152,8 @@ public class SelectColumnarFile {
 
         String charset = c.getResultSetCharset();
         try (SimpleCSVFileReader csvFileReader = new SimpleCSVFileReader()) {
-            csvFileReader.open(new ExecutionContext(), columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine,
-                fileName, 0, (int) maxReadPosition);
+            csvFileReader.open(ColumnarStoreUtils.newEcForCache(), columnMetas,
+                FileVersionStorage.CSV_CHUNK_LIMIT, engine, fileName, 0, (int) maxReadPosition);
             Chunk result;
             while ((result = csvFileReader.nextUntilPosition(maxReadPosition)) != null) {
                 for (int pos = 0; pos < result.getPositionCount(); pos++) {

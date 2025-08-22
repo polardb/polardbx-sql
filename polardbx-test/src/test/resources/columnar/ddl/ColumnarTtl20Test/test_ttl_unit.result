@@ -1,0 +1,197 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false
+set time_zone='+08:00'
+create table my_ttl_tb_day(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2
+create table my_ttl_tb_month(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2
+create table my_ttl_tb_year(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2
+alter table my_ttl_tb_day modify ttl set ttl_expr = `b` expire after 7 day timezone '+08:00' archive_table_pre_allocate = 1 archive_table_post_allocate = 1
+create table my_arc_tb_day like my_ttl_tb_day engine='columnar' archive_mode='ttl'
+show create table my_ttl_tb_day
+Table,Create Table
+my_ttl_tb_day,CREATE TABLE `my_ttl_tb_day` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_day` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240626 VALUES LESS THAN ('2024-06-26 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN ('2024-06-27 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN ('2024-06-28 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN ('2024-06-29 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 7 day TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_day', ARCHIVE_TABLE_PRE_ALLOCATE = 1, ARCHIVE_TABLE_POST_ALLOCATE = 1 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_day modify ttl set archive_table_pre_allocate = 2
+alter table my_ttl_tb_day cleanup expired data
+show create table my_ttl_tb_day
+Table,Create Table
+my_ttl_tb_day,CREATE TABLE `my_ttl_tb_day` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_day` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240626 VALUES LESS THAN ('2024-06-26 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN ('2024-06-27 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN ('2024-06-28 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN ('2024-06-29 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN ('2024-06-30 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 7 day TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_day', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 1 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_day modify ttl set archive_table_pre_allocate = 3
+alter table my_ttl_tb_day cleanup expired data
+show create table my_ttl_tb_day
+Table,Create Table
+my_ttl_tb_day,CREATE TABLE `my_ttl_tb_day` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_day` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240626 VALUES LESS THAN ('2024-06-26 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN ('2024-06-27 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN ('2024-06-28 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN ('2024-06-29 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN ('2024-06-30 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 7 day TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_day', ARCHIVE_TABLE_PRE_ALLOCATE = 3, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_month modify ttl set ttl_expr = `b` expire after 2 month timezone '+08:00' archive_table_pre_allocate = 1 archive_table_post_allocate = 1
+create table my_arc_tb_month like my_ttl_tb_month engine='columnar' archive_mode='ttl'
+show create table my_ttl_tb_month
+Table,Create Table
+my_ttl_tb_month,CREATE TABLE `my_ttl_tb_month` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_month` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240501 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240601 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240801 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 month TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_month', ARCHIVE_TABLE_PRE_ALLOCATE = 1, ARCHIVE_TABLE_POST_ALLOCATE = 1 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_month modify ttl set archive_table_pre_allocate = 2
+alter table my_ttl_tb_month cleanup expired data
+show create table my_ttl_tb_month
+Table,Create Table
+my_ttl_tb_month,CREATE TABLE `my_ttl_tb_month` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_month` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240501 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240601 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240801 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240901 VALUES LESS THAN ('2024-09-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 month TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_month', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 1 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_month modify ttl set archive_table_pre_allocate = 3
+alter table my_ttl_tb_month cleanup expired data
+show create table my_ttl_tb_month
+Table,Create Table
+my_ttl_tb_month,CREATE TABLE `my_ttl_tb_month` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_month` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240501 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240601 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240801 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240901 VALUES LESS THAN ('2024-09-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20241001 VALUES LESS THAN ('2024-10-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 month TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_month', ARCHIVE_TABLE_PRE_ALLOCATE = 3, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_year modify ttl set ttl_expr = `b` expire after 2 year timezone '+08:00' archive_table_pre_allocate = 1 archive_table_post_allocate = 1
+create table my_arc_tb_year like my_ttl_tb_year engine='columnar' archive_mode='ttl'
+show create table my_ttl_tb_year
+Table,Create Table
+my_ttl_tb_year,CREATE TABLE `my_ttl_tb_year` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_year` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240501 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240601 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240801 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 year TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_year', ARCHIVE_TABLE_PRE_ALLOCATE = 1, ARCHIVE_TABLE_POST_ALLOCATE = 1 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_year modify ttl set archive_table_pre_allocate = 2
+alter table my_ttl_tb_year cleanup expired data
+show create table my_ttl_tb_year
+Table,Create Table
+my_ttl_tb_year,CREATE TABLE `my_ttl_tb_year` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_year` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240501 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240601 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240801 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240901 VALUES LESS THAN ('2024-09-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 year TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_year', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 1 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table my_ttl_tb_year modify ttl set archive_table_pre_allocate = 3
+alter table my_ttl_tb_year cleanup expired data
+show create table my_ttl_tb_year
+Table,Create Table
+my_ttl_tb_year,CREATE TABLE `my_ttl_tb_year` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_my_arc_tb_year` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240501 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240601 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240801 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240901 VALUES LESS THAN ('2024-09-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20241001 VALUES LESS THAN ('2024-10-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 year TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'my_arc_tb_year', ARCHIVE_TABLE_PRE_ALLOCATE = 3, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+drop table my_ttl_tb_day
+drop table my_ttl_tb_month
+drop table my_ttl_tb_year;

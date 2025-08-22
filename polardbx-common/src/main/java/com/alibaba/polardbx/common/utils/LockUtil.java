@@ -122,7 +122,7 @@ public class LockUtil {
             throw e;
         } catch (Exception e) {
             logger.error("wrapWithSocketTimeout error: ", e);
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e, e.getMessage());
         }
     }
 }

@@ -34,6 +34,7 @@ public class BackfillExtraFieldJSON {
     }
 
     public BackfillExtraFieldJSON() {
+        this.approximateRowCount = "0";
     }
 
     public static BackfillExtraFieldJSON fromJson(String json) {

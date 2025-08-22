@@ -81,7 +81,7 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
     protected final MoveDatabasePreparedData preparedData;
     protected final Map<String, MoveDatabaseItemPreparedData> tablesPrepareData;
     protected final Map<String, List<PhyDdlTableOperation>> logicalTablesPhysicalPlansMap;
-    protected final Map<String, Map<String, List<List<String>>>> tablesTopologyMap;
+    protected final Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap;
     protected final Map<String, Map<String, Set<String>>> targetTablesTopology;
     protected final Map<String, Map<String, Set<String>>> sourceTablesTopology;
     protected final Map<String, List<PhyDdlTableOperation>> discardTableSpacePhysicalPlansMap;
@@ -94,7 +94,7 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                                   Map<String, MoveDatabaseItemPreparedData> tablesPrepareData,
                                   Map<String, List<PhyDdlTableOperation>> logicalTablesPhysicalPlansMap,
                                   Map<String, List<PhyDdlTableOperation>> discardTableSpacePhysicalPlansMap,
-                                  Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                  Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                   Map<String, Map<String, Set<String>>> targetTablesTopology,
                                   Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                   ComplexTaskMetaManager.ComplexTaskType taskType,
@@ -144,13 +144,13 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
         int pipelineSize = ScaleOutUtils.getTaskPipelineSize(executionContext);
         Queue<DdlTask> leavePipeLineQueue = new LinkedList<>();
 
-        for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
+        for (Map.Entry<String, TreeMap<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             String schemaName = tablesPrepareData.get(entry.getKey()).getSchemaName();
             String logicalTableName = tablesPrepareData.get(entry.getKey()).getTableName();
             TableMeta tm = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
 
             MoveDatabaseSubTaskJobFactory subTaskJobFactory;
-            if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm)) {
+            if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm) && !tm.containFullTextIndex()) {
                 subTaskJobFactory = new MoveDatabaseChangeSetJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
                     logicalTablesPhysicalPlansMap.get(entry.getKey()),
                     discardTableSpacePhysicalPlansMap.get(entry.getKey()),
@@ -210,7 +210,7 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                     executableDdlJob.addTaskRelationship(pipeLine.get(0),
                         pipeLine.get(1));
                     PhysicalBackfillTask physicalBackfillTask = (PhysicalBackfillTask) pipeLine.get(1);
-                    Map<String, List<List<String>>> targetTables = new HashMap<>();
+                    TreeMap<String, List<List<String>>> targetTables = new TreeMap<>();
                     String tarGroupKey = physicalBackfillTask.getSourceTargetGroup().getValue();
                     String phyTableName = physicalBackfillTask.getPhysicalTableName();
 
@@ -278,7 +278,7 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
         DdlBackfillCostRecordTask costRecordTask = null;
         if (ddlContext != null && !ddlContext.isSubJob()) {
             costRecordTask = new DdlBackfillCostRecordTask(schemaName);
-            final BalanceStats balanceStats = Balancer.collectBalanceStatsOfDatabase(schemaName);
+            final BalanceStats balanceStats = Balancer.collectBalanceStatsOfDatabase(schemaName, executionContext);
             List<GroupStats.GroupsOfStorage> groupsOfStorages = balanceStats.getGroups();
             Long diskSize = 0L;
             Long rows = 0L;
@@ -371,7 +371,7 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                                           ExecutionContext executionContext) {
         MoveDatabaseBuilder moveDatabaseBuilder =
             new MoveDatabaseBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             moveDatabaseBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             moveDatabaseBuilder.getTargetTablesTopology();

@@ -358,7 +358,7 @@ public class ExchangeClient implements Closeable, IExchangeClient {
         }
 
         for (HttpPageBufferClient client : allClients.values()) {
-            closeQuietly(client);
+            client.closeQuietly();
         }
         pageBuffer.clear();
         systemMemoryUsageListener.updateSystemMemoryUsage(-bufferBytes);
@@ -389,15 +389,7 @@ public class ExchangeClient implements Closeable, IExchangeClient {
         // add clients for new locations
         for (TaskLocation location : locations) {
             if (!allClients.containsKey(location)) {
-                HttpPageBufferClient client = new HttpPageBufferClient(
-                    httpClient,
-                    maxResponseSize,
-                    minErrorDuration,
-                    maxErrorDuration,
-                    location,
-                    new ExchangeClientCallback(),
-                    executor,
-                    preferLocalExchange);
+                HttpPageBufferClient client = buildHttpPageBufferClient(location);
                 allClients.put(location, client);
                 queuedClients.add(client);
             }
@@ -422,6 +414,19 @@ public class ExchangeClient implements Closeable, IExchangeClient {
             }
             client.scheduleRequest();
         }
+    }
+
+    @Override
+    public HttpPageBufferClient buildHttpPageBufferClient(TaskLocation location) {
+        return new HttpPageBufferClient(
+            httpClient,
+            maxResponseSize,
+            minErrorDuration,
+            maxErrorDuration,
+            location,
+            new ExchangeClientCallback(),
+            executor,
+            preferLocalExchange);
     }
 
     @Override
@@ -535,14 +540,6 @@ public class ExchangeClient implements Closeable, IExchangeClient {
             requireNonNull(client, "client is null");
             requireNonNull(cause, "cause is null");
             ExchangeClient.this.clientFailed(cause);
-        }
-    }
-
-    private static void closeQuietly(HttpPageBufferClient client) {
-        try {
-            client.close();
-        } catch (RuntimeException e) {
-            // ignored
         }
     }
 }

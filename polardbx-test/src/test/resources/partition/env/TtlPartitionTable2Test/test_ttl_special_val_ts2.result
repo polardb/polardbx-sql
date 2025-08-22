@@ -1,0 +1,151 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
+set sql_mode=''
+set TTL_ADD_MAXVAL_PART_ON_CCI_CREATING=true
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false
+CREATE TABLE `ttl_t1_ts_empty` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp(3),
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_CLEANUP='ON', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+CREATE TABLE `ttl_t2_ts_null` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp(4),
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_CLEANUP='ON', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+insert into ttl_t2_ts_null values (1,  0)
+CREATE TABLE `ttl_t3_ts_zero` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp(5),
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_CLEANUP='ON', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+insert into ttl_t3_ts_zero values (1,  '0000-00-00 00:00:00')
+CREATE TABLE `ttl_t4_ts_both` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp(6),
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_CLEANUP='ON', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+insert into ttl_t4_ts_both values (1,  0)
+insert into ttl_t4_ts_both values (2,  9999999999999)
+insert into ttl_t4_ts_both values (3,  '0000-00-00 00:00:00')
+insert into ttl_t4_ts_both values (4,  '1970-01-01 00:00:00')
+insert into ttl_t4_ts_both values (5,  '2024-05-05 00:00:00')
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t1_ts_empty order by a
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t2_ts_null order by a
+a,b_val
+1,0000-00-00 00:00:00
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t3_ts_zero order by a
+a,b_val
+1,0000-00-00 00:00:00
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t4_ts_both order by a
+a,b_val
+1,0000-00-00 00:00:00
+2,0000-00-00 00:00:00
+3,0000-00-00 00:00:00
+4,0000-00-00 00:00:00
+5,2024-05-05 00:00:00
+create table ttl_t1_ts_empty_arc like ttl_t1_ts_empty engine='columnar' archive_mode='ttl'
+create table ttl_t2_ts_null_arc like ttl_t2_ts_null engine='columnar' archive_mode='ttl'
+create table ttl_t3_ts_zero_arc like ttl_t3_ts_zero engine='columnar' archive_mode='ttl'
+create table ttl_t4_ts_both_arc like ttl_t4_ts_both engine='columnar' archive_mode='ttl'
+alter table ttl_t1_ts_empty cleanup expired data
+alter table ttl_t2_ts_null cleanup expired data
+alter table ttl_t3_ts_zero cleanup expired data
+alter table ttl_t4_ts_both cleanup expired data
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t1_ts_empty order by a
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t2_ts_null order by a
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t3_ts_zero order by a
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t4_ts_both order by a
+a,b_val
+5,2024-05-05 00:00:00
+show create table ttl_t1_ts_empty
+Table,Create Table
+ttl_t1_ts_empty,CREATE TABLE `ttl_t1_ts_empty` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_ttl_t1_ts_empty_arc` (`b`)
+		PARTITION BY RANGE(UNIX_TIMESTAMP(`b`))
+		(PARTITION p20240625 VALUES LESS THAN (1719244800) ENGINE = Columnar,
+		 PARTITION p20240626 VALUES LESS THAN (1719331200) ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN (1719417600) ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN (1719504000) ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN (1719590400) ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN (1719676800) ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'ttl_t1_ts_empty_arc', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table ttl_t2_ts_null
+Table,Create Table
+ttl_t2_ts_null,CREATE TABLE `ttl_t2_ts_null` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp(4) NOT NULL DEFAULT CURRENT_TIMESTAMP(4) ON UPDATE CURRENT_TIMESTAMP(4),
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_ttl_t2_ts_null_arc` (`b`)
+		PARTITION BY RANGE(UNIX_TIMESTAMP(`b`))
+		(PARTITION p20240625 VALUES LESS THAN (1719244800) ENGINE = Columnar,
+		 PARTITION p20240626 VALUES LESS THAN (1719331200) ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN (1719417600) ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN (1719504000) ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN (1719590400) ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN (1719676800) ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'ttl_t2_ts_null_arc', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 ) AUTO_INCREMENT = 2
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table ttl_t3_ts_zero
+Table,Create Table
+ttl_t3_ts_zero,CREATE TABLE `ttl_t3_ts_zero` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp(5) NOT NULL DEFAULT CURRENT_TIMESTAMP(5) ON UPDATE CURRENT_TIMESTAMP(5),
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_ttl_t3_ts_zero_arc` (`b`)
+		PARTITION BY RANGE(UNIX_TIMESTAMP(`b`))
+		(PARTITION p20240625 VALUES LESS THAN (1719244800) ENGINE = Columnar,
+		 PARTITION p20240626 VALUES LESS THAN (1719331200) ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN (1719417600) ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN (1719504000) ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN (1719590400) ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN (1719676800) ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'ttl_t3_ts_zero_arc', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 ) AUTO_INCREMENT = 2
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table ttl_t4_ts_both
+Table,Create Table
+ttl_t4_ts_both,CREATE TABLE `ttl_t4_ts_both` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_ttl_t4_ts_both_arc` (`b`)
+		PARTITION BY RANGE(UNIX_TIMESTAMP(`b`))
+		(PARTITION p20240625 VALUES LESS THAN (1719244800) ENGINE = Columnar,
+		 PARTITION p20240626 VALUES LESS THAN (1719331200) ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN (1719417600) ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN (1719504000) ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN (1719590400) ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN (1719676800) ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'ttl_t4_ts_both_arc', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+drop table ttl_t1_ts_empty
+drop table ttl_t2_ts_null
+drop table ttl_t3_ts_zero
+drop table ttl_t4_ts_both;

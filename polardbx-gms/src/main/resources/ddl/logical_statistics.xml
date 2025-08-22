@@ -52,6 +52,7 @@
                 `sketch_bytes` varbinary(12288) not null,
                 `sketch_type` varchar(16) not null,
                 `compress_type` varchar(16) not null default 'NA',
+                `timeout_flag` tinyint not null default 0,
                 `gmt_created` timestamp default current_timestamp,
                 `gmt_modified` timestamp default current_timestamp on update current_timestamp,
                 PRIMARY KEY `logical_table_column` (`schema_name`, `table_name`, `column_names`, `shard_part`)
@@ -59,6 +60,9 @@
         ]]></Create>
         <Change><![CDATA[
             alter table `ndv_sketch_statistics` add column `index_name` varchar(64) not null default '' after `shard_part`;
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `ndv_sketch_statistics` add column `timeout_flag` tinyint not null default 0 after `compress_type`;
         ]]></Change>
     </SystemTable>
 </SystemTables>

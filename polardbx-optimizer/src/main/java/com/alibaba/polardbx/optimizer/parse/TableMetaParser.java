@@ -37,14 +37,11 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfo;
-import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfoUtil;
 import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
 import com.alibaba.polardbx.rpc.result.XMetaUtil;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.collect.ImmutableList;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
-import groovy.sql.Sql;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.sql.SqlCollation;
@@ -58,7 +55,6 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.util.Pair;
-import org.apache.commons.lang.StringUtils;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -275,7 +271,7 @@ public class TableMetaParser {
         Field field = new Field(tableName,
             columnName,
             type.getCollation() != null ? type.getCollation().getCollationName() : null,
-            null,
+            def.isOnUpdateCurrentTimestamp() ? "on update current_timestamp" : null,
             defaultStr,
             type,
             def.isAutoIncrement(),
@@ -359,21 +355,22 @@ public class TableMetaParser {
     }
 
     public static boolean parseEncryption(String tableSchema, String createOptions) {
-        String encryped = "ENCRYPTION=\"Y\"";
-        String noEncryped = "ENCRYPTION=\"N\"";
-        DbInfoRecord dbInfo = DbInfoManager.getInstance().getDbInfo(tableSchema);
-        boolean dbEncryped = dbInfo == null ? false : Optional.ofNullable(dbInfo.isEncryption()).orElse(false);
+        String encryped57 = "ENCRYPTION=\"Y\"";
+        String noEncryped57 = "ENCRYPTION=\"N\"";
+        String encryped80 = "ENCRYPTION='Y'";
+        String noEncryped80 = "ENCRYPTION='N'";
+        // for 8032, when create table with encryption='N', the createOption is nothing
+        // but for mysql57, the createOption is 'ENCRYPTION="N"'
         if (createOptions != null) {
-            if (dbEncryped) {
-                if (createOptions.toUpperCase().indexOf(noEncryped) != -1) {
-                    return false;
-                }
-            } else {
-                if (createOptions.toUpperCase().indexOf(encryped) != -1) {
-                    return true;
-                }
+            if (createOptions.toUpperCase().indexOf(noEncryped57) != -1
+                || createOptions.toUpperCase().indexOf(noEncryped80) != -1) {
+                return false;
+            }
+            if (createOptions.toUpperCase().indexOf(encryped57) != -1
+                || createOptions.toUpperCase().indexOf(encryped80) != -1) {
+                return true;
             }
         }
-        return dbEncryped;
+        return false;
     }
 }

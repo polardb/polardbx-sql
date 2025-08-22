@@ -1,0 +1,53 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists omc_t1;
+
+create table omc_t1 (
+    a int,
+    b bigint,
+    c varchar(20),
+    primary key(a)
+) engine = InnoDB 
+PARTITION BY LIST COLUMNS(`a`)
+SUBPARTITION BY KEY(`a`)
+(PARTITION `p1` VALUES IN (1, 2, 3) LOCALITY='dn=$dn1'
+(SUBPARTITION `p1sp1` ENGINE = InnoDB),
+PARTITION `p2` VALUES IN (4, 5, 6) LOCALITY='dn=$dn1'
+(SUBPARTITION `p2sp1` ENGINE = InnoDB),
+PARTITION `p_default` VALUES IN (DEFAULT) LOCALITY='dn=$dn1'
+(SUBPARTITION `p_defaultsp1` ENGINE = InnoDB,
+SUBPARTITION `p_defaultsp2` ENGINE = InnoDB));
+
+alter table omc_t1 add global index omc_test(a) PARTITION BY LIST COLUMNS(`a`)
+SUBPARTITION BY KEY(`a`)
+(PARTITION `p1` VALUES IN (1, 2, 3) LOCALITY='dn=$dn1'
+(SUBPARTITION `p1sp1` ENGINE = InnoDB),
+PARTITION `p2` VALUES IN (4, 5, 6) LOCALITY='dn=$dn1'
+(SUBPARTITION `p2sp1` ENGINE = InnoDB),
+PARTITION `p_default` VALUES IN (DEFAULT) LOCALITY='dn=$dn1'
+(SUBPARTITION `p_defaultsp1` ENGINE = InnoDB,
+SUBPARTITION `p_defaultsp2` ENGINE = InnoDB,
+SUBPARTITION `p_defaultsp3` ENGINE = InnoDB));
+
+insert into omc_t1 values (1, 101, 'a'),
+(2, 102, 'b'),
+(3, 103, 'c'),
+(4, 201, 'd'),
+(5, 202, 'e'),
+(6, 203, 'f'),
+(7, 301, 'g');
+
+select * from omc_t1 order by a;
+
+alter table omc_t1 modify column c varchar(200), ALGORITHM=OMC;
+
+show full create table omc_t1;
+
+select * from omc_t1 order by a;
+
+alter table omc_t1 modify column a bigint;
+
+show full create table omc_t1;
+
+select * from omc_t1 order by a;
+

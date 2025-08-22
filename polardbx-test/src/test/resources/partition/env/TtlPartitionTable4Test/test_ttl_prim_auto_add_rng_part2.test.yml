@@ -1,0 +1,162 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+
+create table auto_rng_part_tc2_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition( 
+  TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00',
+  ARCHIVE_TYPE = 'PARTITION',
+  ARCHIVE_TABLE_PRE_ALLOCATE = 2,
+  ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by range columns(b) 
+(
+  partition p1 values less than('2021-02-01'),
+  partition p2 values less than('2021-02-02'),
+  partition p3 values less than('2021-02-03')
+)
+;
+show create table auto_rng_part_tc2_t1;
+
+alter table auto_rng_part_tc2_t1 cleanup expired data;
+show create table auto_rng_part_tc2_t1;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-07-27 00:00:00';
+alter table auto_rng_part_tc2_t1 cleanup expired data;
+show create table auto_rng_part_tc2_t1;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+create table auto_rng_part_tc2_t2(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition(
+TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00',
+ARCHIVE_TYPE = 'SUBPARTITION',
+ARCHIVE_TABLE_PRE_ALLOCATE = 2,
+ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a)
+partitions 2
+subpartition by range columns(b)
+(
+subpartition sp1 values less than('2021-02-01'),
+subpartition sp2 values less than('2021-02-02'),
+subpartition sp3 values less than('2021-02-03'),
+subpartition spmax values less than(maxvalue)
+)
+;
+show create table auto_rng_part_tc2_t2;
+
+alter table auto_rng_part_tc2_t2 cleanup expired data;
+show create table auto_rng_part_tc2_t2;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-28 00:00:00';
+alter table auto_rng_part_tc2_t2 cleanup expired data;
+show create table auto_rng_part_tc2_t2;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-29 00:00:00';
+alter table auto_rng_part_tc2_t2 cleanup expired data;
+show create table auto_rng_part_tc2_t2;
+
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+create table auto_rng_part_tc2_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition(
+TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00',
+ARCHIVE_TYPE = 'SUBPARTITION',
+ARCHIVE_TABLE_PRE_ALLOCATE = 2,
+ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a)
+partitions 2
+subpartition by range(to_days(b))
+(
+subpartition sp1 values less than(to_days('2021-02-01')),
+subpartition sp2 values less than(to_days('2021-02-02')),
+subpartition sp3 values less than(to_days('2021-02-03')),
+subpartition spmax values less than(maxvalue)
+)
+;
+show create table auto_rng_part_tc2_t3;
+
+alter table auto_rng_part_tc2_t3 cleanup expired data;
+show create table auto_rng_part_tc2_t3;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-28 00:00:00';
+alter table auto_rng_part_tc2_t3 cleanup expired data;
+show create table auto_rng_part_tc2_t3;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-29 00:00:00';
+alter table auto_rng_part_tc2_t3 cleanup expired data;
+show create table auto_rng_part_tc2_t3;
+
+alter table auto_rng_part_tc2_t3 modify ttl set ttl_cleanup='on';
+show create table auto_rng_part_tc2_t3;
+
+alter table auto_rng_part_tc2_t3 cleanup expired data;
+show create table auto_rng_part_tc2_t3;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-30 00:00:00';
+alter table auto_rng_part_tc2_t3 cleanup expired data;
+show create table auto_rng_part_tc2_t3;
+
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+create table auto_rng_part_tc2_t4(
+a int not null auto_increment,
+b timestamp default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition(
+TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00',
+ARCHIVE_TYPE = 'SUBPARTITION',
+ARCHIVE_TABLE_PRE_ALLOCATE = 2,
+ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a)
+partitions 2
+subpartition by range(unix_timestamp(b))
+(
+subpartition sp1 values less than(unix_timestamp('2021-02-01 00:00:00')),
+subpartition sp2 values less than(unix_timestamp('2021-02-02 00:00:00')),
+subpartition sp3 values less than(unix_timestamp('2021-02-03 00:00:00')),
+subpartition spmax values less than(maxvalue)
+)
+;
+show create table auto_rng_part_tc2_t4;
+
+alter table auto_rng_part_tc2_t4 cleanup expired data;
+show create table auto_rng_part_tc2_t4;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-28 00:00:00';
+alter table auto_rng_part_tc2_t4 cleanup expired data;
+show create table auto_rng_part_tc2_t4;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-29 00:00:00';
+alter table auto_rng_part_tc2_t4 cleanup expired data;
+show create table auto_rng_part_tc2_t4;
+
+alter table auto_rng_part_tc2_t4 modify ttl set ttl_cleanup='on';
+show create table auto_rng_part_tc2_t4;
+
+alter table auto_rng_part_tc2_t4 cleanup expired data;
+show create table auto_rng_part_tc2_t4;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-30 00:00:00';
+alter table auto_rng_part_tc2_t4 cleanup expired data;
+show create table auto_rng_part_tc2_t4;
+
+drop table auto_rng_part_tc2_t1;
+drop table auto_rng_part_tc2_t2;
+drop table auto_rng_part_tc2_t3;
+drop table auto_rng_part_tc2_t4;

@@ -21,12 +21,12 @@ import com.alibaba.polardbx.executor.mdl.context.MdlContextStamped;
 import com.alibaba.polardbx.executor.mdl.context.PreemptiveMdlContextStamped;
 import com.alibaba.polardbx.executor.mdl.manager.MdlManagerStamped;
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.google.common.base.Preconditions;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author chenmo.cm
@@ -80,34 +80,30 @@ public abstract class MdlManager extends AbstractLifecycle {
         return contextMap.computeIfAbsent(connId.toString(), MdlContextStamped::new);
     }
 
-    public static MdlContext addContext(@NotNull Long connId, String schemaName, long initWait, long interval,
-                                        TimeUnit timeUnit) {
-        Preconditions.checkArgument(initWait > 0);
-        Preconditions.checkArgument(interval > 0);
-        Preconditions.checkArgument(timeUnit != null);
+    public static MdlContext addContext(@NotNull Long connId, String schemaName, PreemptiveTime preemptiveTime) {
+        PreemptiveTime.checkIntervalAndTimeUnitNotNull(preemptiveTime);
+
         return contextMap.computeIfAbsent(
             connId.toString(),
-            s -> new PreemptiveMdlContextStamped(schemaName, connId, initWait, interval, timeUnit));
+            s -> new PreemptiveMdlContextStamped(schemaName, connId, preemptiveTime));
     }
 
     public static MdlContext addContext(@NotNull String schemaName, boolean preemptive) {
         if (preemptive) {
+            PreemptiveTime preemptiveTime = PreemptiveTime.newDefaultPreemptiveTime();
             return contextMap.computeIfAbsent(
                 schemaName,
-                s -> new PreemptiveMdlContextStamped(schemaName, 15, 15, TimeUnit.SECONDS)
+                s -> new PreemptiveMdlContextStamped(schemaName, preemptiveTime)
             );
         }
         return contextMap.computeIfAbsent(schemaName, MdlContextStamped::new);
     }
 
-    public static MdlContext addContext(@NotNull String schemaName, long initWait, long interval, TimeUnit timeUnit) {
-        Preconditions.checkArgument(initWait > 0);
-        Preconditions.checkArgument(interval > 0);
-        Preconditions.checkArgument(timeUnit != null);
+    public static MdlContext addContext(@NotNull String schemaName, PreemptiveTime preemptiveTime) {
+        PreemptiveTime.checkIntervalAndTimeUnitNotNull(preemptiveTime);
         return contextMap.computeIfAbsent(
             schemaName,
-            s -> new PreemptiveMdlContextStamped(schemaName, initWait, interval, timeUnit)
-        );
+            s -> new PreemptiveMdlContextStamped(schemaName, preemptiveTime));
     }
 
     /**

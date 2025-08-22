@@ -82,7 +82,7 @@
   plan: |
 
     logicalmodify(type="delete", tables="optest.test_broadcast")
-      logicalview(tables="test_hash_tb[p54],test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time` as `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
+      logicalview(tables="test_hash_tb[p54],test_broadcast", sql="select `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_tb`.`id` as `id0`, `test_hash_tb`.`name` as `name0`, `test_hash_tb`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
 
 - sql: |
     delete b from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
@@ -98,7 +98,7 @@
   plan: |
 
     logicalmodify(type="delete", tables="optest.test_broadcast, optest.test_hash_tb")
-      logicalview(tables="test_hash_tb[p54],test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time` as `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
+      logicalview(tables="test_hash_tb[p54],test_broadcast", sql="select `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_tb`.`id` as `id0`, `test_hash_tb`.`name` as `name0`, `test_hash_tb`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
 
 - sql: |
     /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
@@ -170,7 +170,7 @@
   plan: |
 
     logicalmodify(type="delete", tables="optest.test_broadcast")
-      logicalview(tables="test_hash_ta[p54],test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time`, `test_hash_ta`.`name`, `test_hash_ta`.`id` from `test_hash_ta` as `test_hash_ta` inner join `test_broadcast` as `test_broadcast` on (`test_hash_ta`.`id` = `test_broadcast`.`id`) where ((`test_hash_ta`.`id` = ?) and (`test_hash_ta`.`name` = ?)) for update")
+      logicalview(tables="test_hash_ta[p54],test_broadcast", sql="select `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_ta`.`name` as `name0`, `test_hash_ta`.`id` as `id0` from `test_hash_ta` as `test_hash_ta` inner join `test_broadcast` as `test_broadcast` on (`test_hash_ta`.`id` = `test_broadcast`.`id`) where ((`test_hash_ta`.`id` = ?) and (`test_hash_ta`.`name` = ?)) for update")
 
 - sql: |
     /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta;

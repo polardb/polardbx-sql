@@ -18,10 +18,12 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.function.calc.Cartesian;
 import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
+import com.alibaba.polardbx.optimizer.core.expression.calc.ScalarFunctionExpression;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -35,6 +37,8 @@ public class DynamicValueExec extends AbstractExecutor {
 
     private List<DataType> outputColumnMeta;
     private List<List<IExpression>> expressionLists;
+    private boolean isCartesian;
+    private boolean isFinished;
 
     public DynamicValueExec(
         List<List<IExpression>> expressionLists, List<DataType> outputColumnMeta, ExecutionContext context) {
@@ -43,6 +47,15 @@ public class DynamicValueExec extends AbstractExecutor {
         this.expressionCount = expressionLists.size();
         this.chunkLimit = Math.min(chunkLimit, expressionLists.size());
         this.expressionLists = expressionLists;
+        this.isCartesian = isCartesian();
+    }
+
+    private boolean isCartesian() {
+        IExpression iExpression = expressionLists.get(0).get(0);
+        if (iExpression instanceof ScalarFunctionExpression) {
+            return ((ScalarFunctionExpression) iExpression).isA(Cartesian.class);
+        }
+        return false;
     }
 
     @Override
@@ -53,7 +66,16 @@ public class DynamicValueExec extends AbstractExecutor {
 
     @Override
     Chunk doNextChunk() {
-        if (calExpressionIndex < expressionCount) {
+        if (isCartesian) {
+            if (isFinished) {
+                return null;
+            }
+            // only output the origin chunk from the java type
+            final IExpression expression = expressionLists.get(0).get(0);
+            Chunk result = (Chunk) expression.eval(null);
+            this.isFinished = true;
+            return result;
+        } else if (calExpressionIndex < expressionCount) {
             while (calExpressionIndex < expressionCount) {
                 calExpressionIndex++;
                 for (int i = 0; i < outputColumnMeta.size(); i++) {
@@ -100,7 +122,7 @@ public class DynamicValueExec extends AbstractExecutor {
 
     @Override
     public boolean produceIsFinished() {
-        return calExpressionIndex >= expressionCount;
+        return calExpressionIndex >= expressionCount || isFinished;
     }
 
     @Override

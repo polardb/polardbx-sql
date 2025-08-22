@@ -10,6 +10,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.ttl.TtlArchiveKind;
 import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;
 import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
@@ -87,6 +88,13 @@ public class TtlTaskSqlBuilder {
      */
     private static final String ARC_TMP_TG_NAME_TEMPLATEE = "tg_%s";
 
+    public static final String SUBJOB_NAME_FOR_CREATE_CCI_OF_ARC_TMP = "SUBJOB_NAME_FOR_CREATE_CCI_OF_ARC_TMP";
+    public static final String SUBJOB_NAME_FOR_ADD_PARTS_FOR_ARC_TMP_CCI = "SUBJOB_NAME_FOR_ADD_PARTS_FOR_ARC_TMP_CCI";
+    public static final String SUBJOB_NAME_FOR_DROP_PARTS_FOR_ARC_TMP_CCI =
+        "SUBJOB_NAME_FOR_DROP_PARTS_FOR_ARC_TMP_CCI";
+    public static final String SUBJOB_NAME_FOR_ADD_PARTS_FOR_TTL_TBL = "SUBJOB_NAME_FOR_ADD_PARTS_FOR_TTL_TBL";
+    public static final String SUBJOB_NAME_FOR_DROP_PARTS_FOR_TTL_TBL = "SUBJOB_NAME_FOR_DROP_PARTS_FOR_TTL_TBL";
+
     public static final String ALTER_TABLE_CLEANUP_EXPIRED_DATA_TEMPLATE =
         "alter /* from ttl scheduled job */ table `%s`.`%s` cleanup expired data;";
 
@@ -96,13 +104,22 @@ public class TtlTaskSqlBuilder {
     public static final String ALTER_TABLE_CLEANUP_EXPIRED_DATA_TEMPLATE_KEYWORD = "cleanup expired data";
 
     public static final String ALTER_TABLE_MODIFY_TTL_FOR_BIND_ARCHIVE_TABLE =
-        "alter table `%s`.`%s` modify ttl set archive_type = '%s', archive_table_schema = '%s', archive_table_name = '%s';";
+        "alter table `%s`.`%s` modify ttl set archive_table_schema = '%s', archive_table_name = '%s';";
 
     public static final String SELECT_TTL_COL_MIN_VAL_AND_LOWER_BOUND_SQL_TEMP_FORMAT =
-        "SELECT ttl_col AS min_value, DATE_FORMAT(ttl_col,%s) AS expired_lower_bound, ttl_col is null is_null, ttl_col = '0000-00-00 00:00:00.000000' is_zero FROM (SELECT %s as ttl_col FROM %s.%s %s ORDER BY %s ASC LIMIT 1) as ttl_tbl;";
+        "SELECT ttl_col AS min_value, DATE_FORMAT(ttl_col,%s) AS expired_lower_bound, ttl_col is null is_null, ttl_col = '0000-00-00 00:00:00.000000' is_zero FROM (SELECT %s as ttl_col FROM %s.%s %s %s ORDER BY %s ASC LIMIT 1) as ttl_tbl;";
 
     public static final String SELECT_TTL_COL_UPPER_BOUND_SQL_TEMP_FORMAT =
         "SELECT %s as current_datetime, DATE_FORMAT( %s, %s ) as formated_current_datetime, DATE_FORMAT( DATE_SUB(%s, INTERVAL %s %s), %s ) as expired_upper_bound;";
+
+    public static final String SELECT_CURRENT_DATETIME_SQL =
+        "SELECT %s as current_datetime;";
+
+    public static final String SELECT_FORMATED_CURRENT_DATETIME_SQL_TEMP =
+        "SELECT DATE_FORMAT( '%s', %s ) as formated_current_datetime;";
+
+    public static final String SELECT_CLEANUP_UPPER_BOUND_SQL_TEMP =
+        "SELECT DATE_FORMAT( '%s', %s ) as formated_current_datetime, DATE_FORMAT( DATE_SUB( '%s', INTERVAL %s %s), %s ) as expired_upper_bound;";
 
     /**
      * <pre>
@@ -195,9 +212,9 @@ public class TtlTaskSqlBuilder {
         String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
         String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
         String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
-        String ttlUnit = TtlTimeUnit.of(ttlDefInfo.getTtlInfoRecord().getTtlUnit()).getTimeUnitName();
+        String ttlUnit = TtlTimeUnit.of(ttlDefInfo.getTtlInfoRecord().getTtlUnit()).getUnitName();
         Integer ttlInterval = ttlDefInfo.getTtlInfoRecord().getTtlInterval();
-        String formatter = fetchRoundDownFormatter(ec, ttlTblSchema, ttlTblName, ttlCol, ttlUnit);
+        String formatter = fetchRoundDownFormatter(ec, ttlDefInfo, ttlTblSchema, ttlTblName, ttlCol, ttlUnit);
         String nowFunExpr = "NOW()";
         String debugCurrDateTime = ec.getParamManager().getString(ConnectionParams.TTL_DEBUG_CURRENT_DATETIME);
         if (!StringUtils.isEmpty(debugCurrDateTime)) {
@@ -209,24 +226,64 @@ public class TtlTaskSqlBuilder {
         return selectMinTtlColValueSqlTemp;
     }
 
+    public static String buildCleanupUpperBoundValueSqlTemplate(TtlDefinitionInfo ttlDefInfo,
+                                                                ExecutionContext ec,
+                                                                String currTimeValStr) {
+
+        String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
+        String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
+        String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
+        String ttlPartUnit = TtlTimeUnit.of(ttlDefInfo.getTtlInfoRecord().getTtlUnit()).getUnitName();
+        Integer ttlInterval = ttlDefInfo.getTtlInfoRecord().getTtlInterval();
+        String formatter = fetchRoundDownFormatter(ec, ttlDefInfo, ttlTblSchema, ttlTblName, ttlCol, ttlPartUnit);
+        String selectMinTtlColValueSqlTemp = String.format(
+            TtlTaskSqlBuilder.SELECT_CLEANUP_UPPER_BOUND_SQL_TEMP,
+            currTimeValStr, formatter, currTimeValStr, ttlInterval, ttlPartUnit, formatter);
+        return selectMinTtlColValueSqlTemp;
+    }
+
+    public static String buildSelectCurrentDatetimeValueStringSql(ExecutionContext ec) {
+        String nowFunExpr = "NOW()";
+        String debugCurrDateTime = ec.getParamManager().getString(ConnectionParams.TTL_DEBUG_CURRENT_DATETIME);
+        if (!StringUtils.isEmpty(debugCurrDateTime)) {
+            nowFunExpr = String.format("'%s'", debugCurrDateTime);
+        }
+        String selectCurrentTimeSql = String.format(TtlTaskSqlBuilder.SELECT_CURRENT_DATETIME_SQL, nowFunExpr);
+        return selectCurrentTimeSql;
+    }
+
+    public static String buildSelectFormatedDatetimeValueSql(TtlDefinitionInfo ttlDefInfo,
+                                                             ExecutionContext ec,
+                                                             String tarDatetimeValStr,
+                                                             String tarTimeUnit) {
+        String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
+        String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
+        String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
+        String formatter = fetchRoundDownFormatter(ec, ttlDefInfo, ttlTblSchema, ttlTblName, ttlCol, tarTimeUnit);
+        String selectMinTtlColValueSqlTemp = String.format(
+            TtlTaskSqlBuilder.SELECT_FORMATED_CURRENT_DATETIME_SQL_TEMP, tarDatetimeValStr, formatter);
+        return selectMinTtlColValueSqlTemp;
+    }
+
     protected static String fetchRoundDownFormatter(ExecutionContext ec,
+                                                    TtlDefinitionInfo ttlDefInfo,
                                                     String ttlTblSchema,
                                                     String ttlTblName,
                                                     String ttlCol,
                                                     String ttlUnit) {
-        TableMeta tableMeta = ec.getSchemaManager(ttlTblSchema).getTable(ttlTblName);
-        ColumnMeta ttlCm = tableMeta.getColumn(ttlCol);
+        ColumnMeta ttlCm = ttlDefInfo.getTtlColMeta(ec);
         DataType dt = ttlCm.getDataType();
+        boolean useTtlColUseFuncExpr = ttlDefInfo.isTtlColUseFuncExpr();
 
         boolean containTimeInfo = DataTypeUtil.isFractionalTimeType(dt);
 //        boolean timezoneDependent = DataTypeUtil.isTimezoneDependentType(dt);
-        boolean isDateType = DataTypeUtil.isDateType(dt);
         boolean isIntType = DataTypeUtil.isUnderBigintUnsignedType(dt);
+        boolean isDateType = DataTypeUtil.isDateType(dt);
         boolean isStrType = DataTypeUtil.isStringSqlType(dt);
 
         String formatter = "";
-        if (isDateType) {
-            if (containTimeInfo) {
+        if (isDateType || (isIntType && useTtlColUseFuncExpr)) {
+            if (containTimeInfo || (isIntType && useTtlColUseFuncExpr)) {
                 if (ttlUnit.equalsIgnoreCase(TtlInfoRecord.TTL_UNIT_YEAR)) {
                     formatter = TtlTaskSqlBuilder.ROUND_DOWN_DATETIME_FORMAT_ON_UNIT_YEAR;
                 } else if (ttlUnit.equalsIgnoreCase(TtlInfoRecord.TTL_UNIT_MONTH)) {
@@ -245,7 +302,9 @@ public class TtlTaskSqlBuilder {
             }
         } else {
             if (isIntType || isStrType) {
-                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT);
+                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                    String.format("Failed to build formatted for the unsupported ttl-col datatype[%s]",
+                        dt.getStringSqlType()));
             }
         }
         return formatter;
@@ -265,68 +324,46 @@ public class TtlTaskSqlBuilder {
     public static String buildSelectExpiredLowerBoundValueBySqlTemplateWithoutConcurrent(TtlDefinitionInfo ttlDefInfo,
                                                                                          ExecutionContext ec,
                                                                                          int mergeUnionSize,
-                                                                                         String forceIndexExpr) {
+                                                                                         String forceIndexExpr,
+                                                                                         String whereCondExpr) {
         String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
         String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
         String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
-        String ttlUnit = TtlTimeUnit.of(ttlDefInfo.getTtlInfoRecord().getTtlUnit()).getTimeUnitName();
-        String formatter = fetchRoundDownFormatter(ec, ttlTblSchema, ttlTblName, ttlCol, ttlUnit);
+        String ttlUnit = TtlTimeUnit.of(ttlDefInfo.getTtlInfoRecord().getTtlUnit()).getUnitName();
+        String formatter = fetchRoundDownFormatter(ec, ttlDefInfo, ttlTblSchema, ttlTblName, ttlCol, ttlUnit);
         String queryHint =
             "/*+TDDL:cmd_extra(MERGE_UNION=true, MERGE_UNION_SIZE=%s, MERGE_CONCURRENT=false, PREFETCH_SHARDS=1, SEQUENTIAL_CONCURRENT_POLICY=true)*/";
         String selectExpiredLownerBoundValueSqlTemp = String.format(
             queryHint + TtlTaskSqlBuilder.SELECT_TTL_COL_MIN_VAL_AND_LOWER_BOUND_SQL_TEMP_FORMAT,
-            mergeUnionSize, formatter, ttlCol, ttlTblSchema, ttlTblName, forceIndexExpr, ttlCol);
+            mergeUnionSize, formatter, ttlCol, ttlTblSchema, ttlTblName, forceIndexExpr, whereCondExpr, ttlCol);
         return selectExpiredLownerBoundValueSqlTemp;
     }
 
     public static String buildSelectExpiredLowerBoundValueSqlTemplate(TtlDefinitionInfo ttlDefInfo,
                                                                       ExecutionContext ec,
                                                                       String queryHint,
-                                                                      String forceIndexExpr) {
+                                                                      String forceIndexExpr,
+                                                                      String whereCondExpr) {
         String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
         String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
         String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
-        String ttlUnit = TtlTimeUnit.of(ttlDefInfo.getTtlInfoRecord().getTtlUnit()).getTimeUnitName();
-        String formatter = fetchRoundDownFormatter(ec, ttlTblSchema, ttlTblName, ttlCol, ttlUnit);
+        String ttlUnit = TtlTimeUnit.of(ttlDefInfo.getTtlInfoRecord().getTtlUnit()).getUnitName();
+        String ttlColExpr = ttlCol;
+
+        String formatter = fetchRoundDownFormatter(ec, ttlDefInfo, ttlTblSchema, ttlTblName, ttlCol, ttlUnit);
+
+        boolean ttlColUseFuncExpr = ttlDefInfo.isTtlColUseFuncExpr();
+        if (ttlColUseFuncExpr) {
+            String normalizedTtlColExpr = ttlDefInfo.getTtlColFuncExprInfo().getNormalizedTtlColFuncExprStr();
+            String ttlColFuncExpr = normalizedTtlColExpr.replace("?", ttlCol);
+            ttlColExpr = ttlColFuncExpr;
+        }
+
         String queryHintFormatPart = "%s ";
         String selectExpiredLownerBoundValueSqlTemp = String.format(
             queryHintFormatPart + TtlTaskSqlBuilder.SELECT_TTL_COL_MIN_VAL_AND_LOWER_BOUND_SQL_TEMP_FORMAT,
-            queryHint, formatter, ttlCol, ttlTblSchema, ttlTblName, forceIndexExpr, ttlCol);
+            queryHint, formatter, ttlColExpr, ttlTblSchema, ttlTblName, forceIndexExpr, whereCondExpr, ttlColExpr);
         return selectExpiredLownerBoundValueSqlTemp;
-    }
-
-    public static String buildInsertSelectTemplate(TtlDefinitionInfo ttlDefInfo,
-                                                   boolean needAddIntervalLowerBound,
-                                                   String queryHint) {
-        String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
-        String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
-
-        String ttlTmpTblSchema = ttlDefInfo.getTtlInfoRecord().getArcTmpTblSchema();
-        String ttlTmpTblName = ttlDefInfo.getTtlInfoRecord().getArcTmpTblName();
-
-        String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
-        String filterPart = "";
-        if (needAddIntervalLowerBound) {
-            filterPart = String.format(" %s < '?' and %s >= '?' ", ttlCol, ttlCol);
-        } else {
-            filterPart = String.format("( %s < '?' or %s is null)", ttlCol, ttlCol);
-        }
-
-        String pkColsStr = "";
-        List<String> pkColumns = ttlDefInfo.getPkColumns();
-        for (int i = 0; i < pkColumns.size(); i++) {
-            String pkCol = pkColumns.get(i).toLowerCase();
-            if (!pkColsStr.isEmpty()) {
-                pkColsStr += ",";
-            }
-            pkColsStr += pkCol;
-        }
-
-        String insertSelectSqlTemp = String.format(
-            "%s INSERT INTO `%s`.`%s` SELECT * FROM `%s`.`%s` PARTITION(?) WHERE %s ORDER BY %s,%s ASC LIMIT ?;",
-            queryHint, ttlTmpTblSchema, ttlTmpTblName, ttlTblSchema, ttlTblName, filterPart, ttlCol, pkColsStr);
-        String finalInsertSelectSqlTemp = insertSelectSqlTemp.replace("?", "%s");
-        return finalInsertSelectSqlTemp;
     }
 
     public static String buildDeleteTemplate(TtlDefinitionInfo ttlDefInfo,
@@ -335,71 +372,66 @@ public class TtlTaskSqlBuilder {
                                              String forceIndexExpr) {
         String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
         String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
-
-        String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
-        String filterPart = "";
-
-        if (needAddIntervalLowerBound) {
-            filterPart = String.format(" %s < '?' and %s >= '?' ", ttlCol, ttlCol);
-        } else {
-            filterPart = String.format(" (%s < '?' or %s is null) ", ttlCol, ttlCol);
-        }
-
-//        String pkColsStr = "";
-//        List<String> pkColumns = ttlDefInfo.getPkColumns();
-//        for (int i = 0; i < pkColumns.size(); i++) {
-//            String pkCol = pkColumns.get(i).toLowerCase();
-//            if (!pkColsStr.isEmpty()) {
-//                pkColsStr += ",";
-//            }
-//            pkColsStr += pkCol;
-//        }
-
+        String orderByCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
+        String filterPart = buildDeleteWhereCondExprTemplate(ttlDefInfo, needAddIntervalLowerBound);
         String deleteSqlTemp =
-            String.format("%s DELETE FROM `%s`.`%s` PARTITION(?) %s WHERE %s ORDER BY %s ASC LIMIT ?;",
-                queryHint, ttlTblSchema, ttlTblName, forceIndexExpr, filterPart, ttlCol);
+            String.format("%s DELETE FROM `%s`.`%s` PARTITION(?) WHERE %s ORDER BY %s ASC LIMIT ?;",
+                queryHint, ttlTblSchema, ttlTblName, filterPart, orderByCol);
         String finalDeleteSqlTemp = deleteSqlTemp.replace("?", "%s");
         return finalDeleteSqlTemp;
     }
 
-    public static String buildAddPartitionsSqlTemplate(TtlDefinitionInfo ttlInfo,
-                                                       List<String> newAddRangeBounds,
-                                                       List<String> newAddRangePartNames,
-                                                       String maxValPartName,
-                                                       String queryHint,
-                                                       ExecutionContext executionContext) {
-
-        String partBoundDefs = "";
-        List<String> normalizedNewAddPartBoundList =
-            normalizedRangePartBoundValueList(ttlInfo, newAddRangeBounds, executionContext);
-        for (int i = 0; i < normalizedNewAddPartBoundList.size(); i++) {
-            String bndStr = normalizedNewAddPartBoundList.get(i);
-            String partNameStr = newAddRangePartNames.get(i);
-            String escapedPartName = SqlIdentifierUtil.escapeIdentifierString(partNameStr);
-            String part = String.format("PARTITION %s VALUES LESS THAN (%s)", escapedPartName, bndStr);
-            if (!partBoundDefs.isEmpty()) {
-                partBoundDefs += ",\n";
-            }
-            partBoundDefs += part;
-        }
-        String addPartSpecSql = "";
-        if (StringUtils.isEmpty(maxValPartName)) {
-            addPartSpecSql = String.format("ADD PARTITION ( \n%s );",
-                partBoundDefs);
+    private static String buildDeleteWhereCondExprTemplate(TtlDefinitionInfo ttlDefInfo,
+                                                           boolean needAddIntervalLowerBound) {
+        String filterPart = "";
+        String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
+        String ttlExtFilter = ttlDefInfo.getTtlInfoRecord().getTtlFilter();
+        boolean ttlColUseFuncExpr = ttlDefInfo.isTtlColUseFuncExpr();
+        if (needAddIntervalLowerBound) {
+            filterPart = String.format(" `%s` < '?' and `%s` >= '?' ", ttlCol, ttlCol);
         } else {
-            addPartSpecSql = String.format("SPLIT PARTITION `%s` INTO ( \n%s, PARTITION `%s` VALUES LESS THAN (MAXVALUE) );",
-                maxValPartName, partBoundDefs, maxValPartName);
+            filterPart = String.format(" (`%s` < '?' or `%s` is null) ", ttlCol, ttlCol);
+        }
+        if (!StringUtils.isEmpty(ttlExtFilter)) {
+            filterPart = String.format(" (%s) and (%s) ", filterPart, ttlExtFilter);
+        }
+        String filterPartTemp = "";
+        if (!ttlColUseFuncExpr) {
+            filterPartTemp = filterPart.replace("?", "%s");
+        } else {
+            filterPartTemp = filterPart.replace("'?'", "%s");
         }
 
-        String skipDdlTasks =
-            executionContext.getParamManager().getString(ConnectionParams.TTL_DEBUG_CCI_SKIP_DDL_TASKS);
-        if (!StringUtils.isEmpty(skipDdlTasks)) {
-            queryHint = addCciHint(queryHint, String.format("SKIP_DDL_TASKS=\"%s\"", skipDdlTasks));
-        }
+        return filterPartTemp;
+    }
 
-//        String addPartSqlTemp = queryHint + " ALTER TABLE %s " + addPartSpecSql;
-        String addPartSqlTemp = queryHint + " ALTER INDEX %s ON TABLE %s " + addPartSpecSql;
-        return addPartSqlTemp;
+    public static String buildDeleteWhereCondExpr(ExecutionContext ec,
+                                                  TtlDefinitionInfo ttlInfo,
+                                                  String cleanupLowerBoundStr) {
+        boolean ttlColUseFuncExpr = ttlInfo.isTtlColUseFuncExpr();
+        if (ttlColUseFuncExpr) {
+            ColumnMeta ttlColMeta = ttlInfo.getTtlColMeta(ec);
+            TtlPartitionUtil.TtlColBoundValue boundValue = new TtlPartitionUtil.TtlColBoundValue(
+                cleanupLowerBoundStr, ttlColMeta, PartKeyLevel.PARTITION_KEY, false, ttlInfo
+            );
+            cleanupLowerBoundStr = boundValue.getPartBoundValueStringByOriginalPartColDataType();
+        }
+        String whereCondExprTemp = buildDeleteWhereCondExprTemplate(ttlInfo, false);
+        String whereCondExprStr = String.format(whereCondExprTemp, cleanupLowerBoundStr);
+        return whereCondExprStr;
+    }
+
+    public static String buildSelectTtlTblByUsingDeleteWhereCondExpr(ExecutionContext ec,
+                                                                     TtlDefinitionInfo ttlDefInfo,
+                                                                     String cleanupLowerBoundStr) {
+        String whereCondExpr = buildDeleteWhereCondExpr(ec, ttlDefInfo, cleanupLowerBoundStr);
+        String ttlTblSchema = ttlDefInfo.getTtlInfoRecord().getTableSchema();
+        String ttlTblName = ttlDefInfo.getTtlInfoRecord().getTableName();
+        String ttlCol = ttlDefInfo.getTtlInfoRecord().getTtlCol();
+        String selectTtlTblByWhereCondExpr =
+            String.format("select `%s` from `%s`.`%s` force index(primary) where %s", ttlCol, ttlTblSchema, ttlTblName,
+                whereCondExpr);
+        return selectTtlTblByWhereCondExpr;
     }
 
     public static String addCciHint(String originalString, String... newParams) {
@@ -425,19 +457,6 @@ public class TtlTaskSqlBuilder {
         }
     }
 
-    public static String buildAddPartitionsByTemplateAndTableName(String ttlSchemaName,
-                                                                  String ttlTblName,
-                                                                  String arcCciIndexName,
-                                                                  String addPartSqlTemp) {
-
-        String dbNameStr = SqlIdentifierUtil.escapeIdentifierString(ttlSchemaName);
-        String tbNameStr = SqlIdentifierUtil.escapeIdentifierString(ttlTblName);
-        String cciNameStr = SqlIdentifierUtil.escapeIdentifierString(arcCciIndexName);
-        String dbAndTb = String.format("%s.%s", dbNameStr, tbNameStr);
-        String addPartsSql = String.format(addPartSqlTemp, cciNameStr, dbAndTb);
-        return addPartsSql;
-    }
-
     public static String buildPartBoundsSqlTemplateForColumnarIndex(TtlDefinitionInfo ttlInfo,
                                                                     List<String> newAddRangeBounds,
                                                                     List<String> newAddRangePartNames,
@@ -447,11 +466,15 @@ public class TtlTaskSqlBuilder {
         String partBoundDefs = "";
 
         List<String> newTmpAddRangeBounds = new ArrayList<>();
-        newTmpAddRangeBounds.add(TtlTaskSqlBuilder.ARC_TBL_FIRST_PART_BOUND);
+        if (newAddRangeBounds.isEmpty()) {
+            newTmpAddRangeBounds.add(TtlTaskSqlBuilder.ARC_TBL_FIRST_PART_BOUND);
+        }
         newTmpAddRangeBounds.addAll(newAddRangeBounds);
 
         List<String> newTmpAddRangePartNames = new ArrayList<>();
-        newTmpAddRangePartNames.add(TtlTaskSqlBuilder.ARC_TBL_FIRST_PART_NAME);
+        if (newAddRangePartNames.isEmpty()) {
+            newTmpAddRangePartNames.add(TtlTaskSqlBuilder.ARC_TBL_FIRST_PART_NAME);
+        }
         newTmpAddRangePartNames.addAll(newAddRangePartNames);
 
         List<String> normalizedNewAddPartBoundList =
@@ -565,33 +588,27 @@ public class TtlTaskSqlBuilder {
         return sql;
     }
 
-    public static final String SUBJOB_NAME_FOR_ADD_PARTS_OF_ARC_TMP_TBL = "SUBJOB_NAME_FOR_ADD_PARTS_OF_ARC_TMP_TBL";
-    public static final String SUBJOB_NAME_FOR_ADD_PARTS_OF_OSS_TBL = "SUBJOB_NAME_FOR_ADD_PARTS_OF_OSS_TBL";
-    public static final String SUBJOB_NAME_FOR_CREATE_CCI_OF_ARC_TMP = "SUBJOB_NAME_FOR_CREATE_CCI_OF_ARC_TMP";
-    public static final String SUBJOB_NAME_FOR_ADD_PARTS_FOR_ARC_TMP_CCI = "SUBJOB_NAME_FOR_ADD_PARTS_FOR_ARC_TMP_CCI";
-
-    /**
-     * The SubJobTaskName is used by the pervious tasks of the subjobTask to dynamic modify subjobTask sql
-     */
-    public static String buildSubJobTaskNameForAddPartsBySpecifySubjobStmt(boolean isBuildForArcTable) {
-        String stmt = "";
-        if (isBuildForArcTable) {
-            stmt = String.format(SUBJOB_STMT_TEMP, SUBJOB_NAME_FOR_ADD_PARTS_OF_OSS_TBL);
-        } else {
-            stmt = String.format(SUBJOB_STMT_TEMP, SUBJOB_NAME_FOR_ADD_PARTS_OF_ARC_TMP_TBL);
-        }
-        return stmt;
-    }
-
-    public static String buildSubJobTaskNameForCreateColumnarIndexBySpecifySubjobStmt() {
+    public static String buildSubJobTaskNameForCreateColumnarIndexBySpecifySubJobStmt() {
         String stmt = "";
         stmt = String.format(SUBJOB_STMT_TEMP, SUBJOB_NAME_FOR_CREATE_CCI_OF_ARC_TMP);
         return stmt;
     }
 
-    public static String buildSubJobTaskNameForAddPartsFroActTmpCciBySpecifySubjobStmt() {
+    public static String buildSubJobTaskNameForAddPartsFroActTmpCciBySpecifySubJobStmt() {
         String stmt = "";
         stmt = String.format(SUBJOB_STMT_TEMP, SUBJOB_NAME_FOR_ADD_PARTS_FOR_ARC_TMP_CCI);
+        return stmt;
+    }
+
+    public static String buildSubJobTaskNameForAddPartsFroTtlTblBySpecifySubJobStmt() {
+        String stmt = "";
+        stmt = String.format(SUBJOB_STMT_TEMP, SUBJOB_NAME_FOR_ADD_PARTS_FOR_TTL_TBL);
+        return stmt;
+    }
+
+    public static String buildSubJobTaskNameForDropPartsForTtlTblBySpecifySubJobStmt() {
+        String stmt = "";
+        stmt = String.format(SUBJOB_STMT_TEMP, SUBJOB_NAME_FOR_DROP_PARTS_FOR_TTL_TBL);
         return stmt;
     }
 
@@ -799,61 +816,8 @@ public class TtlTaskSqlBuilder {
 
         String alterModifyTtlSql =
             String.format(ALTER_TABLE_MODIFY_TTL_FOR_BIND_ARCHIVE_TABLE, ttlTblSchema, ttlTblName,
-                archiveKind.getArchiveKindStr(),
                 arcTblSchema, arcTblName);
         return alterModifyTtlSql;
-    }
-
-//    public static String buildArcTmpTgName(TtlDefinitionInfo ttlInfo) {
-//        String tgName = "";
-//        String arcTmpTblName = ttlInfo.getTtlInfoRecord().getArcTmpTblName();
-//        tgName = String.format(ARC_TMP_TG_NAME_TEMPLATEE, arcTmpTblName);
-//        return tgName;
-//    }
-//
-//    public static String buildColumnarTgName(TtlDefinitionInfo ttlInfo) {
-//        String tgName = "";
-////        tgName = TableGroupNameUtil.autoBuildTableGroupName(tableGroupId, tgType);
-//        return tgName;
-//    }
-//
-//    public static String buildCreateArcTmpTgSqlForArcTmp(TtlDefinitionInfo ttlInfo) {
-//        String sql = "";
-//        String arcTmpTgName = buildArcTmpTgName(ttlInfo);
-//        sql = String.format("create tablegroup if not exists `%s`;", arcTmpTgName);
-//        return sql;
-//    }
-//
-//    public static String buildDropArcTmpTgSqlForArcTmp(TtlDefinitionInfo ttlInfo) {
-//        String sql = "";
-//        String arcTmpTgName = buildArcTmpTgName(ttlInfo);
-//        sql = String.format("drop tablegroup if exists `%s`;", arcTmpTgName);
-//        return sql;
-//    }
-//    public static String buildArcTmpNameByArcTblName(String arcTblName) {
-//        String finalArcTmpName = "";
-//        if (StringUtils.isEmpty(arcTblName)) {
-//            return finalArcTmpName;
-//        }
-//        int length = arcTblName.length();
-//        String ttlTmpNamePrefixStr = arcTblName;
-//        String ttlTblNameHashCodeHexStr = "";
-//        if (length > TtlUtil.MAX_TTL_TMP_NAME_PREFIX_LENGTH) {
-//            ttlTmpNamePrefixStr = arcTblName.substring(0, TtlUtil.MAX_TTL_TMP_NAME_PREFIX_LENGTH);
-//            ttlTblNameHashCodeHexStr = GroupInfoUtil.doMurmur3Hash32(arcTblName);
-//            finalArcTmpName =
-//                String.format(ARC_TMP_NAME_TEMPLATE_WITH_HASHCODE, ttlTmpNamePrefixStr, ttlTblNameHashCodeHexStr);
-//        } else {
-//            finalArcTmpName = String.format(ARC_TMP_NAME_TEMPLATE_WITHOUT_HASHCODE, ttlTmpNamePrefixStr);
-//        }
-//        finalArcTmpName = finalArcTmpName.toLowerCase();
-//        return finalArcTmpName;
-//    }
-
-    public static String buildTtTableCleanupExpiredDataSql(String ttlTblSchema, String ttlTableName) {
-        String alterTableCleanupExpiredDataSql =
-            String.format(ALTER_TABLE_CLEANUP_EXPIRED_DATA_TEMPLATE, ttlTblSchema, ttlTableName);
-        return alterTableCleanupExpiredDataSql;
     }
 
     public static String buildAsyncTtTableCleanupExpiredDataSql(String ttlTblSchema, String ttlTableName) {

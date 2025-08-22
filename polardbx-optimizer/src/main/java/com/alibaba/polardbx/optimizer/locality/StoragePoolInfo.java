@@ -69,10 +69,10 @@ public class StoragePoolInfo {
     public static StoragePoolInfo from(StoragePoolInfoRecord record) {
         StoragePoolInfo result = new StoragePoolInfo();
         result.id = record.id;
-        result.name = record.name;
-        result.dnIds = record.dnIds;
+        result.name = record.name.toLowerCase();
+        result.dnIds = record.dnIds.toLowerCase();
         result.extras = record.extras;
-        result.undeletableDnId = record.undeletableDnId;
+        result.undeletableDnId = record.undeletableDnId.toLowerCase();
         return result;
     }
 

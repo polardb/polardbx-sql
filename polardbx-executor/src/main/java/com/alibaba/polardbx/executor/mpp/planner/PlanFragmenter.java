@@ -33,13 +33,14 @@ import com.alibaba.polardbx.executor.mpp.split.SplitManagerImpl;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.gms.node.MppScope;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
@@ -248,7 +249,7 @@ public class PlanFragmenter {
         public RelNode visit(RelNode parent, RelNode other, FragmentProperties parentProperties) {
             if (other instanceof Exchange) {
                 return visitExchange(parent, (Exchange) other, parentProperties);
-            } else if (other instanceof MergeSort) {
+            } else if (other instanceof MergeSort && !(parent instanceof MaterializedSemiJoin)) {
                 return visitMergeSort(parent, (MergeSort) other, parentProperties);
             } else if (other instanceof LogicalUnion) {
                 return visit(parent, (LogicalUnion) other, parentProperties);

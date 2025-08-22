@@ -179,21 +179,27 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
             localPartitionDefinitionInfo.setTableName(indexTableName);
         }
         SqlNode tableGroup = null;
-        boolean removePartitioning = false;
+        boolean removePartitioningOrChangePartNum = false;
+        String srcSql = null;
         if (this.relDdl != null && this.relDdl.sqlNode != null) {
             if (this.relDdl.sqlNode instanceof SqlAlterTableRepartition) {
                 if (((SqlAlterTableRepartition) this.relDdl.sqlNode).isAlignToTableGroup()) {
                     tableGroup = ((SqlAlterTableRepartition) this.relDdl.sqlNode).getTableGroupName();
                 } else {
                     String implicitTableGroupName =
-                            ((SqlAlterTableRepartition) this.relDdl.sqlNode).getTargetImplicitTableGroupName();
+                        ((SqlAlterTableRepartition) this.relDdl.sqlNode).getTargetImplicitTableGroupName();
                     if (StringUtils.isNotEmpty(implicitTableGroupName)) {
                         tableGroup = new SqlIdentifier(implicitTableGroupName, SqlParserPos.ZERO);
                     }
                 }
             } else if (this.relDdl.sqlNode instanceof SqlAlterTableRemovePartitioning) {
                 tableGroup = indexDef.getTableGroupName();
-                removePartitioning = true;
+                removePartitioningOrChangePartNum = true;
+                srcSql = ((SqlAlterTableRemovePartitioning) this.relDdl.sqlNode).getSourceSql();
+            } else if (this.relDdl.sqlNode instanceof SqlAlterTablePartitionCount) {
+                tableGroup = indexDef.getTableGroupName();
+                removePartitioningOrChangePartNum = true;
+                srcSql = ((SqlAlterTablePartitionCount) this.relDdl.sqlNode).getSourceSql();
             }
         }
         CreateGlobalIndexPreparedData preparedData =
@@ -219,7 +225,9 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
                 null,   // add index engine
                 locality,
                 partBoundExprInfo,
-                removePartitioning ? ((SqlAlterTableRemovePartitioning) this.relDdl.sqlNode).getSourceSql() : (sqlAlterTableRepartition != null ? sqlAlterTableRepartition.getSourceSql() : null)
+                removePartitioningOrChangePartNum ?
+                    srcSql :
+                    (sqlAlterTableRepartition != null ? sqlAlterTableRepartition.getSourceSql() : null)
             );
         if (preparedData.isWithImplicitTableGroup()) {
             TableGroupInfoManager tableGroupInfoManager =
@@ -297,7 +305,7 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
         if (repartitionPrepareData == null) {
             repartitionPrepareData = new RepartitionPrepareData();
         }
-        Map<String, Pair<List<String>, Boolean>> gsiInfo = new HashMap<>();
+        Map<String, GsiMetaManager.GsiIndexMetaBean> gsiInfo = new HashMap<>();
         repartitionPrepareData.setGsiInfo(gsiInfo);
 
         final GsiMetaManager.GsiMetaBean gsiMetaBean =
@@ -315,19 +323,12 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
                 continue;
             }
 
-            List<String> localIndex = new ArrayList<>();
-
             if (indexDetail.indexStatus != IndexStatus.PUBLIC) {
                 throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_TABLE_WITH_GSI,
                     "can not alter table repartition when gsi table is not public");
             }
 
-            for (GsiMetaManager.GsiIndexColumnMetaBean indexColumn : indexDetail.indexColumns) {
-                localIndex.add(surroundWithBacktick(indexColumn.columnName));
-            }
-
-            gsiInfo.put(surroundWithBacktick(TddlSqlToRelConverter.unwrapGsiName(indexName)),
-                new Pair<>(localIndex, indexDetail.nonUnique));
+            gsiInfo.put(surroundWithBacktick(TddlSqlToRelConverter.unwrapGsiName(indexName)), indexDetail);
         }
     }
 
@@ -424,7 +425,7 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
         PartitionInfo primaryPartitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
             .getPartitionInfo(tableName);
         List<String> newShardColumns = genNewShardColumns4OptimizeKey(primaryPartitionInfo, targetPartitionInfo);
-        repartitionPrepareData.setChangeShardColumnsOnly(
+        repartitionPrepareData.setExpandShardColumnsOnly(
             newShardColumns.stream().map(SqlIdentifier::surroundWithBacktick).collect(Collectors.toList()));
 
         if (!newShardColumns.isEmpty() && newShardColumns.size() != 1) {

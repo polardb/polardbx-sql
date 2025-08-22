@@ -302,7 +302,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
                 val.set(0, tarVal);
                 PartPrunedResult rs = cache.doLookupPruning(val);
                 if (allowPerformInValuesPruning && rs != null) {
-                    List<PhysicalPartitionInfo> phyPartInfos = rs.getPrunedParttions();
+                    List<PhysicalPartitionInfo> phyPartInfos = rs.getPrunedPartitions();
                     for (int j = 0; j < phyPartInfos.size(); j++) {
                         String grpKey = phyPartInfos.get(j).getGroupKey();
                         String phyTb = phyPartInfos.get(j).getPhyTable();
@@ -577,7 +577,8 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         List<Object> values = new ArrayList<>();
         // Pick the target values from chunk and convert to row-oriented layout
         for (Tuple tuple : chunk) {
-            values.add(tuple.get(lookupColumnPositions[0]));
+            // got correct lookup values already
+            values.add(tuple.get(0));
         }
         return values;
     }

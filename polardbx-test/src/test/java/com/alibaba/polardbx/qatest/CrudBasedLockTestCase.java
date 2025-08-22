@@ -126,5 +126,12 @@ public class CrudBasedLockTestCase extends BaseTestCase {
         String sql = "SET session sql_mode = '" + mode + "'";
         JdbcUtil.updateDataTddl(conn, sql, null);
     }
+
+    protected static String buildCmdExtra(String... params) {
+        if (0 == params.length) {
+            return "";
+        }
+        return "/*+TDDL:CMD_EXTRA(" + String.join(",", params) + ")*/";
+    }
 }
 

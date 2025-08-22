@@ -1,0 +1,227 @@
+- sql: |
+    update t1_default set c1 = null where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c1=current_timestamp(6)", relocate="t1_default")
+      LogicalView(tables="t1_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, current_timestamp(6) from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?) for update")
+
+- sql: |
+    update t1_default set c1 = 1 + null where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c1=ifnull(+(?0, null), current_timestamp(6))", relocate="t1_default")
+      logicalView(tables="t1_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, ifnull((? + null), current_timestamp(6)) from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?) for update")
+
+- sql: |
+    update t1_default set c1 = from_unixtime(null) where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c1=ifnull(from_unixtime(null), current_timestamp(6))", relocate="t1_default")
+      LogicalView(tables="t1_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, ifnull(from_unixtime(null), current_timestamp(6)) from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?) for update")
+
+- sql: |
+    update t1_default set c1 = c2 where c1 = "2024-11-25 17:49:57.846790" and c2 is null
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c1=$2", relocate="t1_default")
+      LogicalView(tables="t1_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c2` as `gen$0` from `t1_default` as `t1_default` where ((`c2` is null) and (`c1` = ?)) for update")
+
+- sql: |
+    update t1_default set c2 = null where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c2=null, t1_default.c1=current_timestamp(6)", relocate="t1_default")
+      LogicalView(tables="t1_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, null, current_timestamp(6) from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?) for update")
+
+- sql: |
+    update t1_default set c2 = null where c1 = "2024-11-25 17:49:57.846790" order by c3 limit 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c2=null, t1_default.c1=current_timestamp(6)", relocate="t1_default")
+      LogicalView(tables="t1_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, null, current_timestamp(6) from `t1_default` as `t1_default` where (`c1` = ?) order by `c3` limit ? for update")
+
+- sql: |
+    update t2_default set c1 = null where c2 = 1
+
+  plan: |
+    LogicalModifyView(tables="t2_default[p1]", sql="update `t2_default` as `t2_default` force index(`auto_shard_key_c2`) set `c1` = null where (`c2` = ?)")
+
+- sql: |
+    update t2_default set c1 = 1 + null where c2 = 1
+
+  plan: |
+    LogicalModifyView(tables="t2_default[p1]", sql="update `t2_default` as `t2_default` force index(`auto_shard_key_c2`) set `c1` = (? + null) where (`c2` = ?)")
+
+- sql: |
+    update t2_default set c1 = from_unixtime(null) where c2 = 1
+
+  plan: |
+    LogicalModifyView(tables="t2_default[p1]", sql="update `t2_default` as `t2_default` force index(`auto_shard_key_c2`) set `c1` = from_unixtime(null) where (`c2` = ?)")
+
+- sql: |
+    update t2_default set c2 = null where c2 = 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t2_default.c2=null, t2_default.c1=current_timestamp(6)", relocate="t2_default")
+      LogicalView(tables="t2_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, null, current_timestamp(6) from `t2_default` as `t2_default` force index(`auto_shard_key_c2`) where (`c2` = ?) for update")
+
+- sql: |
+    update t2_default set c2 = null where c2 = 1 order by c3 limit 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t2_default.c2=null, t2_default.c1=current_timestamp(6)", relocate="t2_default")
+      LogicalView(tables="t2_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, null, current_timestamp(6) from `t2_default` as `t2_default` where (`c2` = ?) order by `c3` limit ? for update")
+
+- sql: |
+    update t3_default set c1 = null where c2 = 1
+
+  plan: |
+    LogicalModifyView(tables="t3_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="update `t3_default` as `t3_default` force index(`auto_shard_key_c2`) set `c1` = null where (`c2` = ?)")
+
+- sql: |
+    update t3_default set c1 = null where c2 = 1 order by c3 limit 1
+
+  plan: |
+    LogicalModifyView(tables="t3_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="update `t3_default` as `t3_default` set `c1` = null where (`c2` = ?) order by `c3` limit ?")
+
+- sql: |
+    update t4_default set c1 = null, c2 = null where c2 = 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t4_default.c1=current_timestamp(6), t4_default.c2=current_timestamp(6)", relocate="t4_default")
+      LogicalView(tables="t4_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c5`, current_timestamp(6), current_timestamp(6) as `gen$1` from `t4_default` as `t4_default` force index(`auto_shard_key_c2`) where (`c2` = ?) for update")
+
+- sql: |
+    update t4_default set c1 = 1 + null where c2 = 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t4_default.c1=ifnull(+(?0, null), current_timestamp(6)), t4_default.c2=current_timestamp(6)", relocate="t4_default")
+      LogicalView(tables="t4_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c5`, ifnull((? + null), current_timestamp(6)), current_timestamp(6) from `t4_default` as `t4_default` force index(`auto_shard_key_c2`) where (`c2` = ?) for update")
+
+- sql: |
+    update t4_default set c1 = 1 + null where c2 = 1 order by c3 limit 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t4_default.c1=ifnull(+(?0, null), current_timestamp(6)), t4_default.c2=current_timestamp(6)", relocate="t4_default")
+      LogicalView(tables="t4_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c5`, ifnull((? + null), current_timestamp(6)), current_timestamp(6) from `t4_default` as `t4_default` where (`c2` = ?) order by `c3` limit ? for update")
+
+- sql: |
+    update t5_default set c1 = 1 + null where c3 = 1 and c2 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalRelocate(type=update, set="t5_default.c1=ifnull(+(?0, null), current_timestamp(6)), t5_default.c2=current_timestamp(6)", relocate="t5_default, gsi_c2")
+      LogicalView(tables="t5_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c5`, ifnull((? + null), current_timestamp(6)), current_timestamp(6) from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?)) for update")
+
+- sql: |
+    update t5_default set c1 = "2024-11-25 17:49:57.846790", c2 = "2024-11-25 17:49:57.846790" where c3 = 1 and c2 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalRelocate(type=update, set="t5_default.c1=ifnull(?0, current_timestamp(6)), t5_default.c2=ifnull(?1, current_timestamp(6))", relocate="t5_default, gsi_c2")
+      LogicalView(tables="t5_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c5`, ifnull(?, current_timestamp(6)), ifnull(?, current_timestamp(6)) as `gen$1` from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?)) for update")
+
+- sql: |
+    update t5_default set c4 = 10086 where c3 = 4 and c2 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalRelocate(type=update, set="t5_default.c4=?0, t5_default.c1=current_timestamp(6), t5_default.c2=current_timestamp(6)", relocate="t5_default, gsi_c2")
+      LogicalView(tables="t5_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c5`, ?, current_timestamp(6), current_timestamp(6) from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?)) for update")
+
+- sql: |
+    update t5_default set c4 = 10086 where c3 = 4 and c2 = "2024-11-25 17:49:57.846790" order by c4 limit 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t5_default.c4=?0, t5_default.c1=current_timestamp(6), t5_default.c2=current_timestamp(6)", relocate="t5_default, gsi_c2")
+      LogicalView(tables="t5_default[p1]", sql="select `id`, `c1`, `c2`, `c3`, `c4`, `c5`, ?, current_timestamp(6), current_timestamp(6) from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?)) order by `c4` limit ? for update")
+
+- sql: |
+    update t2_default a join t2_default b on a.c2 = b.c2 set a.c1 = null where b.c2 = 1
+
+  plan: |
+    LogicalModifyView(tables="t2_default[p1],t2_default[p1]", sql="update `t2_default` as `t2_default` inner join `t2_default` as `t2_default0` on ((`t2_default0`.`c2` = ?) and (`t2_default`.`c2` = ?) and (`t2_default`.`c2` = `t2_default0`.`c2`)) set `t2_default`.`c1` = null")
+
+- sql: |
+    update t1_default a join t1_default b on a.c2 = b.c2 set a.c1 = "2024-11-25 17:49:57.846790" + null where b.c2 = 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c1=ifnull(+(?0, null), current_timestamp(6))", relocate="t1_default")
+      Project(id="id0", c1="c10", c2="c20", c3="c30", c4="c40", id0="id", c10="c1", c20="c2", c30="c3", c40="c4", gen$0="ifnull(?0 + null, current_timestamp(6))")
+        BKAJoin(condition="c2 = c2", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `c1`, `c2`, `c3`, `c4` from `t1_default` as `t1_default` where (`c2` = ?) for update")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `c1`, `c2`, `c3`, `c4` from `t1_default` as `t1_default` where ((`c2` = ?) and (`c2` in (...))) for update")
+
+- sql: |
+    update t1_default a join t1_default b on a.c1 = b.c1 set a.c2 = null where b.c2 = 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c2=null, t1_default.c1=current_timestamp(6)", relocate="t1_default")
+      Gather(concurrent=true)
+        LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8],t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `t1_default`.`id`, `t1_default`.`c1`, `t1_default`.`c2`, `t1_default`.`c3`, `t1_default`.`c4`, `t1_default0`.`id` as `id0`, `t1_default0`.`c1` as `c10`, `t1_default0`.`c2` as `c20`, `t1_default0`.`c3` as `c30`, `t1_default0`.`c4` as `c40`, null, current_timestamp(6) from `t1_default` as `t1_default` inner join `t1_default` as `t1_default0` on ((`t1_default0`.`c2` = ?) and (`t1_default`.`c1` = `t1_default0`.`c1`)) for update")
+
+- sql: |
+    update t1_default a join t1_default b on a.c1 = b.c1 set a.c2 = null where b.c2 = 1 order by b.c3 limit 1
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c2=null, t1_default.c1=current_timestamp(6)", relocate="t1_default")
+      MergeSort(sort="c30 asc", fetch=?1)
+        LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8],t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `t1_default`.`id`, `t1_default`.`c1`, `t1_default`.`c2`, `t1_default`.`c3`, `t1_default`.`c4`, `t1_default0`.`id` as `id0`, `t1_default0`.`c1` as `c10`, `t1_default0`.`c2` as `c20`, `t1_default0`.`c3` as `c30`, `t1_default0`.`c4` as `c40`, null, current_timestamp(6) from `t1_default` as `t1_default` inner join `t1_default` as `t1_default0` on ((`t1_default0`.`c2` = ?) and (`t1_default`.`c1` = `t1_default0`.`c1`)) order by `t1_default0`.`c3` limit ? for update")
+
+- sql: |
+    update t1_default a join (select c1, c2 from t1_default b where b.c2 = 1) c on a.c2 = c.c2 set a.c1 = "2024-11-25 17:49:57.846790" + null
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c1=ifnull(+(?1, null), current_timestamp(6))", relocate="t1_default")
+      Project(id="id", c1="c10", c2="c20", c3="c3", c4="c4", c10="c1", c20="c2", gen$0="ifnull(?1 + null, current_timestamp(6))")
+        BKAJoin(condition="c2 = c2", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `c1`, `c2` from `t1_default` as `t1_default` where (`c2` = ?) for update")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `c1`, `c2`, `c3`, `c4` from `t1_default` as `t1_default` where ((`c2` = ?) and (`c2` in (...))) for update")
+
+- sql: |
+    update t1_default a join (select c1, c2 from t1_default b where b.c1 = 1) c on a.c1 = c.c1 set a.c2 = null
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c2=null, t1_default.c1=current_timestamp(6)", relocate="t1_default")
+      Gather(concurrent=true)
+        LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8],t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `t1_default`.`id`, `t1_default`.`c1`, `t1_default`.`c2`, `t1_default`.`c3`, `t1_default`.`c4`, `t1_default0`.`c1` as `c10`, `t1_default0`.`c2` as `c20`, null, current_timestamp(6) from `t1_default` as `t1_default` inner join `t1_default` as `t1_default0` on (`t1_default`.`c1` = `t1_default0`.`c1`) where (`t1_default0`.`c1` = ?) for update")
+
+- sql: |
+    update t1_default a join (select "2024-11-25 17:49:57.846790" as c1, 5 as c2, null as c3 union all select "2024-11-25 17:49:57.846790" as c1, 5 as c2, 2 + null as c3) c on a.c1 = c.c1 and a.c2 = c.c2 set a.c1 = c.c3
+
+  plan: |
+    LogicalRelocate(type=update, set="t1_default.c1=ifnull($7, current_timestamp(6))", relocate="t1_default")
+      Project(id="id", c1="c10", c2="c20", c3="c30", c4="c4", c10="c1", c20="c2", c30="c3", gen$0="ifnull(c3, current_timestamp(6))")
+        BKAJoin(condition="c1 = c1 and c2 = c2", type="inner")
+          DynamicValues(tuples=[{ ?0, ?1, null }, { ?2, ?3, +(?4, null) }])
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `c1`, `c2`, `c3`, `c4` from `t1_default` as `t1_default` where (((`c1`, `c2`)) in (...)) for update")
+
+- sql: |
+    update t6_default set c1 = null where c2 = 1;
+
+  plan: |
+    LogicalModify(type="update", set="t6_default.c1=current_timestamp(6)")
+      LogicalView(tables="t6_default", shardcount=0, sql="select `id`, `c1`, `c2`, `c3`, `c4`, current_timestamp(6) from `t6_default` as `t6_default` where (`c2` = ?) for update")
+
+- sql: |
+    update t6_default set c1 = current_timestamp(6) where c2 = 1;
+
+  plan: |
+    LogicalModify(type="update", set="t6_default.c1=current_timestamp(6)")
+      LogicalView(tables="t6_default", shardcount=0, sql="select `id`, `c1`, `c2`, `c3`, `c4`, current_timestamp(6) from `t6_default` as `t6_default` where (`c2` = ?) for update")
+
+- sql: |
+    update t6_default set c1 = current_timestamp() + null where c2 = 1;
+
+  plan: |
+    LogicalModify(type="update", set="t6_default.c1=ifnull(+(current_timestamp, null), current_timestamp(6))")
+      LogicalView(tables="t6_default", shardcount=0, sql="select `id`, `c1`, `c2`, `c3`, `c4`, ifnull((current_timestamp + null), current_timestamp(6)) from `t6_default` as `t6_default` where (`c2` = ?) for update")
+
+- sql: |
+    update t6_default set c3 = 10086 where c2 = 1;
+
+  plan: |
+    LogicalModify(type="update", set="t6_default.c3=?0, t6_default.c1=current_timestamp(6)")
+      LogicalView(tables="t6_default", shardcount=0, sql="select `id`, `c1`, `c2`, `c3`, `c4`, ?, current_timestamp(6) from `t6_default` as `t6_default` where (`c2` = ?) for update")

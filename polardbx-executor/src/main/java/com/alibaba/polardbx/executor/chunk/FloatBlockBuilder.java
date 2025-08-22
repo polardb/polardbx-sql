@@ -18,24 +18,30 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
-import it.unimi.dsi.fastutil.floats.FloatArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 public class FloatBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(FloatBlockBuilder.class).instanceSize();
 
-    private final FloatArrayList values;
+    private final MemoryCountableFloatArrayList values;
 
     private final int scale;
 
     public FloatBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new FloatArrayList(capacity);
+        this.values = new MemoryCountableFloatArrayList(capacity);
         this.scale = XResultUtil.DECIMAL_NOT_SPECIFIED;
     }
 
     public FloatBlockBuilder(int capacity, int scale) {
         super(capacity);
-        this.values = new FloatArrayList(capacity);
+        this.values = new MemoryCountableFloatArrayList(capacity);
         this.scale = scale;
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + values.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

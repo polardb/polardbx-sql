@@ -67,7 +67,7 @@ public class LogicalShowSlaveStatusHandler extends LogicalReplicationBaseHandler
                 JSON.toJSONString(sqlNode.getParams()), 10000);
         } catch (Exception e) {
             cdcLogger.error("show slave status error!", e);
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e, e.getMessage());
         }
         ResultCode<?> httpResult = JSON.parseObject(res, ResultCode.class);
         if (httpResult.getCode() != CdcConstants.SUCCESS_CODE) {

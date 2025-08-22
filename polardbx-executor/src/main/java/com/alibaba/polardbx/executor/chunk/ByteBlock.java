@@ -25,6 +25,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
@@ -216,7 +217,9 @@ public class ByteBlock extends AbstractBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        elementUsedBytes = Byte.BYTES * positionCount + Byte.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(values));
+        estimatedSize = elementUsedBytes;
     }
 }

@@ -528,7 +528,8 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, update, null, true);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, update, null, true);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(buildSqlCheckData(ImmutableList.of("id", "a"), tableName), null, mysqlConnection,
+            tddlConnection);
     }
 
     @Test
@@ -996,7 +997,9 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
 
         // checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         // write only
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateSql, "trace " + hint + updateSql, null, true);
@@ -1010,7 +1013,9 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
 
         org.junit.Assert.assertThat(trace2.size(), Matchers.is(1 + 2 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         // checkGsi(tddlConnection, gsiName);
     }
@@ -1062,5 +1067,16 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
         // success but not equal returned rows when use affected rows
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateStringNotSame, updateStringNotSame, null,
             !useAffectedRows);
+
+        // update from not null to null
+        final String updateToNull =
+            "update " + tableName + " set b=null where a=\"hehe\" and c=\"ccc\"";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateToNull, updateToNull, null, true);
+
+        // update from null to null
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateToNull, updateToNull, null, true);
+
+        // update from null to not null
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateStringSame, updateStringSame, null, true);
     }
 }

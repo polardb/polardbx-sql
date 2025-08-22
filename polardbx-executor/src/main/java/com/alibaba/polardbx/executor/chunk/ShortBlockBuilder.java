@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.shorts.ShortArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 /**
  * Short Block Builder
@@ -25,12 +26,18 @@ import it.unimi.dsi.fastutil.shorts.ShortArrayList;
  * @author hongxi.chx
  */
 public class ShortBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(ShortBlockBuilder.class).instanceSize();
 
-    private final ShortArrayList values;
+    private final MemoryCountableShortArrayList values;
 
     public ShortBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new ShortArrayList(capacity);
+        this.values = new MemoryCountableShortArrayList(capacity);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + values.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

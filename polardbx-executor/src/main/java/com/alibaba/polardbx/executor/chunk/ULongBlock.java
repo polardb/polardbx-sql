@@ -25,6 +25,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.math.BigInteger;
 
@@ -196,6 +197,7 @@ public class ULongBlock extends AbstractBlock {
         ULongBlock vectorSlot = another.cast(ULongBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
+        vectorSlot.updateSizeInfo();
     }
 
     @Override
@@ -231,7 +233,9 @@ public class ULongBlock extends AbstractBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(values));
+        estimatedSize = elementUsedBytes;
     }
 }

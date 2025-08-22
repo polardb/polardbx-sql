@@ -36,6 +36,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4AlterTable;
 import com.alibaba.polardbx.gms.util.LockUtil;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
@@ -47,7 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
@@ -161,8 +161,8 @@ public class AlterTableWithFileStoreJobFactory extends AlterTableJobFactory {
                 tableSyncTaskAfterHiding,
                 phyDdlTask,
                 phyDdlFileStoreTask,
-                cdcDdlMarkTask,
                 updateMetaTask,
+                cdcDdlMarkTask,
                 tableSyncTaskAfterShowing,
                 removeColumnMappingTask
             ).stream().filter(Objects::nonNull).collect(Collectors.toList());
@@ -183,33 +183,35 @@ public class AlterTableWithFileStoreJobFactory extends AlterTableJobFactory {
                 beginAlterColumnDefaultSyncTask,
                 phyDdlTask,
                 phyDdlFileStoreTask,
-                cdcDdlMarkTask,
                 updateMetaTask,
+                cdcDdlMarkTask,
                 tableSyncTaskAfterShowing
             ).stream().filter(Objects::nonNull).collect(Collectors.toList());
             executableDdlJob.labelAsTail(tableSyncTaskAfterShowing);
         }
 
         executableDdlJob.labelAsHead(validateTask);
-
+        executableDdlJob.setBeforeChangeMetaTask(phyDdlFileStoreTask);
+        executableDdlJob.setChangeMetaTask(updateMetaTask);
         executableDdlJob.addSequentialTasks(taskList);
 
         return executableDdlJob;
     }
 
     private DdlTask buildAtomicSyncTask(boolean crossSchema) {
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+
         return crossSchema ?
             new AtomicTablesSyncTask(
                 Lists.newArrayList(schemaName, fileStoreSchema),
                 Lists.newArrayList(Lists.newArrayList(logicalTableName), Lists.newArrayList(fileStoreTable)),
-                initWait, interval, TimeUnit.MILLISECONDS
+                preemptiveTime
             ) :
             new AtomicTablesSyncTask(
                 Lists.newArrayList(schemaName),
                 compressTables(),
-                initWait, interval, TimeUnit.MILLISECONDS
+                preemptiveTime
             );
 
     }

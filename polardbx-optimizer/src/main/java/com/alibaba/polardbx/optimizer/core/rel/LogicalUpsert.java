@@ -29,6 +29,7 @@ import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.prepare.Prepare;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexCallParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNodeList;
 
@@ -128,7 +129,9 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
                          List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
                          boolean pushablePrimaryKeyCheck, boolean isPushableForeignConstraintCheck,
-                         boolean modifyForeignKey, boolean ukContainsAllSkAndGsiContainsAllUk) {
+                         boolean modifyForeignKey, boolean ukContainsAllSkAndGsiContainsAllUk,
+                         List<RexCallParam> dynamicImplicitDefaultParams,
+                         List<RexCallParam> unoptimizedDynamicImplicitDefaultParams) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping, afterUgsiUkMapping,
@@ -139,7 +142,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             gsiDeleteWriters, usePartFieldChecker, columnMetaMap, ukContainGeneratedColumn, evalRowColMetas,
             genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
             defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, isPushableForeignConstraintCheck, modifyForeignKey,
-            ukContainsAllSkAndGsiContainsAllUk);
+            ukContainsAllSkAndGsiContainsAllUk, dynamicImplicitDefaultParams, unoptimizedDynamicImplicitDefaultParams);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.primaryUpsertWriter = primaryUpsertWriter;
@@ -219,7 +222,81 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             isPushablePrimaryKeyCheck(),
             isPushableForeignConstraintCheck(),
             isModifyForeignKey(),
-            isUkContainsAllSkAndGsiContainsAllUk());
+            isUkContainsAllSkAndGsiContainsAllUk(),
+            getDynamicImplicitDefaultParams(),
+            getUnoptimizedDynamicImplicitDefaultParams());
+        return newLogicalUpsert;
+    }
+
+    @Override
+    public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs, List<RexCallParam> dynamicImplicitDefaultParams) {
+        final LogicalUpsert newLogicalUpsert = new LogicalUpsert(getCluster(),
+            traitSet,
+            table,
+            catalogReader,
+            sole(inputs),
+            getOperation(),
+            isFlattened(),
+            getInsertRowType(),
+            getKeywords(),
+            getDuplicateKeyUpdateList(),
+            getBatchSize(),
+            getAppendedColumnIndex(),
+            getHints(),
+            getTableInfo(),
+            getPrimaryInsertWriter(),
+            getGsiInsertWriters(),
+            getAutoIncParamIndex(),
+            getUkColumnNamesList(),
+            getBeforeUkMapping(),
+            getAfterUkMapping(),
+            getAfterUgsiUkIndex(),
+            getSelectInsertColumnMapping(),
+            getPkColumnNames(),
+            getBeforePkMapping(),
+            getAfterPkMapping(),
+            getAllUkSet(),
+            getTableUkMap(),
+            getUkGroupByTable(),
+            getLocalIndexPhyName(),
+            getRowColumnMetaList(),
+            getTableColumnMetaList(),
+            getSelectListForDuplicateCheck(),
+            getPrimaryUpsertWriter(),
+            getGsiUpsertWriters(),
+            getPrimaryRelocateWriter(),
+            getGsiRelocateWriters(),
+            getBeforeUpdateMapping(),
+            getRowNumberColumnIndex(),
+            isModifyPartitionKey(),
+            isModifyUniqueKey(),
+            isWithBeforeValueRef(),
+            isTargetTableIsWritable(),
+            isTargetTableIsReadyToPublish(),
+            isSourceTablesIsReadyToPublish(),
+            getUnOptimizedLogicalDynamicValues(),
+            getUnOptimizedDuplicateKeyUpdateList(),
+            getPushDownInsertWriter(),
+            getGsiInsertIgnoreWriters(),
+            getPrimaryDeleteWriter(),
+            getGsiDeleteWriters(),
+            isInputInValueColumnOrder(),
+            isUsePartFieldChecker(),
+            isHasJsonColumn(),
+            getColumnMetaMap(),
+            isUkContainGeneratedColumn(),
+            getEvalRowColMetas(),
+            getGenColRexNodes(),
+            getInputToEvalFieldsMapping(),
+            getDefaultExprColMetas(),
+            getDefaultExprColRexNodes(),
+            getDefaultExprEvalFieldsMapping(),
+            isPushablePrimaryKeyCheck(),
+            isPushableForeignConstraintCheck(),
+            isModifyForeignKey(),
+            isUkContainsAllSkAndGsiContainsAllUk(),
+            dynamicImplicitDefaultParams,
+            getUnoptimizedDynamicImplicitDefaultParams());
         return newLogicalUpsert;
     }
 
@@ -264,7 +341,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
     }
 
     @Override
-    protected <R extends LogicalInsert> List<RelNode> getPhyPlanForDisplay(ExecutionContext executionContext,
+    public <R extends LogicalInsert> List<RelNode> getPhyPlanForDisplay(ExecutionContext executionContext,
                                                                            R upsert) {
         final InsertWriter primaryWriter = getPrimaryInsertWriter();
         final LogicalInsert insert = primaryWriter.getInsert();
@@ -277,7 +354,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
             insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
             insert.isPushableForeignConstraintCheck(), insert.isModifyForeignKey(),
-            insert.isUkContainsAllSkAndGsiContainsAllUk());
+            insert.isUkContainsAllSkAndGsiContainsAllUk(), insert.getDynamicImplicitDefaultParams(),
+            insert.getUnoptimizedDynamicImplicitDefaultParams());
 
         final InsertWriter upsertWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return upsertWriter.getInput(executionContext);

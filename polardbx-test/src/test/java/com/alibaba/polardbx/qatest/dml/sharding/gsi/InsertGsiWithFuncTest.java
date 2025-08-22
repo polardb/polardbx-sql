@@ -89,6 +89,8 @@ public class InsertGsiWithFuncTest extends GsiDMLTest {
         UNSUPPORTED_FUNCTION.add("IS_USED_LOCK");
         UNSUPPORTED_FUNCTION.add("RELEASE_ALL_LOCKS");
         UNSUPPORTED_FUNCTION.add("RELEASE_LOCK");
+
+        UNSUPPORTED_FUNCTION.add("BENCHMARK");
     }
 
     @Parameterized.Parameters(name = "{index}:hint={0} table1={1} table2={2}")

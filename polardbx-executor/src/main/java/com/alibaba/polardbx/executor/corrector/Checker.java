@@ -36,6 +36,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
+import com.alibaba.polardbx.executor.fastchecker.CheckerBatch;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
@@ -64,6 +65,7 @@ import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.RateLimiter;
+import groovy.lang.IntRange;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlLiteral;
@@ -114,9 +116,9 @@ public class Checker {
     private final String indexName;
     private final TableMeta primaryTableMeta;
     private final TableMeta gsiTableMeta;
-    private final long batchSize;
-    private volatile RateLimiter rateLimiter;
-    private Throttle t;
+    protected final long batchSize;
+    protected volatile RateLimiter rateLimiter;
+    protected Throttle t;
     private volatile long nowSpeedLimit;
     private final long parallelism;
 
@@ -135,8 +137,8 @@ public class Checker {
      * LOCK IN SHARE MODE (or no lock)
      * </pre>
      */
-    private final PhyTableOperation planSelectWithMaxPrimary;
-    private final PhyTableOperation planSelectWithMaxGsi;
+    protected final PhyTableOperation planSelectWithMaxPrimary;
+    protected final PhyTableOperation planSelectWithMaxGsi;
     /**
      * Scan on primary table or GSI table.
      * <p>
@@ -150,8 +152,8 @@ public class Checker {
      * LOCK IN SHARE MODE (or no lock)
      * </pre>
      */
-    private final PhyTableOperation planSelectWithMinAndMaxPrimary;
-    private final PhyTableOperation planSelectWithMinAndMaxGsi;
+    protected final PhyTableOperation planSelectWithMinAndMaxPrimary;
+    protected final PhyTableOperation planSelectWithMinAndMaxGsi;
     /**
      * Get rows within pk list.
      * <p>
@@ -183,7 +185,7 @@ public class Checker {
     private List<Integer> primaryKeysId;
     private final Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator;
 
-    private final ITransactionManager tm;
+    protected final ITransactionManager tm;
 
     private final CheckerManager manager;
 
@@ -423,10 +425,10 @@ public class Checker {
             rowComparator);
     }
 
-    private PhyTableOperation buildSelectPlanWithParam(String logTblOrIndexTbl, String dbIndex, String phyTable,
-                                                       long batchSize,
-                                                       List<ParameterContext> params, boolean withUpperBoundOnly,
-                                                       boolean primaryToGsi) {
+    protected PhyTableOperation buildSelectPlanWithParam(String logTblOrIndexTbl, String dbIndex, String phyTable,
+                                                         long batchSize,
+                                                         List<ParameterContext> params, boolean withUpperBoundOnly,
+                                                         boolean primaryToGsi) {
         final Map<Integer, ParameterContext> planParams = new HashMap<>();
         // Physical table is 1st parameter
         planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
@@ -878,6 +880,7 @@ public class Checker {
         }
 
         long startTs = System.currentTimeMillis();
+
         List<ParameterContext> lowerBound = null;
         do {
             // Dynamic adjust lower bound of rate.
@@ -1233,6 +1236,34 @@ public class Checker {
             result.add(new Pair<>(Transformer.buildColumnParam(rowSet, i, useBinary), rowSet.getBytes(i)));
         }
         return result;
+    }
+
+    public static List<Pair<ParameterContext, byte[]>> row2objects(Row rowSet, boolean useBinary, Set<String> notConvertedColumns) {
+        final List<ColumnMeta> columns = rowSet.getParentCursorMeta().getColumns();
+        final List<Pair<ParameterContext, byte[]>> result = new ArrayList<>(columns.size());
+        for (int i = 0; i < columns.size(); i++) {
+            Boolean convert = (!notConvertedColumns.contains(columns.get(i).getName()) && useBinary);
+            result.add(new Pair<>(Transformer.buildColumnParam(rowSet, i, convert), rowSet.getBytes(i)));
+        }
+        return result;
+    }
+
+    public List<ParameterContext> buildPrimaryKey(List<Pair<ParameterContext, byte[]>> rowObject) {
+        if (rowObject == null) {
+            return new ArrayList<>();
+        } else {
+            return primaryKeysId.stream().mapToInt(idx -> idx)
+                .mapToObj(i -> rowObject.get(i).getKey()).collect(Collectors.toList());
+        }
+    }
+
+    public List<ParameterContext> buildPrimaryKey(Map<Integer, ParameterContext> rowObject) {
+        if (rowObject == null) {
+            return new ArrayList<>();
+        } else {
+            return new IntRange(1, primaryKeysId.size()).stream().mapToInt(idx -> idx)
+                .mapToObj(i -> rowObject.get(i)).collect(Collectors.toList());
+        }
     }
 
     private boolean equalPk(List<Pair<ParameterContext, byte[]>> left, List<Pair<ParameterContext, byte[]>> right) {

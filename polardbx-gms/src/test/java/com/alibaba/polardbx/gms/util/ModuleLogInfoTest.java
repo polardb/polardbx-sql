@@ -17,7 +17,6 @@ public class ModuleLogInfoTest {
     public void testSizeOverflow() {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
         for (int i = 0; i < 10000; i++) {
-            System.out.println(i);
             ModuleLogInfo.getInstance()
                 .logRecord(Module.STATISTICS, START_OVER, new String[] {"test", "test"}, LogLevel.NORMAL);
         }

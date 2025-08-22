@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
@@ -43,23 +45,30 @@ public class MppMergeSortConvertRule extends ConverterRule {
 
     @Override
     public RelNode convert(RelNode rel) {
-        MergeSort mergeSort = (MergeSort) rel;
-        RelNode input = mergeSort.getInput();
 
-        RelDistribution relDistribution = mergeSort.getTraitSet().getDistribution();
+        boolean enable = PlannerContext.getPlannerContext(rel)
+            .getParamManager().getBoolean(ConnectionParams.ENABLE_SPLIT_MERGE_SORT);
+        if (enable) {
+            MergeSort mergeSort = (MergeSort) rel;
+            RelNode input = mergeSort.getInput();
 
-        RelNode output = convert(input,
-            input.getTraitSet()
-                .replace(MppConvention.INSTANCE)
-                .replace(relDistribution)
-                .replace(mergeSort.getCollation()));
+            RelDistribution relDistribution = mergeSort.getTraitSet().getDistribution();
 
-        final boolean hasLimit = mergeSort.fetch != null;
-        if (hasLimit) {
-            output = Limit.create(
-                output.getTraitSet(),
-                output, mergeSort.offset, mergeSort.fetch);
+            RelNode output = convert(input,
+                input.getTraitSet()
+                    .replace(MppConvention.INSTANCE)
+                    .replace(relDistribution)
+                    .replace(mergeSort.getCollation()));
+
+            final boolean hasLimit = mergeSort.fetch != null;
+            if (hasLimit) {
+                output = Limit.create(
+                    output.getTraitSet(),
+                    output, mergeSort.offset, mergeSort.fetch);
+            }
+            return output;
+        } else {
+            return rel.copy(rel.getTraitSet().replace(MppConvention.INSTANCE), rel.getInputs());
         }
-        return output;
     }
 }

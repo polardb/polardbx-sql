@@ -134,6 +134,7 @@ public class CheckGsiTask extends BaseBackfillTask {
         this.primaryBroadCast = primaryBroadCast;
         this.gsiBroadCast = gsiBroadCast;
         this.onlineModifyColumn = onlineModifyColumn;
+        onExceptionTryRollback();
     }
 
     @Override
@@ -141,10 +142,18 @@ public class CheckGsiTask extends BaseBackfillTask {
         ec = ec.copy();
         ec.setBackfillId(getTaskId());
         ec.setTaskId(getTaskId());
+        if (ec.getParamManager().getBoolean(ConnectionParams.ROLLBACK_ON_CHECKER)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " force rollback on checker!");
+        }
 
         // fast checker
-        if (isUseFastChecker(ec) && fastCheck(ec)) {
+        if (isUseFastChecker(ec) && fastCheckWithCatchEx(ec)) {
             return;
+        }
+
+        if (isOnlyUseFastChecker(ec)) {
+            throw GeneralUtil.nestedException(
+                "Fast checker failed. Please try to rollback/recover this job");
         }
 
         // slow checker
@@ -219,6 +228,11 @@ public class CheckGsiTask extends BaseBackfillTask {
             return;
         }
 
+        if (isOnlyUseFastChecker(ec)) {
+            throw GeneralUtil.nestedException(
+                "Fast checker failed. Please try to rollback/recover this job");
+        }
+
         if (MapUtils.isNotEmpty(srcCheckColumnMap) || MapUtils.isNotEmpty(dstCheckColumnMap)) {
             throw GeneralUtil.nestedException(
                 "Fast checker failed. Please try to rollback/recover this job");
@@ -255,6 +269,10 @@ public class CheckGsiTask extends BaseBackfillTask {
     private boolean isUseFastChecker(ExecutionContext ec) {
         return FastChecker.isSupported(schemaName) &&
             ec.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_USE_FASTCHECKER);
+    }
+
+    private boolean isOnlyUseFastChecker(ExecutionContext ec) {
+        return ec.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_ONLY_USE_FASTCHECKER);
     }
 
     private boolean fastCheck(ExecutionContext ec) {

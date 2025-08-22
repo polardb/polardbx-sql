@@ -1,0 +1,74 @@
+t1_default:
+  CREATE TABLE `t1_default` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `c1` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c2` bigint(20) NOT NULL,
+  `c3` varchar(32) NOT NULL,
+  `c4` bigint(20) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY KEY(`c1`)
+  PARTITIONS 8
+
+t2_default:
+  CREATE TABLE `t2_default` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `c1` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c2` bigint(20) NOT NULL,
+  `c3` varchar(32) NOT NULL,
+  `c4` bigint(20) DEFAULT NULL,
+  KEY `auto_shard_key_c2` USING BTREE (`c2`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY KEY(`c2`)
+  PARTITIONS 8
+
+t3_default:
+  CREATE TABLE `t3_default` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `c1` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c2` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `c3` bigint(20) NOT NULL,
+  `c4` varchar(32) NOT NULL,
+  `c5` bigint(20) DEFAULT NULL,
+  KEY `auto_shard_key_c2` USING BTREE (`c2`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY KEY(`c2`)
+  PARTITIONS 8
+
+t4_default:
+  CREATE TABLE `t4_default` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `c1` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c2` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c3` bigint(20) NOT NULL,
+  `c4` varchar(32) NOT NULL,
+  `c5` bigint(20) DEFAULT NULL,
+  KEY `auto_shard_key_c2` USING BTREE (`c2`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY KEY(`c2`)
+  PARTITIONS 8
+
+t5_default:
+  CREATE TABLE `t5_default` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `c1` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c2` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c3` bigint(20) NOT NULL,
+  `c4` varchar(32) NOT NULL,
+  `c5` bigint(20) DEFAULT NULL,
+  GLOBAL INDEX `gsi_c2` (`c1`) COVERING(c3, c4, c5) PARTITION BY KEY(c1) PARTITIONS 8,
+  KEY `auto_shard_key_c2` USING BTREE (`c2`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY KEY(`c2`)
+  PARTITIONS 8
+
+t6_default:
+  CREATE TABLE `t6_default` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `c1` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `c2` bigint(20) NOT NULL,
+  `c3` varchar(32) NOT NULL,
+  `c4` bigint(20) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  broadcast

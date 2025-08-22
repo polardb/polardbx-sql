@@ -161,6 +161,9 @@ public class PostPlanner {
                 } else if (other instanceof RecursiveCTE) {
                     this.skipPostPlan = true;
                     return other;
+                } else if (other instanceof LogicalView) {
+                    this.skipPostPlan = skipPostPlan || ((LogicalView) other).isInToUnionAll();
+                    return visitChildren(other);
                 } else {
                     return visitChildren(other);
                 }
@@ -170,7 +173,8 @@ public class PostPlanner {
                 return skipPostPlan;
             }
         }
-        if (direct || shouldSkipPostPlanner || plannerContext.hasLocalIndexHint() || hasDNHint(plannerContext)) {
+        if (direct || shouldSkipPostPlanner || plannerContext.hasLocalIndexHint() || hasDNHint(plannerContext)
+        || plannerContext.isHasAutoPagination()) {
             plannerContext.setSkipPostOpt(true);
             return;
         }
@@ -197,7 +201,7 @@ public class PostPlanner {
         SqlNode ast = executionPlan.getAst();
         if (!executionPlan.isUsePostPlanner() || skipPostPlanner(executionPlan, executionContext)) {
             if (plan instanceof LogicalRelocate) {
-                executionPlan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                executionPlan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_CROSS_DB);
             }
             return executionPlan;
         }
@@ -312,7 +316,7 @@ public class PostPlanner {
                 if (((LogicalModifyView) plan).getHintContext() != null
                     && ((LogicalModifyView) plan).getHintContext().containsInventoryHint()
                     && !isAllAtOnePhyTb) {
-                    executionPlan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                    executionPlan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_CROSS_DB);
                 }
                 if (!RelUtils.dmlWithDerivedSubquery(plan, ast)) {
                     return executionPlan;
@@ -395,7 +399,7 @@ public class PostPlanner {
                             .getBoolean(ConnectionParams.ENABLE_COMPLEX_DML_CROSS_DB)) {
                             executionPlan = executionPlan.copy(executionPlan.getPlan());
                             executionPlan.getPlanProperties()
-                                .set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                                .add(ExecutionPlanProperties.MODIFY_CROSS_DB);
                             return executionPlan;
                         } else {
                             throw new TddlNestableRuntimeException(
@@ -427,7 +431,7 @@ public class PostPlanner {
                             .getBoolean(ConnectionParams.ENABLE_COMPLEX_DML_CROSS_DB)) {
                             executionPlan = executionPlan.copy(executionPlan.getPlan());
                             executionPlan.getPlanProperties()
-                                .set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                                .add(ExecutionPlanProperties.MODIFY_CROSS_DB);
                             return executionPlan;
                         } else {
                             throw new TddlNestableRuntimeException(
@@ -460,7 +464,7 @@ public class PostPlanner {
                     partitionResult.values().iterator().next());
                 if (pushModifyTopN) {
                     if (!isAllAtOnePhyTb) {
-                        executionPlan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                        executionPlan.getPlanProperties().add(ExecutionPlanProperties.MODIFY_CROSS_DB);
                     }
                     return executionPlan.copy(pushdownModifyOnTopN(modifyTopNOperands));
                 }
@@ -497,7 +501,7 @@ public class PostPlanner {
                         }
                         executionPlan = executionPlan.copy(executionPlan.getPlan());
                         executionPlan.getPlanProperties()
-                            .set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                            .add(ExecutionPlanProperties.MODIFY_CROSS_DB);
                     }
                 } else if (ast.getKind() == SqlKind.UPDATE) {
                     if (GeneralUtil.isNotEmpty(targetTables) && RelUtils.dmlWithDerivedSubquery(
@@ -517,7 +521,7 @@ public class PostPlanner {
                     } else {
                         executionPlan = executionPlan.copy(executionPlan.getPlan());
                         executionPlan.getPlanProperties()
-                            .set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                            .add(ExecutionPlanProperties.MODIFY_CROSS_DB);
                     }
                 }
             }
@@ -547,7 +551,7 @@ public class PostPlanner {
      */
     private static boolean supportOptimizeMultiWriteByReturning(@NotNull ExecutionPlan plan,
                                                                 @NotNull ExecutionContext ec) {
-        if (plan.getSchemaNames().size() != 1) {
+        if (null == plan.getSchemaNames() || plan.getSchemaNames().size() != 1) {
             // do not support cross schema
             return false;
         }
@@ -626,7 +630,7 @@ public class PostPlanner {
      */
     private static boolean supportOptimizeModifyTopNByReturning(@NotNull ExecutionPlan plan,
                                                                 @NotNull ExecutionContext ec) {
-        if (plan.getSchemaNames().size() != 1) {
+        if (null == plan.getSchemaNames() || plan.getSchemaNames().size() != 1) {
             // do not support cross schema
             return false;
         }
@@ -695,13 +699,13 @@ public class PostPlanner {
             }
             // when scale-out in progress don't enable broadcast random read
             TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
-            if (tableMeta.getComplexTaskTableMetaBean() != null && GeneralUtil.isNotEmpty(
-                tableMeta.getComplexTaskTableMetaBean().getParentComplexTaskStatusInfoMap())) {
+            if (tableMeta.getComplexTaskTableMetaBean() != null && !tableMeta.getComplexTaskTableMetaBean()
+                .allPartIsPublic()) {
                 return false;
             }
 
         }
-        return executionPlan.getPlanProperties().get(ExecutionPlanProperties.ONLY_BROADCAST_TABLE);
+        return executionPlan.getPlanProperties().contains(ExecutionPlanProperties.ONLY_BROADCAST_TABLE);
     }
 
     /**

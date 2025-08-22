@@ -1,0 +1,98 @@
+test1:
+  CREATE TABLE `test1` (
+  `id` bigint NOT NULL,
+  `user_id` bigint NOT NULL DEFAULT '0',
+  `broker_id` int NOT NULL DEFAULT '0',
+  `s_id` bigint DEFAULT '0',
+  `biz_id` tinyint NOT NULL,
+  `index_id` int NOT NULL DEFAULT '0',
+  `instrument_id` bigint NOT NULL DEFAULT '0',
+  `instrument_name` varchar(64) NOT NULL DEFAULT '',
+  `margin_mode` tinyint NOT NULL DEFAULT '0',
+  `coin_id` int NOT NULL DEFAULT '0',
+  `type` int NOT NULL DEFAULT '0',
+  `size` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+  `profit` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+  `price` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+  `amount` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+  `fee` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+  `fee_rate` decimal(16, 8) NOT NULL DEFAULT '0.00000000',
+  `interest` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+  `trade_side` tinyint NOT NULL DEFAULT '0',
+  `refer_id` bigint NOT NULL DEFAULT '0',
+  `deal_time` timestamp(3) NULL DEFAULT NULL,
+  `trade_id` bigint DEFAULT NULL,
+  `tag` varchar(32) DEFAULT NULL,
+  `target` int NOT NULL DEFAULT '0',
+  `multiplier` decimal(16, 4) NOT NULL DEFAULT '0.0000',
+  `contract_val` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+  `client_oid` varchar(64) DEFAULT '',
+  `has_bonus` tinyint(1) NOT NULL DEFAULT '0',
+  `partition_time` datetime(3) NOT NULL,
+  `create_time` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `modify_time` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `modified_at` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_modified_at` (`modified_at`),
+  KEY `indx2` (`user_id`, `broker_id`, `type`, `id`, `instrument_id`, `biz_id`, `refer_id`, `s_id`, `create_time`),
+  KEY `idx_refer_id` (`user_id`, `refer_id`, `id`, `type`, `instrument_id`, `biz_id`, `s_id`, `create_time`)
+  ) ENGINE = InnoDB
+  PARTITION BY KEY(`user_id`)
+  PARTITIONS 64
+  SUBPARTITION BY RANGE(TO_DAYS(`partition_time`))
+  (SUBPARTITION `p202309` VALUES LESS THAN (739159),
+  SUBPARTITION `p202310` VALUES LESS THAN (739190),
+  SUBPARTITION `p202311` VALUES LESS THAN (739220),
+  SUBPARTITION `p202312` VALUES LESS THAN (739251),
+  SUBPARTITION `p202401` VALUES LESS THAN (739282),
+  SUBPARTITION `p202402` VALUES LESS THAN (739311),
+  SUBPARTITION `p202403` VALUES LESS THAN (739342),
+  SUBPARTITION `p202404` VALUES LESS THAN (739372),
+  SUBPARTITION `p202405` VALUES LESS THAN (739403),
+  SUBPARTITION `p202406` VALUES LESS THAN (739433),
+  SUBPARTITION `p202407` VALUES LESS THAN (739464),
+  SUBPARTITION `p202408` VALUES LESS THAN (739495),
+  SUBPARTITION `p202409` VALUES LESS THAN (739525),
+  SUBPARTITION `p202410` VALUES LESS THAN (739556),
+  SUBPARTITION `p202411` VALUES LESS THAN (739586));
+
+test2:
+  CREATE TABLE `test2` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `shipmentId` bigint(20) NOT NULL,
+  `warehouseCode` varchar(50) DEFAULT NULL,
+  `shipmentCode` varchar(50) DEFAULT NULL,
+  PRIMARY KEY USING BTREE (`id`),
+  KEY `indx1` (`shipmentId`, `warehouseCode`, `id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC
+  PARTITION BY HASH(`id`)
+  PARTITIONS 3;
+
+test3:
+  CREATE TABLE `test3` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `shipmentId` bigint(20) NOT NULL,
+  `warehouseCode` varchar(50) DEFAULT NULL,
+  `shipmentCode` varchar(50) DEFAULT NULL,
+  PRIMARY KEY USING BTREE (`id`),
+  KEY `indx1` (`shipmentId`, `warehouseCode`, `id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC single;
+
+test4:
+  CREATE TABLE `test4` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `shipmentId` bigint(20) NOT NULL,
+  `warehouseCode` varchar(50) DEFAULT NULL,
+  `shipmentCode` varchar(50) DEFAULT NULL,
+  PRIMARY KEY USING BTREE (`id`),
+  KEY `indx1` (`shipmentId`, `warehouseCode`, `id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC broadcast;
+
+test5:
+  CREATE TABLE `test5` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `shipmentId` bigint(20) NOT NULL,
+  `expand` varchar(50) DEFAULT NULL,
+  PRIMARY KEY USING BTREE (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC single;

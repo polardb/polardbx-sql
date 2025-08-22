@@ -28,18 +28,19 @@ import lombok.Getter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Getter
 @TaskName(name = "ImportTableSpaceDdlNormalTask")
 public class ImportTableSpaceDdlNormalTask extends BasePhyDdlTask {
 
     private final String tableName;
-    private final Map<String, List<List<String>>> tableTopology;
+    private final TreeMap<String, List<List<String>>> tableTopology;
 
     @JSONCreator
     public ImportTableSpaceDdlNormalTask(String schemaName,
                                          String tableName,
-                                         Map<String, List<List<String>>> tableTopology) {
+                                         TreeMap<String, List<List<String>>> tableTopology) {
         super(schemaName, null);
         this.tableName = tableName;
         this.tableTopology = tableTopology;

@@ -77,6 +77,7 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
         if (full) {
             result.addColumn("Table_type", DataTypes.StringType, false);
             result.addColumn("Auto_partition", DataTypes.StringType, false);
+            result.addColumn("Table_group", DataTypes.StringType, false);
         }
         result.initMeta();
         List<Object[]> tables;
@@ -87,6 +88,7 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
             if (full) {
                 sqlBuilder.append(", table_type ");
                 sqlBuilder.append(", 'NO' as auto_partition ");
+                sqlBuilder.append(", '-' as table_group ");
             }
             sqlBuilder.append(" from `information_schema`.`tables` where table_schema = 'information_schema'");
 
@@ -151,7 +153,7 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
                         }
                         tableNameOrViewNameSet.add(viewName);
                         if (full) {
-                            tables.add(new Object[] {viewName, "VIEW", "NO"});
+                            tables.add(new Object[] {viewName, "VIEW", "NO", "-"});
                         } else {
                             tables.add(new Object[] {viewName});
                         }

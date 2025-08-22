@@ -29,19 +29,18 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.gms.util.StatisticSubProcessUtils;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableNDVSketchStatistic;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.module.LogLevel;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.node.MppScope;
-import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -56,6 +55,7 @@ import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.eclipse.jetty.util.StringUtil;
 
 import java.sql.Connection;
@@ -65,6 +65,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -309,6 +310,7 @@ public class NDVShardSketch {
                             e
                         );
                 }
+                throw e;
             } catch (Exception e) {
                 ModuleLogInfo.getInstance()
                     .logRecord(
@@ -318,6 +320,7 @@ public class NDVShardSketch {
                         LogLevel.CRITICAL,
                         e
                     );
+                throw e;
             } finally {
                 ModuleLogInfo.getInstance()
                     .logRecord(
@@ -341,7 +344,7 @@ public class NDVShardSketch {
      * @param shardKey schemaName:table name:columns name
      * @param shardPart physical node:table name;*
      */
-    private static long getCurrentCardinality(String shardKey, String shardPart) {
+    private static long getCurrentCardinality(String shardKey, String shardPart) throws SQLException {
         String[] shardKeys = shardKey.split(":");
         String schemaName = shardKeys[0];
         String columnsName = shardKeys[2];
@@ -378,6 +381,7 @@ public class NDVShardSketch {
                 }
             } catch (SQLException throwables) {
                 throwables.printStackTrace();
+                throw throwables;
             } finally {
                 if (rs != null) {
                     try {
@@ -565,12 +569,7 @@ public class NDVShardSketch {
             .batchReplace(ndvShardSketch.serialize(sketchArray, columnar));
 
         // sync other nodes
-        SyncManagerHelper.syncWithDefaultDB(
-            new UpdateStatisticSyncAction(
-                schemaName,
-                tableName,
-                null),
-            SyncScope.ALL);
+        StatisticSubProcessUtils.syncUpdateStatistic(schemaName, tableName, null, ec);
 
         return ndvShardSketch;
     }
@@ -707,6 +706,9 @@ public class NDVShardSketch {
      * build shard parts, every phy table is one shard part.
      */
     public static Pair<String, String[]> buildShardParts(String schemaName, String tableName, String columnNames) {
+        if (StringUtils.isEmpty(schemaName) || StringUtils.isEmpty(tableName) || StringUtils.isEmpty(columnNames)) {
+            return null;
+        }
         OptimizerContext op = OptimizerContext.getContext(schemaName);
         if (op == null) {
             return null;
@@ -719,21 +721,34 @@ public class NDVShardSketch {
         }
 
         // try main table first
+        if (tableMeta.getIndexes() == null) {
+            return null;
+        }
         for (IndexMeta indexMeta : tableMeta.getIndexes()) {
             List<ColumnMeta> keys = indexMeta.getKeyColumns();
-            if (keys.stream().map(ColumnMeta::getName).collect(Collectors.toList()).containsAll(targetCols)) {
+            if (new HashSet<>(keys.stream().map(ColumnMeta::getName).map(String::toLowerCase)
+                .collect(Collectors.toList())).containsAll(targetCols)) {
                 Map<String, Set<String>> topologyMap = getTopology(schemaName, tableName, op);
                 return Pair.of(indexMeta.getPhysicalIndexName(), topologyPartToShard(topologyMap));
             }
         }
+
+        if (tableMeta.getGsiPublished() == null) {
+            return null;
+        }
         // try gsi
+        if (tableMeta.getGsiPublished() == null) {
+            return null;
+        }
         for (GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean : tableMeta.getGsiPublished().values()) {
             List<GsiMetaManager.GsiIndexColumnMetaBean> keys = gsiIndexMetaBean.indexColumns;
-            if (keys.stream().map(gsi -> gsi.columnName).collect(Collectors.toList()).containsAll(targetCols)) {
+            if (new HashSet<>(keys.stream().map(gsi -> gsi.columnName.toLowerCase()).collect(Collectors.toList()))
+                .containsAll(targetCols)) {
                 TableMeta gsiMeta = op.getLatestSchemaManager().getTable(gsiIndexMetaBean.indexTableName);
                 for (IndexMeta indexMeta : gsiMeta.getIndexes()) {
                     List<ColumnMeta> keysInGsi = indexMeta.getKeyColumns();
-                    if (keysInGsi.stream().map(ColumnMeta::getName).collect(Collectors.toList())
+                    if (new HashSet<>(keysInGsi.stream().map(ColumnMeta::getName).map(String::toLowerCase)
+                        .collect(Collectors.toList()))
                         .containsAll(targetCols)) {
                         Map<String, Set<String>> topologyMap =
                             getTopology(schemaName, gsiIndexMetaBean.indexTableName, op);
@@ -761,12 +776,33 @@ public class NDVShardSketch {
      * @param shardPart one physical table
      * @param ifForce true meaning from `analyze table`, false meaning from scheduled work
      */
-    private static byte[] getCurrentHll(String shardKey, String shardPart, String indexName, boolean ifForce,
-                                        ExecutionContext ec) throws Exception {
+    public static byte[] getCurrentHll(String shardKey, String shardPart, String indexName, boolean ifForce,
+                                       ExecutionContext ec) throws Exception {
         String[] shardKeys = shardKey.split(":");
 
         String schemaName = shardKeys[0];
+        String tableName = shardKeys[1];
         String columnsName = shardKeys[2];
+
+        // check timeout flag
+        if (!ifForce) {
+            boolean timeoutFlag =
+                PolarDbXSystemTableNDVSketchStatistic.getInstance().isTimeoutMarked(schemaName, tableName, columnsName,
+                    MetaDbDataSource.getInstance().getDataSource());
+            if (timeoutFlag) {
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTICS,
+                        INTERRUPTED,
+                        new String[] {
+                            "ndv sketch " + shardKey,
+                            " by timeout flag"
+                        },
+                        LogLevel.WARNING
+                    );
+                return null;
+            }
+        }
 
         // only one part for now
         Map<String, Set<String>> shardPartToTopology = shardPartToTopology(shardPart);
@@ -838,14 +874,7 @@ public class NDVShardSketch {
 
                 // check if columnsName represent one column or one index
                 String sql;
-                if (!StringUtils.isEmpty(indexName)) {
-                    physicalTable = physicalTable + " force index(" + indexName + ")";
-                }
-                if (!columnsName.contains(",")) {
-                    sql = String.format(HYPER_LOG_LOG_SQL, columnsName, physicalTable);
-                } else {
-                    sql = String.format(HYPER_LOG_LOG_MUL_COLUMNS_SQL, columnsName, physicalTable);
-                }
+                sql = buildSql(indexName, physicalTable, columnsName);
                 ModuleLogInfo.getInstance()
                     .logRecord(
                         Module.STATISTICS,
@@ -917,6 +946,53 @@ public class NDVShardSketch {
         return hllBytes;
     }
 
+    public static void markTimeout(String shardKey) {
+        String[] shardInfo = shardKey.split(":");
+        String schema = shardInfo[0];
+        String tableName = shardInfo[1];
+        String columns = shardInfo[2];
+        PolarDbXSystemTableNDVSketchStatistic.getInstance().markTimeout(schema, tableName, columns);
+    }
+
+    public static String buildSql(String indexName, String physicalTable, String columnsName) {
+        String sql;
+        if (!StringUtils.isEmpty(indexName)) {
+            physicalTable = physicalTable + " force index(" + SqlIdentifier.surroundWithBacktick(indexName) + ")";
+        }
+        String sqlColumnsNames = encloseColumnNamesWithBackticks(columnsName);
+
+        if (!columnsName.contains(",")) {
+            sql = String.format(HYPER_LOG_LOG_SQL, sqlColumnsNames, physicalTable);
+        } else {
+            sql = String.format(HYPER_LOG_LOG_MUL_COLUMNS_SQL, sqlColumnsNames, physicalTable);
+        }
+        return sql;
+    }
+
+    /**
+     * Encloses each column name in backticks and separates them by commas.
+     *
+     * @param columnNames A comma-separated list of column names.
+     * @return A string where each column name is enclosed in backticks.
+     */
+    private static String encloseColumnNamesWithBackticks(String columnNames) {
+        // If the input contains commas, enclose the entire string in backticks.
+        if (!columnNames.contains(",")) {
+            return "`" + columnNames + "`";
+        }
+
+        // Use StringBuilder to construct the final string.
+        StringBuilder enclosedColumnsBuilder = new StringBuilder();
+
+        // Split the input by commas and append each part enclosed in backticks.
+        for (String columnName : columnNames.split(",")) {
+            enclosedColumnsBuilder.append("`").append(columnName.trim()).append("`").append(",");
+        }
+        enclosedColumnsBuilder.setLength(enclosedColumnsBuilder.length() - 1);
+
+        return enclosedColumnsBuilder.toString();
+    }
+
     public SystemTableNDVSketchStatistic.SketchRow[] serialize(byte[][] sketchBytes, boolean columnar) {
         String[] shardInfo = shardKey.split(":");
         String schemaName = shardInfo[0];
@@ -943,12 +1019,17 @@ public class NDVShardSketch {
 
     public static void handleException(String shardKey, String shardPart, Exception e, String schemaName,
                                        String[] shardKeys) throws Exception {
-        ModuleLogInfo.getInstance().logRecord(
-            Module.STATISTICS,
-            UNEXPECTED,
-            new String[] {"ndv sketch " + shardKey + "," + shardPart, e.getMessage()},
-            LogLevel.CRITICAL, e);
-        OptimizerAlertUtil.statisticErrorAlert();
+        if (e.getMessage().contains("Query timeout")) {
+            // mark timeout flag in metadb and avoid alert
+            markTimeout(shardKey);
+        } else {
+            ModuleLogInfo.getInstance().logRecord(
+                Module.STATISTICS,
+                UNEXPECTED,
+                new String[] {"ndv sketch " + shardKey + "," + shardPart, e.getMessage()},
+                LogLevel.CRITICAL, e);
+            OptimizerAlertUtil.statisticErrorAlert();
+        }
         throw e;
     }
 
@@ -973,11 +1054,11 @@ public class NDVShardSketch {
      *
      * @return Returns null if the table or schema does not exist; otherwise returns true or false indicating the validity of the shard information.
      */
-    public static Boolean isValidShardPart(String shardKey, String[] shardParts) {
+    public static boolean isValidShardPart(String shardKey, String[] shardParts) {
         // Split the shard key to extract the schema name, table name, and column names.
         String[] shardInfo = shardKey.split(":");
         if (shardInfo.length != 3) {
-            return null;
+            return false;
         }
         String schemaName = shardInfo[0];
         String tableName = shardInfo[1];
@@ -988,7 +1069,7 @@ public class NDVShardSketch {
 
         // If the result is null, it means that either the table or the schema does not exist.
         if (result == null) {
-            return null;
+            return false;
         }
 
         // Retrieve the array of shard parts from the result.

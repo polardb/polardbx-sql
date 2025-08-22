@@ -7,6 +7,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -128,6 +129,82 @@ public class FlashbackAreaTest extends CrudBasedLockTestCase {
             "select * from " + tableName + " as t1 as of tso " + tso + " join " + tableName + " as t2 as of tso " + tso
                 + " on t1.id=t2.id";
         JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void testSwitch() throws SQLException, InterruptedException {
+        if (!isMySQL80()) {
+            return;
+        }
+
+        int retry = 5;
+        while (retry-- > 0) {
+            if (testSwitchOnce()) {
+                return;
+            }
+        }
+        Assert.fail("Try 5 times and still fails.");
+    }
+
+    private boolean testSwitchOnce() throws SQLException, InterruptedException {
+        try (Connection connection = getPolardbxConnection()) {
+            JdbcUtil.executeUpdateSuccess(connection, "set global opt_flashback_area = true");
+            JdbcUtil.executeUpdateSuccess(connection, "set global innodb_txn_retention = 259200");
+            JdbcUtil.executeUpdateSuccess(connection, "set global innodb_undo_retention = 0");
+            JdbcUtil.executeUpdateSuccess(connection, "reload datasources");
+            String tableName = "FlashbackAreaTest_testSwitch";
+            JdbcUtil.executeUpdateSuccess(connection, "drop table if exists " + tableName);
+            String createTableSql = "create table if not exists " + tableName + " (\n"
+                + "  id int primary key,\n"
+                + "  a int,\n"
+                + "  local index idx(a)\n"
+                + ") partition by key(id)";
+            JdbcUtil.executeUpdateSuccess(connection, "set transaction_policy = TSO");
+            JdbcUtil.executeUpdateSuccess(connection, createTableSql);
+            String sql = "insert into " + tableName + " values (0,0), (1,1)";
+            JdbcUtil.executeUpdateSuccess(connection, sql);
+            long tso = getTso();
+            sql = "insert into " + tableName + " values (100,100), (101,101)";
+            JdbcUtil.executeUpdateSuccess(connection, sql);
+
+            ResultSet rs = JdbcUtil.executeQuerySuccess(connection,
+                "select * from " + tableName + " as of tso " + tso + " order by id");
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(0, rs.getInt("id"));
+            Assert.assertEquals(0, rs.getInt("a"));
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(1, rs.getInt("id"));
+            Assert.assertEquals(1, rs.getInt("a"));
+            Assert.assertFalse(false);
+
+            Thread.sleep(5000);
+
+            JdbcUtil.executeUpdate(connection, "SET ENABLE_FLASHBACK_AREA = FALSE");
+
+            try {
+                JdbcUtil.executeQuerySuccess(connection,
+                    "select * from " + tableName + " as of tso " + tso + " order by id");
+            } catch (Throwable t) {
+                System.out.println(t.getMessage());
+                Assert.assertTrue(t.getMessage().contains("Snapshot too old"));
+
+                JdbcUtil.executeUpdate(connection, "SET ENABLE_FLASHBACK_AREA = TRUE");
+                rs = JdbcUtil.executeQuerySuccess(connection,
+                    "select * from " + tableName + " as of tso " + tso + " order by id");
+                Assert.assertTrue(rs.next());
+                Assert.assertEquals(0, rs.getInt("id"));
+                Assert.assertEquals(0, rs.getInt("a"));
+                Assert.assertTrue(rs.next());
+                Assert.assertEquals(1, rs.getInt("id"));
+                Assert.assertEquals(1, rs.getInt("a"));
+                Assert.assertFalse(false);
+
+                return true;
+            }
+        } finally {
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "set global innodb_undo_retention = 1800");
+        }
+        return false;
     }
 
     private long getTso() throws SQLException {

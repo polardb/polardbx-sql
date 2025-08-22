@@ -17,17 +17,25 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.math.BigInteger;
 
 public class ULongBlockBuilder extends AbstractBlockBuilder {
-    protected final LongArrayList values;
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(ULongBlockBuilder.class).instanceSize();
+    protected final MemoryCountableLongArrayList values;
 
     public ULongBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new LongArrayList(capacity);
+        this.values = new MemoryCountableLongArrayList(capacity);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + FastMemoryCounter.sizeOf(values) + FastMemoryCounter.sizeOf(valueIsNull);
     }
 
     public void writeUInt64(UInt64 uint64) {

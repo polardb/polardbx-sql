@@ -19,6 +19,8 @@ package com.alibaba.polardbx.transaction.connection;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.utils.TransactionAsyncUtils;
 
@@ -28,8 +30,10 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class AutoCommitConnectionHolder extends BaseConnectionHolder {
+    private final ExecutionContext executionContext;
 
-    public AutoCommitConnectionHolder() {
+    public AutoCommitConnectionHolder(ExecutionContext ec) {
+        this.executionContext = ec;
     }
 
     /**
@@ -54,7 +58,10 @@ public class AutoCommitConnectionHolder extends BaseConnectionHolder {
         throws SQLException {
         IConnection conn = null;
         try {
-            conn = ds.getConnection(masterSlave);
+            // only wait in get connection when not wait in TConnection and reschedule
+            TGroupDirectConnection.threadParam.set(executionContext.getTraceId());
+            conn = ds.getConnection(
+                masterSlave, executionContext.isCheckSwitchoverWhenGetConnection() ? connections : null);
         } finally {
             if (conn != null) {
                 this.connections.add(conn);

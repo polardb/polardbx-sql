@@ -8,7 +8,7 @@
       bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
         indexscan(tables="optest_0001.t1_i_b_3", sql="select `pk`, `c1` from `t1_i_b` as `t1_i_b` where ((`c2` = ?) and (`pk` = ?))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c7` from `t1` as `t1` where ((`pk` = ?) and (`c2` = ?) and (`pk` in (...)))")
+          logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c7` from `t1` as `t1` where ((`c2` = ?) and (`pk` = ?) and (`pk` in (...)))")
 
   # filter transpose without copy filter
 - sql: |
@@ -30,7 +30,7 @@
     select * from t1 ignore index(t1_i_b) a join t2 b force index(t2_i_b) on a.c2 = b.c2 where b.pk = 5 and a.c2 = 3;
 
   plan: |
-    project(pk0="pk0", c10="c10", c20="c20", c30="c30", c40="c40", c50="c50", c60="c60", c70="c70", c80="c80", pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+    project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
       bkajoin(condition="c2 = c2", type="inner")
         project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
           bkajoin(condition="pk = pk and c2 <=> c2", type="inner")

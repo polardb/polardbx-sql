@@ -43,24 +43,17 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.foreign.ForeignColsRecord;
 import com.alibaba.polardbx.gms.metadb.foreign.ForeignRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
-import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
-import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
-import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
-import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
-import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
-import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
-import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.metadb.table.IndexesInfoSchemaRecord;
-import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.metadb.table.*;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
@@ -533,9 +526,12 @@ public class TableMetaChanger {
         tableInfoManager.setConnection(metaDbConnection);
         tableInfoManager.showTable(schemaName, logicalTableName, null);
     }
-
     public static void removeTableMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
                                        boolean withTablesExtOrPartition, ExecutionContext executionContext) {
+        removeTableMeta(metaDbConnection, schemaName, logicalTableName, withTablesExtOrPartition, true, executionContext);
+    }
+    public static void removeTableMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
+                                       boolean withTablesExtOrPartition, boolean dropEmptyTableGroup, ExecutionContext executionContext) {
         String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
 
@@ -551,7 +547,7 @@ public class TableMetaChanger {
         tableInfoManager.setConnection(metaDbConnection);
 
         // Remove all table meta.
-        tableInfoManager.removeTable(schemaName, logicalTableName, finalSequenceRecord, withTablesExtOrPartition);
+        tableInfoManager.removeTable(schemaName, logicalTableName, finalSequenceRecord, withTablesExtOrPartition, dropEmptyTableGroup);
 
         //check referenced foreign key table and update fk index
         updateForeignKeyRefIndexNull(metaDbConnection, schemaName, logicalTableName);
@@ -618,7 +614,7 @@ public class TableMetaChanger {
         tableInfoManager.setConnection(metaDbConnection);
 
         // Remove all table meta.
-        tableInfoManager.removeTable(schemaName, logicalTableName, finalSequenceRecord, withTablesExtOrPartition);
+        tableInfoManager.removeTable(schemaName, logicalTableName, finalSequenceRecord, withTablesExtOrPartition, true);
 
         if (withTablesExtOrPartition) {
             tableInfoManager.removeTableExt(schemaName, logicalTableName);
@@ -1061,6 +1057,7 @@ public class TableMetaChanger {
             changeCciRelatedMeta(metaDbConnection, tableInfoManager, schemaName, logicalTableName, phyInfoSchemaContext,
                 addedColumns, droppedColumns, changedColumns, renamedIndexes);
         }
+        tableInfoManager.updateCreateOptions(phyInfoSchemaContext, schemaName, logicalTableName);
     }
 
     public static void changeCciRelatedMeta(Connection metaDbConnection,
@@ -1090,8 +1087,13 @@ public class TableMetaChanger {
                         .getGsiMetaManager()
                         .getIndexMeta(schemaName, logicalTableName, indexName, IndexStatus.ALL);
 
+                /**
+                 *  为了保证新加的列排在indexes系统表所有列的最后，从而不影响对GSI类型的判断
+                 *  设置version与目前相同， seq_in_index取最大
+                 */
                 final int seqInIndex =
                     gsiIndexMetaBean.indexColumns.size() + gsiIndexMetaBean.coveringColumns.size() + 1;
+                final long version = gsiIndexMetaBean.version;
 
                 final List<GsiMetaManager.IndexRecord> indexRecords =
                     GsiUtils.buildIndexMetaByAddColumns(
@@ -1101,7 +1103,8 @@ public class TableMetaChanger {
                         indexName,
                         seqInIndex,
                         IndexStatus.PUBLIC,
-                        isNullable
+                        isNullable,
+                        version
                     );
                 GsiMetaChanger.addIndexColumnMeta(metaDbConnection, schemaName, logicalTableName, indexRecords);
             }
@@ -1123,7 +1126,7 @@ public class TableMetaChanger {
         // CHANGE COLUMN
         if (GeneralUtil.isNotEmpty(changeColumns)) {
             for (String indexName : indexNames) {
-                tableInfoManager.changeColumnarIndexColumnMeta(context, columnsJdbcExtInfo, changeColumns, indexName);
+                tableInfoManager.changeColumnarIndexColumnMeta(schemaName, logicalTableName, changeColumns, indexName);
             }
         }
 
@@ -1638,6 +1641,31 @@ public class TableMetaChanger {
         }
     }
 
+    public static void addIndexesMetaOnly(Connection metaDbConnection, String schemaName, String logicalTableName,
+                                          List<String> indexNames, String dbIndex, String phyTableName) {
+        TableInfoManager.PhyInfoSchemaContext context =
+            CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
+
+        if (TStringUtil.isNotEmpty(logicalTableName) && indexNames != null && indexNames.size() != 0) {
+            TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(metaDbConnection);
+            tableInfoManager.addLocalIndexesPublic(context, indexNames);
+//            tableInfoManager.showTable(schemaName, logicalTableName, null);
+        }
+    }
+
+    public static void removeIndexesMetaOnly(Connection metaDbConnection, String schemaName, String logicalTableName,
+                                             List<String> indexNames, String dbIndex, String phyTableName) {
+        TableInfoManager.PhyInfoSchemaContext context =
+            CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
+
+        if (TStringUtil.isNotEmpty(logicalTableName) && indexNames != null && indexNames.size() != 0) {
+            TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(metaDbConnection);
+            tableInfoManager.removeIndexes(schemaName, logicalTableName, indexNames);
+        }
+    }
+
     public static void hideIndexMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
                                      String indexName) {
         if (TStringUtil.isNotEmpty(logicalTableName) && TStringUtil.isNotEmpty(indexName)) {
@@ -1666,6 +1694,13 @@ public class TableMetaChanger {
             // check referenced foreign key table and update fk index
             updateForeignKeyRefIndex(metaDbConnection, schemaName, logicalTableName);
         }
+    }
+
+    public static String buildNewPartTbNamePattern(String schemaName,
+                                                   String logicalTableName) {
+        SchemaManager schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        String newTbNamePattern = schemaManager.getTable(logicalTableName).getPartitionInfo().getPrefixTableName();
+        return newTbNamePattern;
     }
 
     public static String buildNewTbNamePattern(ExecutionContext executionContext, String schemaName,
@@ -1723,16 +1758,30 @@ public class TableMetaChanger {
     public static void removePartitionInfoMeta(Connection metaDbConn, String schemaName, String logicalTableName) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.deletePartitionInfo(schemaName, logicalTableName);
+        tableInfoManager.deletePartitionInfo(schemaName, logicalTableName, true);
     }
 
     public static void truncateTableWithRecycleBin(String schemaName, String tableName, String binTableName,
                                                    String tmpTableName, Connection metaDbConn,
                                                    ExecutionContext executionContext) {
-        TableRule tableRule = OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tableName);
-        TableRule tmpTableRule = OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tmpTableName);
-        String tbNamePattern = tableRule.getTbNamePattern();
-        String tmpTbNamePattern = tmpTableRule.getTbNamePattern();
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        String tbNamePattern;
+        String tmpTbNamePattern;
+        if (isNewPartDb) {
+            tbNamePattern =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName).getPartitionInfo()
+                    .getPrefixTableName();
+            tmpTbNamePattern =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tmpTableName)
+                    .getPartitionInfo()
+                    .getPrefixTableName();
+        } else {
+            TableRule tableRule = OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tableName);
+            TableRule tmpTableRule =
+                OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tmpTableName);
+            tbNamePattern = tableRule.getTbNamePattern();
+            tmpTbNamePattern = tmpTableRule.getTbNamePattern();
+        }
 
         // Rename sequence if exists.
         SequenceBaseRecord sequenceRecord = null;
@@ -1755,8 +1804,14 @@ public class TableMetaChanger {
         tableInfoManager.setConnection(metaDbConn);
 
         // Switch the tables.
-        tableInfoManager.renameTable(schemaName, tableName, binTableName, tbNamePattern, sequenceRecord);
-        tableInfoManager.renameTable(schemaName, tmpTableName, tableName, tmpTbNamePattern, sequenceRecordTmp);
+        if (isNewPartDb) {
+            tableInfoManager.renamePartitionTable(schemaName, tableName, binTableName, sequenceRecord);
+            tableInfoManager.renamePartitionTable(schemaName, tmpTableName, tableName, sequenceRecordTmp);
+        } else {
+            tableInfoManager.renameTable(schemaName, tableName, binTableName, tbNamePattern, sequenceRecord);
+            tableInfoManager.renameTable(schemaName, tmpTableName, tableName, tmpTbNamePattern, sequenceRecordTmp);
+        }
+
     }
 
     public static void afterTruncatingTableWithRecycleBin(String schemaName, String tableName, String binTableName) {

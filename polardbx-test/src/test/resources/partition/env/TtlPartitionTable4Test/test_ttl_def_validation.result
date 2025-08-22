@@ -1,0 +1,305 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION=true;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-04 11:00:00';
+## timezone_on_tz0800
+create table tc10_ttl_key_i_t1(
+a int not null auto_increment,
+b bigint not null,
+c varchar(32),
+primary key(a)
+)
+partition by key(a)
+partitions 4;
+## error_msg: $# not supported #$
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=b expire after 3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,number),
+archive_type='ROW';
+not supported
+## error_msg: $# is not range #$
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b) expire after 3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,number),
+archive_type='PARTITION';
+is not range
+## error_msg: $# not supported #$
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=b expire over 4 partitions timezone '+08:00',
+ttl_part_interval=interval(1,number),
+archive_type='ROW';
+not supported
+## error_msg: $# not supported #$
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b) expire after 3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+ttl_filter=cond_expr(c='0' and a=1),
+archive_type='ROW';
+## ok
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b) expire after 3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+archive_type='ROW';
+## error_msg: $# not supported #$
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b) expire after 3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+ttl_filter=cond_expr(c='a'),
+archive_type='ROW';
+## error_msg: $# be more than 0 #$
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b) expire after -3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+ttl_filter=cond_expr(c='a'),
+archive_type='ROW';
+be more than 0
+## error_msg: $# be more than 0 #$
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b),
+ttl_part_interval=interval(-1,DAY),
+archive_type='ROW';
+be more than 0
+## create ok
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b) expire after 3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+archive_type='ROW';
+## modify ok
+alter table tc10_ttl_key_i_t1 modify ttl set
+ttl_expr=from_unixtime(b) expire after 3 DAY timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+ttl_filter = cond_expr(c='0'),
+archive_type='ROW';
+drop table tc10_ttl_key_i_t1;
+create table tc10_ttl_key_d_t2(
+a int not null auto_increment,
+b datetime not null,
+c varchar(32),
+primary key(a)
+)
+partition by key(a)
+partitions 4;
+## error_msg: $# not supported #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr =`b` expire over 3 partitions timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+archive_type='ROW';
+not supported
+## error_msg: $# no any subpartitions #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr =`b` expire over 3 partitions timezone '+08:00',
+ttl_part_interval=interval(1,DAY),
+archive_type='SUBPARTITION';
+no any subpartitions
+## error_msg: $# is not range #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr =`b` expire over 3 partitions timezone '+08:00',
+ttl_part_interval=interval(1,number),
+archive_type='PARTITION';
+is not range
+## ok
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b`,
+ttl_part_interval=interval(1,DAY),
+archive_type='ROW';
+## error_msg: $# value must be more than 0 #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b` expire after -3 DAY timezone '+08:00';
+value must be more than 0
+## error_msg: $# too large #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b` expire after 10000 DAY timezone '+08:00'
+archive_table_pre_allocate=10000,
+archive_table_post_allocate=100,;
+too large
+## error_msg: $# too large #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b` expire after 10000 DAY timezone '+08:00'
+archive_table_pre_allocate=100
+archive_table_post_allocate=10000,;
+too large
+# ok
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b` expire after 10000 DAY timezone '+08:00'
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10;
+## error_msg: $# must be more than 0 #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b`,
+archive_table_pre_allocate=-10,
+archive_table_post_allocate=10;
+must be more than 0
+## error_msg: $# must be more than 0 #$
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b`,
+archive_table_pre_allocate=10,
+archive_table_post_allocate=-10;
+must be more than 0
+# ok
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b`,
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10,
+ttl_cleanup='on';
+show create table tc10_ttl_key_d_t2;
+Table,Create Table
+tc10_ttl_key_d_t2,CREATE TABLE `tc10_ttl_key_d_t2` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime NOT NULL,
+	`c` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b`, TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 10, ARCHIVE_TABLE_POST_ALLOCATE = 10 )
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+# ok
+alter table tc10_ttl_key_d_t2 remove ttl;
+# ok
+alter table tc10_ttl_key_d_t2 modify ttl set
+ttl_expr=`b` expire after 2 YEAR timezone '+08:00',
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10;
+drop table tc10_ttl_key_d_t2;
+create table tc10_ttl_rng_i_t3(
+a int not null auto_increment,
+b bigint not null,
+c varchar(32),
+primary key(a)
+)
+partition by range columns(a)
+(
+  partition p1 values less than(1704038400),
+  partition p2 values less than(1706716800)
+);
+## error_msg: $# not supported #$
+alter table tc10_ttl_rng_i_t3 modify ttl set
+ttl_expr=`b` expire over 4 partitions timezone '+08:00',
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10;
+not supported
+## error_msg: $# not a partition column #$
+alter table tc10_ttl_rng_i_t3 modify ttl set
+ttl_expr=`b`,
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10,
+ttl_part_interval=interval(1000,number),
+archive_type='PARTITION';
+not a partition column
+# ok
+alter table tc10_ttl_rng_i_t3 modify ttl set
+ttl_expr=`a` expire over 4 partitions timezone '+08:00',
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10,
+ttl_part_interval=interval(1000,number),
+ttl_cleanup='on',
+archive_type='PARTITION';
+show create table tc10_ttl_rng_i_t3;
+Table,Create Table
+tc10_ttl_rng_i_t3,CREATE TABLE `tc10_ttl_rng_i_t3` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` bigint(20) NOT NULL,
+	`c` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `a` EXPIRE OVER 4 PARTITIONS  TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1000, NUMBER), ARCHIVE_TYPE = 'PARTITION', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 10 )
+PARTITION BY RANGE COLUMNS(`a`)
+(PARTITION p1 VALUES LESS THAN (1704038400) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (1706716800) ENGINE = InnoDB)
+drop table tc10_ttl_rng_i_t3;
+create table tc10_ttl_rng_ntsp_d_t4(
+a int not null auto_increment,
+b datetime not null,
+c varchar(32),
+primary key(a)
+)
+partition by key(a)
+subpartition by range columns(b)
+(
+  partition p1
+    (
+    subpartition p1sp1 values less than('2024-01-01'),
+    subpartition p1sp2 values less than('2024-02-01')
+    )
+  ,
+  partition p2
+    (
+    subpartition p2sp1 values less than('2024-01-01'),
+    subpartition p2sp2 values less than('2024-02-01'),
+    subpartition p2sp3 values less than('2024-03-01')
+    )
+);
+## error_msg: $# is not templated subpartition #$
+alter table tc10_ttl_rng_ntsp_d_t4 modify ttl set
+ttl_expr=`b` expire after 4 DAY timezone '+08:00',
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10,
+ttl_part_interval=interval(1000,number),
+ttl_cleanup='on',
+archive_type='SUBPARTITION';
+is not templated subpartition
+## error_msg: $# is not templated subpartition #$
+alter table tc10_ttl_rng_ntsp_d_t4 modify ttl set
+ttl_expr=`b` expire after 4 DAY timezone '+08:00',
+archive_table_pre_allocate=10,
+archive_table_post_allocate=10,
+ttl_part_interval=interval(1000,number),
+ttl_cleanup='on',
+archive_type='SUBPARTITION';
+is not templated subpartition
+drop table tc10_ttl_rng_ntsp_d_t4;
+create table tc10_ttl_rng_tsp_d_t5(
+a int not null auto_increment,
+b datetime not null,
+c varchar(32),
+e datetime not null,
+primary key(a)
+)
+partition by key(a) partitions 2
+subpartition by range columns(b)
+(
+subpartition sp1 values less than('2024-01-01'),
+subpartition sp2 values less than('2024-02-01')
+);
+## error_msg: $# is not range partition #$
+alter table tc10_ttl_rng_tsp_d_t5 modify ttl set
+ttl_expr=`b`,
+ttl_part_interval=interval(1,DAY),
+archive_type='PARTITION';
+is not range partition
+## error_msg: $#  not supported #$
+alter table tc10_ttl_rng_tsp_d_t5 modify ttl set
+ttl_expr=`b`,
+ttl_part_interval=interval(1000,number),
+archive_type='SUBPARTITION';
+not supported
+## error_msg: $# not supported #$
+alter table tc10_ttl_rng_tsp_d_t5 modify ttl set
+ttl_expr=`b`,
+ttl_part_interval=interval(1000,number),
+archive_type='SUBPARTITION';
+not supported
+## error_msg: $# not a partition column #$
+alter table tc10_ttl_rng_tsp_d_t5 modify ttl set
+ttl_expr=`d`,
+ttl_part_interval=interval(1,DAY),
+archive_type='SUBPARTITION';
+not a partition column
+# ok
+alter table tc10_ttl_rng_tsp_d_t5 modify ttl set
+ttl_part_interval=interval(1,DAY),
+archive_type='SUBPARTITION';
+# ok
+alter table tc10_ttl_rng_tsp_d_t5 modify ttl set
+ttl_expr=`b` expire after 3 YEAR timezone '+08:00',
+ttl_part_interval=interval(1,MONTH),
+ttl_cleanup='on',
+archive_type='SUBPARTITION';
+## error_msg: $# not supported #$
+alter table tc10_ttl_rng_tsp_d_t5 modify ttl set
+ttl_expr=`b` expire after 3 YEAR timezone '+08:00',
+ttl_part_interval=interval(1,MONTH),
+ttl_filter=cond_expr(c='0'),
+archive_type='SUBPARTITION';
+not supported
+drop table tc10_ttl_rng_tsp_d_t5;

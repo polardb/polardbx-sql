@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 
 import java.util.concurrent.TimeUnit;
@@ -30,43 +31,35 @@ import java.util.concurrent.TimeUnit;
  */
 public class TableMetaChangePreemptiveSyncAction implements ISyncAction {
     protected final static Logger logger = LoggerFactory.getLogger(TableMetaChangePreemptiveSyncAction.class);
-
     private String schemaName;
     private String primaryTableName;
-    private Long initWait;
-    private Long interval;
-    private TimeUnit timeUnit;
-
+    private PreemptiveTime preemptiveTime;
     private Boolean forceSyncFailed;
 
     public TableMetaChangePreemptiveSyncAction() {
-
     }
 
-    public TableMetaChangePreemptiveSyncAction(String schemaName, String tableName, Long initWait, Long interval,
-                                               TimeUnit timeUnit) {
+
+
+    public TableMetaChangePreemptiveSyncAction(String schemaName, String tableName, PreemptiveTime preemptiveTime) {
         this.schemaName = schemaName;
         this.primaryTableName = tableName;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
         this.forceSyncFailed = false;
     }
 
-    public TableMetaChangePreemptiveSyncAction(String schemaName, String tableName, Long initWait, Long interval,
-                                               TimeUnit timeUnit, Boolean forceSyncFailed) {
+    public TableMetaChangePreemptiveSyncAction(String schemaName, String tableName, PreemptiveTime preemptiveTime,
+                                               Boolean forceSyncFailed) {
         this.schemaName = schemaName;
+        this.preemptiveTime = preemptiveTime;
         this.primaryTableName = tableName;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
         this.forceSyncFailed = forceSyncFailed;
     }
 
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        ((GmsTableMetaManager) oldSchemaManager).tonewversion(primaryTableName, true, initWait, interval, timeUnit,
+        ((GmsTableMetaManager) oldSchemaManager).tonewversion(primaryTableName, true, preemptiveTime,
             true, forceSyncFailed);
         return null;
     }
@@ -91,29 +84,14 @@ public class TableMetaChangePreemptiveSyncAction implements ISyncAction {
         return logger;
     }
 
-    public Long getInitWait() {
-        return initWait;
+    public PreemptiveTime getPreemptiveTime() {
+        return preemptiveTime;
     }
 
-    public void setInitWait(Long initWait) {
-        this.initWait = initWait;
+    public void setPreemptiveTime(PreemptiveTime preemptiveTime) {
+        this.preemptiveTime = preemptiveTime;
     }
 
-    public Long getInterval() {
-        return interval;
-    }
-
-    public void setInterval(Long interval) {
-        this.interval = interval;
-    }
-
-    public TimeUnit getTimeUnit() {
-        return timeUnit;
-    }
-
-    public void setTimeUnit(TimeUnit timeUnit) {
-        this.timeUnit = timeUnit;
-    }
 
     public Boolean getForceSyncFailed() {
         return forceSyncFailed;

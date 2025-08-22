@@ -40,11 +40,7 @@ import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class AlterTableGroupReorgPartitionJobFactory extends AlterTableGroupBaseJobFactory {
 
@@ -52,7 +48,7 @@ public class AlterTableGroupReorgPartitionJobFactory extends AlterTableGroupBase
                                                    AlterTableGroupReorgPartitionPreparedData preparedData,
                                                    Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                                    Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                                   Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                                   Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                                    Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                    Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                                    Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -176,7 +172,7 @@ public class AlterTableGroupReorgPartitionJobFactory extends AlterTableGroupBase
                                           ExecutionContext executionContext) {
         AlterTableGroupReorgPartitionBuilder alterTableGroupReorgPartitionBuilder =
             new AlterTableGroupReorgPartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableGroupReorgPartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableGroupReorgPartitionBuilder.getTargetTablesTopology();

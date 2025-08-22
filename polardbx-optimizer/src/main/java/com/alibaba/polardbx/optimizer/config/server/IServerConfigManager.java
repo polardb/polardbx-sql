@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import org.apache.commons.collections.ListUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

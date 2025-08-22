@@ -28,6 +28,7 @@ import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptCluster;
@@ -41,10 +42,12 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
+import static com.alibaba.polardbx.gms.module.LogLevel.WARNING;
 
 public class PlanInfo {
 
     public static int INVAILD_HASH_CODE = -1;
+    public static int REBUILD_PLAN_HASH_CODE = -2;
 
     private int id;
 
@@ -232,8 +235,10 @@ public class PlanInfo {
     }
 
     public void resetPlan(RelNode newPlan) {
-        this.compressPlanByteArray = PlanManagerUtil.compressPlan(PlanManagerUtil.relNodeToJson(newPlan));
+        String planJson = PlanManagerUtil.relNodeToJson(newPlan);
+        this.compressPlanByteArray = PlanManagerUtil.compressPlan(planJson);
         this.plan = newPlan;
+        this.id = planJson.hashCode();
     }
 
     public RelNode getPlan(RelOptCluster cluster, RelOptSchema relOptSchema) {
@@ -362,5 +367,23 @@ public class PlanInfo {
     // only for ut test
     public void setId(int id) {
         this.id = id;
+    }
+
+    public static Integer genPlanId(ExecutionPlan plan) {
+        if (plan == null || plan.getPlan() == null) {
+            return null;
+        }
+        try {
+            return PlanManagerUtil.relNodeToJson(plan.getPlan()).hashCode();
+        } catch (Throwable t) {
+            try {
+                ModuleLogInfo.getInstance()
+                    .logRecord(Module.SPM, LogPattern.UNEXPECTED, new String[] {"PLAN TO JSON", t.getMessage()},
+                        WARNING);
+            } catch (Throwable ignore) {
+            }
+            return null;
+        }
+
     }
 }

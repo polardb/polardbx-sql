@@ -1,0 +1,135 @@
+## test hash/one col/int
+
+## test drop partition for range
+drop table if exists tbl_rng;
+drop table if exists tbl_rng1;
+drop table if exists tbl_rng2;
+create table if not exists tbl_rng (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p4 values less than (500)
+);
+create table if not exists tbl_rng1 (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p4 values less than (500)
+);
+create table if not exists tbl_rng2 (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p40 values less than (500)
+);
+show create table tbl_rng;
+insert into tbl_rng values(10),(11),(12),(101),(102),(103),(201),(202),(203),(301);
+alter table tbl_rng add partition (partition p5 values less than (1000));
+insert into tbl_rng values(13),(14),(15),(104),(105),(106),(204),(205),(206),(302);
+insert into tbl_rng1 values(10),(11),(12),(101),(102),(103),(201),(202),(203),(301);
+alter table tbl_rng1 add partition (partition p5 values less than (1000));
+insert into tbl_rng1 values(13),(14),(15),(104),(105),(106),(204),(205),(206),(302);
+show create table tbl_rng;
+insert into tbl_rng2 values(10),(11),(12),(101),(102),(103),(201),(202),(203),(301);
+alter table tbl_rng2 add partition (partition p5 values less than (1000));
+insert into tbl_rng2 values(16),(17),(18),(110),(111),(112),(210),(211),(212);
+show create table tbl_rng;
+show create table tbl_rng1;
+show create table tbl_rng2;
+select * from tbl_rng order by a;
+select * from tbl_rng1 order by a;
+select * from tbl_rng2 order by a;
+
+drop table if exists tbl_rng_col;
+drop table if exists tbl_rng_col1;
+create table if not exists tbl_rng_col (a varchar(20) not null,b int, primary key (`a`))
+partition by range columns(a, b)
+( partition p1 values less than ('100',20),
+partition p2 values less than ('200',20),
+partition p3 values less than ('300',20),
+partition p4 values less than ('500',500)
+);
+create table if not exists tbl_rng_col1 (a varchar(20) not null,b int, primary key (`a`))
+partition by range columns(a, b)
+( partition p1 values less than ('100',20),
+partition p2 values less than ('200',20),
+partition p3 values less than ('300',20),
+partition p4 values less than ('500',500)
+);
+show create table tbl_rng_col;
+insert into tbl_rng_col values('10',10),('11',11),('12',12),('13',101),('150',10),('151',103),('152',201),('250',202),('251',203),('252',301),('350',10);
+alter table tbl_rng_col add partition (partition p5 values less than ('800',500));
+insert into tbl_rng_col values('20',10),('21',11),('22',12),('23',101),('160',10),('161',103),('162',201),('260',202),('261',203),('262',301),('360',10);
+insert into tbl_rng_col1 values('10',10),('11',11),('12',12),('13',101),('150',10),('151',103),('152',201),('250',202),('251',203),('252',301),('350',10);
+alter table tbl_rng_col1 add partition (partition p5 values less than ('800',500));
+insert into tbl_rng_col1 values('20',10),('21',11),('22',12),('23',101),('160',10),('161',103),('162',201),('260',202),('261',203),('262',301),('360',10);
+show create table tbl_rng_col;
+alter table tbl_rng_col drop partition p4;
+insert into tbl_rng_col values('30',10),('170',10),('171',103),('172',201),('270',202),('271',203),('272',301);
+alter table tbl_rng_col1 drop partition p4;
+insert into tbl_rng_col1 values('30',10),('170',10),('171',103),('172',201),('270',202),('271',203),('272',301);
+show create table tbl_rng_col;
+show create table tbl_rng_col1;
+select * from tbl_rng_col order by a;
+select * from tbl_rng_col1 order by a;
+
+drop table if exists tbl_list;
+drop table if exists tbl_list1;
+create table if not exists tbl_list (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+partition p2 values in (100,101),
+partition p3 values in (200,201),
+partition p4 values in (300)
+);
+create table if not exists tbl_list1 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+partition p2 values in (100,101),
+partition p3 values in (200,201),
+partition p4 values in (300)
+);
+show create table tbl_list;
+insert into tbl_list values(10),(11),(100),(101),(201),(300);
+alter table tbl_list add partition (partition p5 values in (12,13,14,15,102,103,104,105,106,202,203,204,205,206));
+insert into tbl_list values(13),(14),(15),(104),(105),(106),(204),(205),(206);
+insert into tbl_list1 values(10),(11),(100),(101),(201),(300);
+alter table tbl_list1 add partition (partition p5 values in (default));
+insert into tbl_list1 values(13),(14),(15),(104),(105),(106),(204),(205),(206);
+show create table tbl_list;
+show create table tbl_list1;
+select * from tbl_list order by a;
+select * from tbl_list1 order by a;
+
+drop table if exists tbl_list_col;
+drop table if exists tbl_list_col1;
+create table if not exists tbl_list_col (a int not null, b int, primary key (`a`))
+partition by list columns(a, b)
+( partition p1 values in ((10,11),(12,13)),
+partition p2 values in ((100,101),(100,103)),
+partition p3 values in ((200,201),(100,1321)),
+partition p4 values in ((300,301))
+);
+create table if not exists tbl_list_col1 (a int not null, b int, primary key (`a`))
+partition by list columns(a, b)
+( partition p1 values in ((10,11),(12,13)),
+partition p2 values in ((100,101),(100,103)),
+partition p3 values in ((200,201),(100,1321)),
+partition p4 values in ((300,301))
+);
+show create table tbl_list_col;
+insert into tbl_list_col values(10,11),(100,101),(300,301);
+alter table tbl_list_col add partition (partition p5 values in ((301,101)));
+insert into tbl_list_col values(12,13),(301,101);
+insert into tbl_list_col1 values(10,11),(100,101),(300,301);
+alter table tbl_list_col1 add partition (partition p5 values in (default));
+insert into tbl_list_col1 values(12,13),(100,1321),(301,101);
+alter table tbl_list_col1 drop partition p4;
+insert into tbl_list_col1 values(200,201);
+show create table tbl_list_col;
+show create table tbl_list_col1;
+select * from tbl_list_col order by a,b;
+select * from tbl_list_col1 order by a,b;

@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.gms.util.StatisticFullProcessUtils;
 import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
@@ -36,8 +36,8 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.server.ServerConnection;
+import com.google.common.collect.Sets;
 
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -51,14 +51,6 @@ public class CollectStatistic {
     private static final Logger logger = LoggerFactory.getLogger(CollectStatistic.class);
 
     public static boolean response(ServerConnection c) {
-        // collect rowcount
-        try {
-            StatisticUtils.collectRowCountAll();
-        } catch (SQLException e) {
-            logger.error(e.getMessage(), e);
-            c.writeErrMessage(ErrorCode.ERR_ROWCOUNT_COLLECT, "rowcount collect error");
-            return false;
-        }
         List<String> schemas = DbInfoManager.getInstance().getDbList();
         for (String schema : schemas) {
             schema = schema.toLowerCase(Locale.ROOT);
@@ -66,7 +58,7 @@ public class CollectStatistic {
                 continue;
             }
 
-            Set<String> logicalTableSet = StatisticManager.getInstance().getTableNamesCollected(schema);
+            Set<String> logicalTableSet = Sets.newHashSet();
             for (TableMeta tableMeta : OptimizerContext.getContext(schema).getLatestSchemaManager()
                 .getAllUserTables()) {
                 logicalTableSet.add(tableMeta.getTableName().toLowerCase());
@@ -91,7 +83,7 @@ public class CollectStatistic {
                             schema + "," + logicalTableName
                         },
                         NORMAL);
-                StatisticUtils.sampleOneTable(schema, logicalTableName);
+                StatisticFullProcessUtils.sampleOneTable(schema, logicalTableName);
             }
         }
 

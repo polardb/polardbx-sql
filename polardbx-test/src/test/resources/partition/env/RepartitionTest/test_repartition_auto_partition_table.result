@@ -1,0 +1,52 @@
+DROP TABLE IF EXISTS tb_log_1
+CREATE PARTITION TABLE `tb_log_1` (
+	`id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '主键',
+	`action` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+	`server_ip` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+	`account_masked` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+	`user_masked` varchar(55) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+	`state` int(11) NULL DEFAULT NULL COMMENT '状态',
+	`request_content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '请求内容',
+	`response_content` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '响应内容',
+	`res_time` datetime(0) NULL DEFAULT NULL COMMENT '响应时间',
+	`create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
+	`consumer_tag` tinyint(1) NULL DEFAULT NULL,
+	`update_time` datetime(0) NULL DEFAULT NULL COMMENT '更新时间',
+	`delete_tag` tinyint(1) NULL DEFAULT NULL,
+	`main_user_masked` varchar(55) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+	PRIMARY KEY USING BTREE (`id`),
+	INDEX `idx_action` USING BTREE(`action`),
+	INDEX `idx_user_masked` USING BTREE(`user_masked`),
+	INDEX `idx_server_ip` USING BTREE(`server_ip`),
+	INDEX `idx_action_consumerTag` USING BTREE(`action`, `consumer_tag`)
+) ENGINE = InnoDB
+ALTER TABLE tb_log_1
+PARTITION BY KEY (main_user_masked) PARTITIONS 3
+LOCALITY = ''
+SHOW FULL CREATE TABLE tb_log_1
+Table,Create Table
+tb_log_1,CREATE TABLE `tb_log_1` (
+	`id` varchar(100) NOT NULL COMMENT '主键',
+	`action` varchar(30) DEFAULT NULL,
+	`server_ip` varchar(30) DEFAULT NULL,
+	`account_masked` varchar(30) DEFAULT NULL,
+	`user_masked` varchar(55) DEFAULT NULL,
+	`state` int(11) DEFAULT NULL COMMENT '状态',
+	`request_content` text COMMENT '请求内容',
+	`response_content` longtext COMMENT '响应内容',
+	`res_time` datetime DEFAULT NULL COMMENT '响应时间',
+	`create_time` datetime DEFAULT NULL COMMENT '创建时间',
+	`consumer_tag` tinyint(1) DEFAULT NULL,
+	`update_time` datetime DEFAULT NULL COMMENT '更新时间',
+	`delete_tag` tinyint(1) DEFAULT NULL,
+	`main_user_masked` varchar(55) DEFAULT NULL,
+	PRIMARY KEY USING BTREE (`id`),
+	LOCAL KEY `idx_action_consumerTag` USING BTREE (`action`, `consumer_tag`),
+	LOCAL KEY `idx_user_masked` USING BTREE (`user_masked`),
+	LOCAL KEY `idx_action` USING BTREE (`action`),
+	LOCAL KEY `idx_server_ip` USING BTREE (`server_ip`),
+	LOCAL KEY `auto_shard_key_main_user_masked` USING BTREE (`main_user_masked`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`main_user_masked`)
+PARTITIONS 3
+/* tablegroup = `tg` */

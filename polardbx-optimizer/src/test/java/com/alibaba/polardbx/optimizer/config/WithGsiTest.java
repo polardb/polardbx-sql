@@ -20,6 +20,7 @@ package com.alibaba.polardbx.optimizer.config;
 
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -53,7 +54,7 @@ public class WithGsiTest {
         GsiMetaManager.GsiIndexMetaBean indexMetaBean1 =
             new GsiMetaManager.GsiIndexMetaBean(null, schemaName, tableName, true, schemaName, indexName,
                 Collections.emptyList(), null, null, null, null, null, null,
-                IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE);
+                IndexStatus.PUBLIC, 1, true, false,  IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
 
         indexMap.put("myIndex", indexMetaBean1);
 
@@ -77,7 +78,7 @@ public class WithGsiTest {
         GsiMetaManager.GsiIndexMetaBean indexMetaBean2 =
             new GsiMetaManager.GsiIndexMetaBean(null, schemaName, tableName, true, schemaName, indexName,
                 Collections.emptyList(), null, null, null, null, null, null,
-                IndexStatus.PUBLIC, 1, true, true, IndexVisibility.VISIBLE);
+                IndexStatus.PUBLIC, 1, true, true,  IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
         indexMap.put("myIndex", indexMetaBean2);
 
         Assert.assertTrue(tableMeta.withGsi());

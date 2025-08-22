@@ -7,26 +7,28 @@ import com.alibaba.polardbx.druid.util.StringUtils;
  */
 public enum TtlTimeUnit {
 
+    UNDEFINED(-1, "UNDEFINED"),
     YEAR(0, "YEAR"),
     MONTH(1, "MONTH"),
     DAY(2, "DAY"),
     HOUR(3, "HOUR"),
     MINUTE(4, "MINUTE"),
-    SECOND(5, "SECOND");
-    private int timeUnitCode;
-    private String timeUnitName;
+    SECOND(5, "SECOND"),
+    NUMBER(10, "NUMBER");
+    private int unitCode;
+    private String unitName;
 
     TtlTimeUnit(int code, String name) {
-        this.timeUnitCode = code;
-        this.timeUnitName = name;
+        this.unitCode = code;
+        this.unitName = name;
     }
 
-    public int getTimeUnitCode() {
-        return timeUnitCode;
+    public int getUnitCode() {
+        return unitCode;
     }
 
-    public String getTimeUnitName() {
-        return timeUnitName;
+    public String getUnitName() {
+        return unitName;
     }
 
 //    public static int convertInterval(
@@ -52,6 +54,8 @@ public enum TtlTimeUnit {
 
     public static TtlTimeUnit of(Integer timeUnitCode) {
         switch (timeUnitCode) {
+        case -1:
+            return TtlTimeUnit.UNDEFINED;
         case 0:
             return TtlTimeUnit.YEAR;
         case 1:
@@ -64,6 +68,8 @@ public enum TtlTimeUnit {
             return TtlTimeUnit.MINUTE;
         case 5:
             return TtlTimeUnit.SECOND;
+        case 10:
+            return TtlTimeUnit.NUMBER;
         }
         return null;
     }
@@ -74,20 +80,28 @@ public enum TtlTimeUnit {
             return null;
         }
 
-        if (TtlTimeUnit.YEAR.getTimeUnitName().equalsIgnoreCase(timeUnitName)) {
+        if (TtlTimeUnit.YEAR.getUnitName().equalsIgnoreCase(timeUnitName)) {
             return TtlTimeUnit.YEAR;
-        } else if (TtlTimeUnit.MONTH.getTimeUnitName().equalsIgnoreCase(timeUnitName)) {
+        } else if (TtlTimeUnit.MONTH.getUnitName().equalsIgnoreCase(timeUnitName)) {
             return TtlTimeUnit.MONTH;
-        } else if (TtlTimeUnit.DAY.getTimeUnitName().equalsIgnoreCase(timeUnitName)) {
+        } else if (TtlTimeUnit.DAY.getUnitName().equalsIgnoreCase(timeUnitName)) {
             return TtlTimeUnit.DAY;
-        } else if (TtlTimeUnit.HOUR.getTimeUnitName().equalsIgnoreCase(timeUnitName)) {
+        } else if (TtlTimeUnit.HOUR.getUnitName().equalsIgnoreCase(timeUnitName)) {
             return TtlTimeUnit.HOUR;
-        } else if (TtlTimeUnit.MINUTE.getTimeUnitName().equalsIgnoreCase(timeUnitName)) {
+        } else if (TtlTimeUnit.MINUTE.getUnitName().equalsIgnoreCase(timeUnitName)) {
             return TtlTimeUnit.MINUTE;
-        } else if (TtlTimeUnit.SECOND.getTimeUnitName().equalsIgnoreCase(timeUnitName)) {
+        } else if (TtlTimeUnit.SECOND.getUnitName().equalsIgnoreCase(timeUnitName)) {
             return TtlTimeUnit.SECOND;
+        } else if (TtlTimeUnit.NUMBER.getUnitName().equalsIgnoreCase(timeUnitName)) {
+            return TtlTimeUnit.NUMBER;
+        } else if (TtlTimeUnit.UNDEFINED.getUnitName().equalsIgnoreCase(timeUnitName)) {
+            return TtlTimeUnit.UNDEFINED;
         } else {
             return null;
         }
+    }
+
+    public boolean isNumberUnit() {
+        return this == TtlTimeUnit.NUMBER;
     }
 }

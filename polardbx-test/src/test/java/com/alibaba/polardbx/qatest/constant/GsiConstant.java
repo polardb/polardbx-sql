@@ -127,6 +127,7 @@ public class GsiConstant {
             ImmutableList.of("insert into " + primaryTableName + "(id,c_bit_8) values(null,0);\n",
                 "insert into " + primaryTableName + "(id,c_bit_8) values(null,1);\n",
                 "insert into " + primaryTableName + "(id,c_bit_8) values(null,2);\n",
+                "insert into " + primaryTableName + "(id,c_bit_8) values(null,0x32);\n",
                 "insert into " + primaryTableName + "(id,c_bit_8) values(null,256);\n"));
         builder.put(C_BIT_16,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_bit_16) values(null,0);\n",
@@ -142,6 +143,7 @@ public class GsiConstant {
             ImmutableList.of("insert into " + primaryTableName + "(id,c_bit_64) values(null,0);\n",
                 "insert into " + primaryTableName + "(id,c_bit_64) values(null,1);\n",
                 "insert into " + primaryTableName + "(id,c_bit_64) values(null,2);\n",
+                "insert into " + primaryTableName + "(id,c_bit_64) values(null,477845658932756);\n",
                 "insert into " + primaryTableName + "(id,c_bit_64) values(null,18446744073709551615);\n"));
         builder.put(C_TINYINT_1,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_tinyint_1) values(null,-1);\n",

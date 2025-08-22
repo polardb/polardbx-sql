@@ -27,18 +27,16 @@ import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
-import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.sync.SyncScope;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import lombok.Getter;
 
 import java.sql.Connection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * GSI表add column时，插入GSI的index元数据。
@@ -52,15 +50,18 @@ public class GsiInsertColumnMetaTask extends BaseGmsTask {
 
     final String indexName;
     final List<String> columns;
+    final Map<String, String> isNullable;
 
     @JSONCreator
     public GsiInsertColumnMetaTask(String schemaName,
                                    String logicalTableName,
                                    String indexName,
-                                   List<String> columns) {
+                                   List<String> columns,
+                                   Map<String, String> isNullable) {
         super(schemaName, logicalTableName);
         this.indexName = indexName;
         this.columns = ImmutableList.copyOf(columns);
+        this.isNullable = isNullable;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -70,8 +71,6 @@ public class GsiInsertColumnMetaTask extends BaseGmsTask {
      */
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        final TableMeta primaryTableMeta =
-            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
         final GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean =
             ExecutorContext
                 .getContext(schemaName)
@@ -84,13 +83,14 @@ public class GsiInsertColumnMetaTask extends BaseGmsTask {
 
         final List<GsiMetaManager.IndexRecord> indexRecords =
             GsiUtils.buildIndexMetaByAddColumns(
-                primaryTableMeta,
-                Lists.newArrayList(columns),
+                columns,
                 schemaName,
                 logicalTableName,
                 indexName,
                 seqInIndex,
-                IndexStatus.PUBLIC
+                IndexStatus.PUBLIC,
+                isNullable,
+                gsiIndexMetaBean.version
             );
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);

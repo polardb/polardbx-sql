@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.chunk;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
@@ -44,10 +45,12 @@ public class DecimalBlockTest extends BaseBlockTest {
     @Test
     public void testSizeInBytes() {
         DecimalBlock block = new DecimalBlock(new DecimalType(), 1024);
-        Assert.assertEquals("delay memory allocation should contains the nulls array", 1024, block.getElementUsedBytes());
+        MemoryCountable.checkDeviation(block, .05d, true);
+        Assert.assertEquals("delay memory allocation should contains the nulls array", 1240, block.getElementUsedBytes());
 
         block.setElementAt(0, Decimal.fromString("3.14"));
-        Assert.assertEquals("should allocate memory after setting an element", 41984, block.getElementUsedBytes());
+        MemoryCountable.checkDeviation(block, .05d, true);
+        Assert.assertEquals("should allocate memory after setting an element", 42232, block.getElementUsedBytes());
     }
 
     @Test
@@ -87,7 +90,9 @@ public class DecimalBlockTest extends BaseBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         Block block = blockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertEquals(values.length, block.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -113,6 +118,8 @@ public class DecimalBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+        MemoryCountable.checkDeviation(anotherBuilder, .05d, true);
+        MemoryCountable.checkDeviation(anotherBuilder.build(), .05d, true);
 
         Slice slice = Slices.allocate(10000);
         DecimalBlockEncoding encoding = new DecimalBlockEncoding();
@@ -128,6 +135,7 @@ public class DecimalBlockTest extends BaseBlockTest {
                 assertTrue(block.isNull(i));
             }
         }
+        MemoryCountable.checkDeviation(deserializedBlock, .05d, true);
     }
 
     @Test
@@ -155,6 +163,7 @@ public class DecimalBlockTest extends BaseBlockTest {
 
         encoding.writeBlock(slice.getOutput(), blockBuilder.build());
         Block deserializedBlock = encoding.readBlock(slice.getInput());
+        MemoryCountable.checkDeviation(deserializedBlock, .05d, true);
 
         assertEquals(values.length, deserializedBlock.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -164,6 +173,7 @@ public class DecimalBlockTest extends BaseBlockTest {
                 assertTrue(deserializedBlock.isNull(i));
             }
         }
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
     }
 
     @Test
@@ -175,6 +185,7 @@ public class DecimalBlockTest extends BaseBlockTest {
         builder.writeDecimal(from("1111.04"));
         builder.writeDecimal(from("12345678.999999999"));
         DecimalBlock block = (DecimalBlock) builder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertTrue(block.isSimple());
 
@@ -184,6 +195,7 @@ public class DecimalBlockTest extends BaseBlockTest {
         builder1.writeDecimal(from("1111.04"));
         builder1.writeDecimal(from("-12345678.999999999"));
         DecimalBlock block1 = (DecimalBlock) builder1.build();
+        MemoryCountable.checkDeviation(block1, .05d, true);
 
         assertTrue(!block1.isSimple());
 
@@ -193,8 +205,12 @@ public class DecimalBlockTest extends BaseBlockTest {
         builder2.writeDecimal(from("1111.00000000000004"));
         builder2.writeDecimal(from("12345678.9999999999"));
         DecimalBlock block2 = (DecimalBlock) builder2.build();
+        MemoryCountable.checkDeviation(block2, .05d, true);
 
         assertTrue(!block2.isSimple());
+        MemoryCountable.checkDeviation(builder, .05d, true);
+        MemoryCountable.checkDeviation(builder1, .05d, true);
+        MemoryCountable.checkDeviation(builder2, .05d, true);
     }
 
     @Test
@@ -225,6 +241,7 @@ public class DecimalBlockTest extends BaseBlockTest {
         builder.writeDecimal(from(4, 2));
         builder.writeDecimal(from(16, 5));
         block = (DecimalBlock) builder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertTrue(!block.isSimple());
 
@@ -236,6 +253,7 @@ public class DecimalBlockTest extends BaseBlockTest {
         // not_simple
         builder.writeDecimal(from(-16, 5));
         block = (DecimalBlock) builder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertTrue(!block.isSimple());
 
@@ -247,8 +265,10 @@ public class DecimalBlockTest extends BaseBlockTest {
         builder.writeDecimal(from(111100000000000004L, 14));
         builder.writeDecimal(from(123456789999999999L, 10));
         block = (DecimalBlock) builder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertTrue(!block.isSimple());
+        MemoryCountable.checkDeviation(builder, .05d, true);
     }
 
     @Test
@@ -269,6 +289,8 @@ public class DecimalBlockTest extends BaseBlockTest {
         for (int i = 0; i < count; i++) {
             Assert.assertEquals(decimal64Values[i], builderWithDefaultScale.getLong(i));
         }
+        MemoryCountable.checkDeviation(decimal64Block, .05d, true);
+        MemoryCountable.checkDeviation(builderWithDefaultScale, .05d, true);
     }
 
     @Test
@@ -290,6 +312,7 @@ public class DecimalBlockTest extends BaseBlockTest {
         decimal64Builder.appendNull();
 
         DecimalBlock decimal64Block = (DecimalBlock) decimal64Builder.build();
+        MemoryCountable.checkDeviation(decimal64Block, .05d, true);
         Assert.assertTrue(decimal64Block.isDecimal64());
 
         // writePositionTo decimal64Builder
@@ -338,6 +361,10 @@ public class DecimalBlockTest extends BaseBlockTest {
             Assert.assertEquals("WritePosition to normal decimalBuilder result differs",
                 decimal64Block.getDecimal(i), toWriteNormalDecimalBuilder.getDecimal(i + 1));
         }
+
+        MemoryCountable.checkDeviation(toWriteNormalDecimalBuilder, .05d, true);
+        MemoryCountable.checkDeviation(toWriteDecimal64Builder, .05d, true);
+        MemoryCountable.checkDeviation(toWriteDecimal128Builder, .05d, true);
     }
 
     @Test
@@ -360,6 +387,8 @@ public class DecimalBlockTest extends BaseBlockTest {
         }
         DecimalBlock decimal64Block = (DecimalBlock) decimal64Builder.build();
         DecimalBlock normalBlock = (DecimalBlock) normalBuilder.build();
+        MemoryCountable.checkDeviation(decimal64Block, .05d, true);
+        MemoryCountable.checkDeviation(normalBlock, .05d, true);
 
         Assert.assertTrue(decimal64Block.isDecimal64());
         Assert.assertTrue(normalBlock.getState().isNormal());
@@ -368,6 +397,8 @@ public class DecimalBlockTest extends BaseBlockTest {
             Assert.assertEquals("HashCode does not equal: " + normalBlock.getDecimal(i).toString(),
                 normalBlock.hashCode(i), decimal64Block.hashCode(i));
         }
+        MemoryCountable.checkDeviation(decimal64Builder, .05d, true);
+        MemoryCountable.checkDeviation(normalBuilder, .05d, true);
     }
 
     @Test
@@ -390,6 +421,8 @@ public class DecimalBlockTest extends BaseBlockTest {
         }
         DecimalBlock decimal64Block = (DecimalBlock) decimal64Builder.build();
         DecimalBlock normalBlock = (DecimalBlock) normalBuilder.build();
+        MemoryCountable.checkDeviation(decimal64Block, .05d, true);
+        MemoryCountable.checkDeviation(normalBlock, .05d, true);
 
         Assert.assertTrue(decimal64Block.isDecimal64());
         Assert.assertTrue(normalBlock.getState().isNormal());
@@ -427,6 +460,9 @@ public class DecimalBlockTest extends BaseBlockTest {
         DecimalBlock decimal128Block = (DecimalBlock) decimal128Builder.build();
         DecimalBlock normalBlock = (DecimalBlock) normalBuilder.build();
 
+        MemoryCountable.checkDeviation(decimal128Block, .05d, true);
+        MemoryCountable.checkDeviation(normalBlock, .05d, true);
+
         Assert.assertTrue(decimal128Block.isDecimal128());
         Assert.assertTrue(normalBlock.getState().isNormal());
 
@@ -462,6 +498,9 @@ public class DecimalBlockTest extends BaseBlockTest {
         }
         DecimalBlock decimal128Block = (DecimalBlock) decimal128Builder.build();
         DecimalBlock normalBlock = (DecimalBlock) normalBuilder.build();
+
+        MemoryCountable.checkDeviation(decimal128Block, .05d, true);
+        MemoryCountable.checkDeviation(normalBlock, .05d, true);
 
         Assert.assertTrue(decimal128Block.isDecimal128());
         Assert.assertTrue(normalBlock.getState().isNormal());
@@ -573,6 +612,7 @@ public class DecimalBlockTest extends BaseBlockTest {
         }
 
         DecimalBlock decimalBlock = (DecimalBlock) blockBuilder.build();
+        MemoryCountable.checkDeviation(decimalBlock, .05d, true);
         Assert.assertTrue(decimalBlock.isDecimal128());
         for (int i = 0; i < count; i++) {
             Decimal expectDec = expectedResult.get(i);
@@ -661,6 +701,13 @@ public class DecimalBlockTest extends BaseBlockTest {
         DecimalBlock normalBlock1 = (DecimalBlock) normalBuilder1.build();
         DecimalBlock normalBlock2 = (DecimalBlock) normalBuilder2.build();
 
+        MemoryCountable.checkDeviation(decimal64Block1, .05d, true);
+        MemoryCountable.checkDeviation(decimal64Block2, .05d, true);
+        MemoryCountable.checkDeviation(decimal128Block1, .05d, true);
+        MemoryCountable.checkDeviation(decimal128Block2, .05d, true);
+        MemoryCountable.checkDeviation(normalBlock1, .05d, true);
+        MemoryCountable.checkDeviation(normalBlock2, .05d, true);
+
         Assert.assertTrue(decimal64Block1.isDecimal64());
         Assert.assertTrue(decimal64Block2.isDecimal64());
         Assert.assertTrue(decimal128Block1.isDecimal128());
@@ -731,6 +778,7 @@ public class DecimalBlockTest extends BaseBlockTest {
             decimal64Builder.writeLong(decimal64Values[i]);
         }
         DecimalBlock decimal64Block = (DecimalBlock) decimal64Builder.build();
+        MemoryCountable.checkDeviation(decimal64Block, .05d, true);
 
         DecimalBlock unallocOutput = new DecimalBlock(decimalType, count);
         Assert.assertTrue("Actual state: " + unallocOutput.getState(),
@@ -801,6 +849,7 @@ public class DecimalBlockTest extends BaseBlockTest {
         DecimalBlock decimal128Block = genRandomDecimal128BlockWithNull(count, scale);
 
         DecimalBlock unallocOutput = new DecimalBlock(decimalType, count);
+        MemoryCountable.checkDeviation(unallocOutput, .05d, true);
         Assert.assertTrue("Actual state: " + unallocOutput.getState(),
             unallocOutput.isUnalloc());
         testCopySelected(decimal128Block, unallocOutput, selCount);

@@ -18,11 +18,11 @@ package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * For PolarDB-X only.
@@ -30,9 +30,9 @@ import java.util.concurrent.TimeUnit;
 public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
     private String schemaName;
     private List<String> logicalTables;
-    private Long initWait;
-    private Long interval;
-    private TimeUnit timeUnit;
+
+
+    private PreemptiveTime preemptiveTime;
 
     private Long connId;
 
@@ -44,59 +44,46 @@ public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
     }
 
     @JSONCreator
-    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, Long initWait,
-                                                Long interval, TimeUnit timeUnit, Long connId, Boolean sameTableGroup, Boolean forceSyncFailed) {
+    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, PreemptiveTime preemptiveTime, Long connId, Boolean sameTableGroup, Boolean forceSyncFailed) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
         this.connId = connId;
         this.sameTableGroup = sameTableGroup;
         this.forceSyncFailed = forceSyncFailed;
     }
 
-    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, Long initWait,
-                                                Long interval, TimeUnit timeUnit, Long connId, Boolean sameTableGroup) {
+    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, PreemptiveTime preemptiveTime, Long connId, Boolean sameTableGroup) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
         this.connId = connId;
         this.sameTableGroup = sameTableGroup;
         this.forceSyncFailed = false;
     }
 
-    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, Long initWait,
-                                                Long interval, TimeUnit timeUnit) {
+    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, PreemptiveTime preemptiveTime) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
-        this.connId = -1L;
+        this.preemptiveTime = preemptiveTime;
         this.sameTableGroup = true;
         this.forceSyncFailed = false;
     }
 
-    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, Long initWait,
-                                                Long interval, TimeUnit timeUnit, boolean forceSyncFailed) {
+    public TablesMetaChangePreemptiveSyncAction(String schemaName, List<String> logicalTables, PreemptiveTime preemptiveTime, boolean forceSyncFailed) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
-        this.connId = -1L;
+        this.preemptiveTime = preemptiveTime;
         this.sameTableGroup = true;
         this.forceSyncFailed = forceSyncFailed;
     }
+
 
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         // TODO(luoyanxin) optimize single-version schema-change
-        oldSchemaManager.toNewVersionInTrx(logicalTables, true, initWait, interval, timeUnit, connId, true,
+        oldSchemaManager.toNewVersionInTrx(logicalTables, true, preemptiveTime, connId, true,
             sameTableGroup, forceSyncFailed);
         return null;
     }
@@ -117,28 +104,12 @@ public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
         this.logicalTables = logicalTables;
     }
 
-    public Long getInitWait() {
-        return initWait;
+    public PreemptiveTime getPreemptiveTime() {
+        return preemptiveTime;
     }
 
-    public void setInitWait(Long initWait) {
-        this.initWait = initWait;
-    }
-
-    public Long getInterval() {
-        return interval;
-    }
-
-    public void setInterval(Long interval) {
-        this.interval = interval;
-    }
-
-    public TimeUnit getTimeUnit() {
-        return timeUnit;
-    }
-
-    public void setTimeUnit(TimeUnit timeUnit) {
-        this.timeUnit = timeUnit;
+    public void setPreemptiveTime(PreemptiveTime preemptiveTime) {
+        this.preemptiveTime = preemptiveTime;
     }
 
     public Long getConnId() {
@@ -164,4 +135,5 @@ public class TablesMetaChangePreemptiveSyncAction implements ISyncAction {
     public void setForceSyncFailed(Boolean forceSyncFailed) {
         this.forceSyncFailed = forceSyncFailed;
     }
+
 }

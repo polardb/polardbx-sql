@@ -857,6 +857,11 @@ public class MorselColumnarSplit implements ColumnarSplit {
         }
 
         @Override
+        public ColumnarSplitBuilder isFlashback(boolean isFlashback) {
+            return this;
+        }
+
+        @Override
         public ColumnarSplitBuilder tso(Long tso) {
             this.tso = tso;
             return this;

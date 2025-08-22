@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.druid.mock.MockBlob;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.SliceOutput;
 import org.junit.Assert;
@@ -59,7 +60,9 @@ public class BlobBlockTest extends BaseBlockTest {
             blobBlockBuilder.appendNull();
             blobBlockBuilder.writeBlob(blob);
         }
+        MemoryCountable.checkDeviation(blobBlockBuilder, .05d, true);
         Block blobBlock = blobBlockBuilder.build();
+        MemoryCountable.checkDeviation(blobBlock, .05d, true);
 
         // serialize
         BlobBlockEncoding encoding = new BlobBlockEncoding();
@@ -68,6 +71,7 @@ public class BlobBlockTest extends BaseBlockTest {
 
         // deserialize
         Block blobBlockShuffled = encoding.readBlock(output.slice().getInput());
+        MemoryCountable.checkDeviation(blobBlockShuffled, .05d, true);
 
         // check
         for (int i = 0; i < blobBlock.getPositionCount(); i++) {
@@ -90,7 +94,10 @@ public class BlobBlockTest extends BaseBlockTest {
             blobBlockBuilder.writeBlob(blob);
         }
         BlobBlock blobBlock = (BlobBlock) blobBlockBuilder.build();
+        MemoryCountable.checkDeviation(blobBlock, .05d, true);
+
         BlobBlock newBlock = BlobBlock.from(blobBlock, blobBlock.getPositionCount(), null);
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
         for (int i = 0; i < blobBlock.getPositionCount(); i++) {
             if (blobBlock.isNull(i)) {
                 Assert.assertTrue(newBlock.isNull(i));
@@ -104,6 +111,7 @@ public class BlobBlockTest extends BaseBlockTest {
 
         int[] sel = new int[] {0, 1, 2, 3, 6, 7};
         BlobBlock newBlock2 = BlobBlock.from(blobBlock, sel.length, sel);
+        MemoryCountable.checkDeviation(newBlock2, .05d, true);
         for (int i = 0; i < sel.length; i++) {
             int j = sel[i];
             if (blobBlock.isNull(j)) {

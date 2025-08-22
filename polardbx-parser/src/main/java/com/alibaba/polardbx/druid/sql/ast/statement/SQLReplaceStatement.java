@@ -39,6 +39,8 @@ public class SQLReplaceStatement extends SQLStatementImpl {
     protected List<SQLCommentHint> hints;
     protected List<SQLAssignItem> partitions;
 
+    private boolean hasArgsInFunction = false;
+
     public SQLName getTableName() {
         if (tableSource == null) {
             return null;
@@ -202,5 +204,13 @@ public class SQLReplaceStatement extends SQLStatementImpl {
     @Override
     public SqlType getSqlType() {
         return SqlType.REPLACE;
+    }
+
+    public boolean isHasArgsInFunction() {
+        return hasArgsInFunction;
+    }
+
+    public void setHasArgsInFunction(boolean hasArgsInFunction) {
+        this.hasArgsInFunction = hasArgsInFunction;
     }
 }

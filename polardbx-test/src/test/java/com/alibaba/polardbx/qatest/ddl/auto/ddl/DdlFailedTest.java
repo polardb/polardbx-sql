@@ -3,6 +3,8 @@ package com.alibaba.polardbx.qatest.ddl.auto.ddl;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -10,6 +12,17 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class DdlFailedTest extends DDLBaseNewDBTestCase {
+    static private final String DATABASE_NAME = "DdlFailedTest";
+
+    @Before
+    public void before() {
+        doReCreateDatabase();
+    }
+
+    @After
+    public void after() {
+        doClearDatabase();
+    }
 
     @Test
     public void testCreateTableFailed() {
@@ -17,7 +30,7 @@ public class DdlFailedTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
 
         sql1 = "/*+TDDL:cmd_extra(SKIP_DDL_RESPONSE = true)*/create table t1(a varchar(-100))";
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql1, "The DDL job has been rollback");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql1, "PXC-4614");
 
         sql1 = "create table t1(a varchar(-100))";
         JdbcUtil.executeUpdateFailed(tddlConnection, sql1, "PXC-4614");
@@ -36,6 +49,25 @@ public class DdlFailedTest extends DDLBaseNewDBTestCase {
 
         sql1 =
             "/*+TDDL:cmd_extra(FP_STATISTIC_SAMPLE_ERROR=true)*/alter table t1 add global index gsi1(a) partition by key(a) partitions 5";
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql1, "failed with state PAUSED");
+
+        Long jobId = getDDLJobId(tddlConnection);
+        sql1 = "rollback ddl " + jobId;
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql1, "cannot be rolled back");
+
+        Assert.assertTrue(checkDDLPaused(tddlConnection, jobId));
+    }
+
+    @Test
+    public void testCreateGsiFailed2() throws SQLException {
+        String sql1 = "drop table if exists t1";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
+
+        sql1 = "create table t1(a varchar(100)) partition by key(a) partitions 3";
+        JdbcUtil.executeSuccess(tddlConnection, sql1);
+
+        sql1 = "/*+TDDL:cmd_extra(SKIP_DDL_RESPONSE=true,FP_STATISTIC_SAMPLE_ERROR=true)*/"
+            + "alter table t1 add global index gsi1(a) partition by key(a) partitions 5";
         JdbcUtil.executeUpdateFailed(tddlConnection, sql1, "failed with state PAUSED");
 
         Long jobId = getDDLJobId(tddlConnection);
@@ -98,5 +130,21 @@ public class DdlFailedTest extends DDLBaseNewDBTestCase {
 
     public boolean usingNewPartDb() {
         return true;
+    }
+
+    void doReCreateDatabase() {
+        doClearDatabase();
+        String tddlSql = "use information_schema";
+        JdbcUtil.executeUpdate(tddlConnection, tddlSql);
+        tddlSql = "create database " + DATABASE_NAME + " mode = 'auto'";
+        JdbcUtil.executeUpdate(tddlConnection, tddlSql);
+        tddlSql = "use " + DATABASE_NAME;
+        JdbcUtil.executeUpdate(tddlConnection, tddlSql);
+    }
+
+    void doClearDatabase() {
+        JdbcUtil.executeUpdate(getTddlConnection1(), "use information_schema");
+        String sql = "drop database if exists " + DATABASE_NAME;
+        JdbcUtil.executeUpdate(getTddlConnection1(), sql);
     }
 }

@@ -50,6 +50,10 @@ public class PruneRawString extends RawString {
         paramCheck();
     }
 
+    public RawString restoreToOriginRawString(){
+        return new RawString(super.getObjList());
+    }
+
     @Override
     public Object getObj(int index, int skIndex) {
         switch (pruneMode) {

@@ -39,6 +39,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.SqlIdentifierUtil;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
@@ -193,7 +194,7 @@ public class PhysicalBackfillTask extends BaseDdlTask implements RemoteExecutabl
         //drop physical table before remove the ibd file
         // otherwise when tablespace is import, can't remove the .frm with drop table
         // and can't create the same table in the next round
-        String dropPhyTable = "drop table if exists " + physicalTableName;
+        String dropPhyTable = "drop table if exists " + SqlIdentifierUtil.escapeIdentifierString(physicalTableName);
 
         ///!!!!!!DANGER!!!!
         // can't change variables via sql bypass CN
@@ -207,9 +208,9 @@ public class PhysicalBackfillTask extends BaseDdlTask implements RemoteExecutabl
                 ScaleOutPlanUtil.getDbGroupInfoByGroupName(sourceTargetGroup.getValue());
 
             PhysicalBackfillManager.BackfillBean physicalBackfillRecord =
-                backfillManager.loadBackfillMeta(backfillId, schemaName, srcDbGroupInfoRecord.phyDbName.toLowerCase(),
-                    physicalTableName,
-                    GeneralUtil.isEmpty(phyPartitionNames) ? "" : phyPartitionNames.get(0));
+                backfillManager.loadBackfillMeta(backfillId, schemaName,
+                        srcDbGroupInfoRecord.phyDbName.toLowerCase(), physicalTableName,
+                        GeneralUtil.isEmpty(phyPartitionNames) ? "" : phyPartitionNames.get(0));
 
             PhysicalBackfillDetailInfoFieldJSON detailInfoFieldJSON = physicalBackfillRecord.backfillObject.detailInfo;
             final String targetStorageId = sourceTargetDnId.getValue();
@@ -220,8 +221,8 @@ public class PhysicalBackfillTask extends BaseDdlTask implements RemoteExecutabl
                 ignore = false;
                 try (
                     XConnection conn = (XConnection) (PhysicalBackfillUtils.getXConnectionForStorage(
-                        tarDbGroupInfoRecord.phyDbName.toLowerCase(),
-                        targetHost.getKey(), targetHost.getValue(), userAndPasswd.getKey(), userAndPasswd.getValue(),
+                        tarDbGroupInfoRecord.phyDbName.toLowerCase(), targetHost.getKey(),
+                            targetHost.getValue(), userAndPasswd.getKey(), userAndPasswd.getValue(),
                         -1))) {
                     try {
                         //disable sql_lon_bin
@@ -784,5 +785,13 @@ public class PhysicalBackfillTask extends BaseDdlTask implements RemoteExecutabl
                 offset += transferFileData.getBufferLen();
             } while (true);
         }
+    }
+
+   @Override
+    public List<String> explainInfo() {
+        String explainInfo = "PHYSICAL_BACKFILL(" + getPhysicalTableName() + ") datasize:" + dataSize;
+        List<String> command = new ArrayList<>(1);
+        command.add(explainInfo);
+        return command;
     }
 }

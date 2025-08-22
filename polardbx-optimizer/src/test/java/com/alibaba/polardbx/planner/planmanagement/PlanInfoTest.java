@@ -5,8 +5,10 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.google.common.collect.Maps;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.JsonBuilder;
@@ -83,6 +85,28 @@ public class PlanInfoTest {
 
             Mockito.when(pm.getBoolean(any())).thenReturn(true);
             Assert.assertTrue(planManager.canChooseColumnarPlan(node, ec, planInfo));
+        }
+    }
+
+    @Test
+    public void testGenPlanId() {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+        Assert.assertTrue(PlanInfo.genPlanId(null) == null);
+        ExecutionPlan plan = Mockito.mock(ExecutionPlan.class);
+        Mockito.when(plan.getPlan()).thenReturn(null);
+        Assert.assertTrue(PlanInfo.genPlanId(plan) == null);
+
+        try (MockedStatic<PlanManagerUtil> planManagerUtilMockedStatic = mockStatic(PlanManagerUtil.class)) {
+            Mockito.when(plan.getPlan()).thenReturn(Mockito.mock(RelNode.class));
+            planManagerUtilMockedStatic.when(() -> PlanManagerUtil.relNodeToJson(Mockito.any(RelNode.class)))
+                .thenAnswer(x -> "HELLO");
+
+            Assert.assertTrue(PlanInfo.genPlanId(plan) == "HELLO".hashCode());
+
+            planManagerUtilMockedStatic.when(() -> PlanManagerUtil.relNodeToJson(Mockito.any(RelNode.class)))
+                .thenAnswer(x -> null);
+            Assert.assertTrue(PlanInfo.genPlanId(plan) == null);
+
         }
     }
 }

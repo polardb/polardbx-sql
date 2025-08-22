@@ -37,6 +37,7 @@ import java.io.IOException;
 public class DictionaryVarcharColumnReader extends AbstractDictionaryColumnReader {
 
     private final boolean enableSliceDict;
+    private SliceOutput sliceOutputBuffer = null;
 
     public DictionaryVarcharColumnReader(int columnId, boolean isPrimaryKey,
                                          StripeLoader stripeLoader, OrcIndex orcIndex,
@@ -133,7 +134,7 @@ public class DictionaryVarcharColumnReader extends AbstractDictionaryColumnReade
             // For block with all null value, set empty slice.
             block.setData(Slices.EMPTY_SLICE);
         } else {
-            SliceOutput sliceOutput = new DynamicSliceOutput(positionCount);
+            SliceOutput sliceOutput = getSliceOutputBuffer(positionCount);
             if (present == null) {
                 block.setHasNull(false);
                 for (int i = 0; i < positionCount; i++) {
@@ -173,7 +174,29 @@ public class DictionaryVarcharColumnReader extends AbstractDictionaryColumnReade
                     lastPosition++;
                 }
             }
-            block.setData(sliceOutput.slice());
+            Slice data = ((DynamicSliceOutput) sliceOutput).copySlice();
+            block.setData(data);
         }
+    }
+
+    private SliceOutput getSliceOutputBuffer(int positionCount) {
+        if (this.sliceOutputBuffer != null) {
+            this.sliceOutputBuffer.reset();
+            return this.sliceOutputBuffer;
+        }
+        if (dictionary == null || dictionary.size() == 0) {
+            // unlikely
+            this.sliceOutputBuffer = new DynamicSliceOutput(positionCount);
+            return this.sliceOutputBuffer;
+        }
+        int size = dictionary.size();
+        int totalLen = 0;
+        for (int i = 0; i < size; i++) {
+            Slice slice = dictionary.getValue(i);
+            totalLen += slice.length();
+        }
+        int estimateSize = totalLen / size * positionCount;
+        this.sliceOutputBuffer = new DynamicSliceOutput(estimateSize);
+        return this.sliceOutputBuffer;
     }
 }

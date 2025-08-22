@@ -54,7 +54,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 
 import static com.alibaba.polardbx.common.properties.MetricLevel.isSQLMetricEnabled;
 import static java.util.Objects.requireNonNull;
@@ -127,7 +126,7 @@ public class DriverContext {
     private List<Integer> driverInputs = new ArrayList<>();
 
     // Use Supplier to proactively dump the current statistics from TaskExecutor.
-    private Supplier<DriverRuntimeStatistics> driverRuntimeStatisticsSupplier;
+    private DriverRuntimeStatisticsUpdater updater = new DriverRuntimeStatisticsUpdater();
 
     public DriverContext(PipelineContext pipelineContext, boolean partitioned, int driverId) {
         this.pipelineContext = requireNonNull(pipelineContext, "pipelineContext is null");
@@ -140,6 +139,10 @@ public class DriverContext {
     public void setDriverExecRef(DriverExec driverExecRef) {
         this.driverExecRef.set(driverExecRef);
         this.driverInputs.addAll(driverExecRef.getAllInputIds());
+    }
+
+    public DriverRuntimeStatisticsUpdater getUpdater() {
+        return updater;
     }
 
     public TaskId getTaskId() {
@@ -320,10 +323,6 @@ public class DriverContext {
         return driverInputs;
     }
 
-    public void setDriverRuntimeStatisticsSupplier(Supplier<DriverRuntimeStatistics> supplier) {
-        this.driverRuntimeStatisticsSupplier = supplier;
-    }
-
     public DriverStats getDriverStats() {
         DriverExec driverExec = this.driverExecRef.get();
         if (driverExec != null) {
@@ -346,14 +345,14 @@ public class DriverContext {
             long runningTime = processWallNanosUpdater.get(this);
             return new DriverStats(getUniqueId(), inputDataSize, inputPositions, outputDataSize, outputPositions,
                 startMillis, endMillis, runningTime, blockedWallNanosLong,
-                driverRuntimeStatisticsSupplier == null ? null : driverRuntimeStatisticsSupplier.get());
+                updater == null ? null : updater.build());
         } else if (driverStats.get() != null) {
             return driverStats.get();
         }
         long runningTime = processWallNanosUpdater.get(this);
         return new DriverStats(getUniqueId(), 0, 0, 0, 0,
             startMillis, endMillis, runningTime, blockedWallNanosLong,
-            driverRuntimeStatisticsSupplier == null ? null : driverRuntimeStatisticsSupplier.get());
+            updater == null ? null : updater.build());
     }
 
     private TaskStats getTaskStatsBySecond() {
@@ -536,4 +535,72 @@ public class DriverContext {
             return blockedCount;
         }
     }
+
+    public static class DriverRuntimeStatisticsUpdater {
+
+        private long startNanoTimestamp = 0L;
+        private long finishNanoTimestamp = 0L;
+        private long blockedNanoTimestamp = 0L;
+        private long pendingNanoTimestamp = 0L;
+        private long runningNanoTimestamp = 0L;
+
+        private long openCost = 0L;
+        private long blockedCost = 0L;
+        private long pendingCost = 0L;
+        private long runningCost = 0L;
+
+        private long blockedCount = 0L;
+        private long pendingCount = 0L;
+        private long runningCount = 0L;
+
+        public DriverRuntimeStatistics build() {
+            return new DriverRuntimeStatistics(
+                runningCost, pendingCost, blockedCost, openCost,
+                (System.nanoTime() - startNanoTimestamp),
+                (int) runningCount, (int) pendingCount, (int) blockedCount);
+        }
+
+        public void markStartTimestamp() {
+            startNanoTimestamp = System.nanoTime();
+        }
+
+        public void markFinishTimestamp() {
+            if (finishNanoTimestamp == 0L) {
+                finishNanoTimestamp = System.nanoTime();
+            }
+        }
+
+        public void startPending() {
+            pendingCount++;
+            pendingNanoTimestamp = System.nanoTime();
+        }
+
+        public void startBlocked() {
+            blockedCount++;
+            blockedNanoTimestamp = System.nanoTime();
+        }
+
+        public void startRunning() {
+            runningCount++;
+            runningNanoTimestamp = System.nanoTime();
+        }
+
+        public void finishPending() {
+            pendingCost += System.nanoTime() - pendingNanoTimestamp;
+        }
+
+        public void finishBlocked() {
+            if (blockedCount == 1) {
+                // The first blocked status is recognized as open cost.
+                openCost += System.nanoTime() - blockedNanoTimestamp;
+            } else {
+                blockedCost += System.nanoTime() - blockedNanoTimestamp;
+            }
+        }
+
+        public void finishRunning() {
+            runningCost += System.nanoTime() - runningNanoTimestamp;
+        }
+    }
+
 }

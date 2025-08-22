@@ -1,0 +1,107 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false
+create table nottl_tbl(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2
+create table ttl_tbl_without_arc(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition( TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 2 ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a) partitions 2
+create table ttl_tbl_with_arc(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition( TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 2 ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a) partitions 2
+create table ttl_tbl_with_arc_bak like ttl_tbl_with_arc engine='columnar' archive_mode='ttl'
+show create table nottl_tbl
+Table,Create Table
+nottl_tbl,CREATE TABLE `nottl_tbl` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table ttl_tbl_without_arc
+Table,Create Table
+ttl_tbl_without_arc,CREATE TABLE `ttl_tbl_without_arc` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table ttl_tbl_with_arc
+Table,Create Table
+ttl_tbl_with_arc,CREATE TABLE `ttl_tbl_with_arc` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_ttl_tbl_with_arc_bak` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240401 VALUES LESS THAN ('2024-04-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240501 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240601 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240801 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p20240901 VALUES LESS THAN ('2024-09-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'ttl_tbl_with_arc_bak', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+## error_msg: $# not a ttl-defined #$
+create table like_t1 like nottl_tbl engine='columnar' archive_mode='ttl'
+not a ttl-defined
+## error_msg: $# not a ttl-defined #$
+create table like_t1 like nottl_tbl engine='columnar'
+not a ttl-defined
+## error_msg: $# cannot create #$
+create table like_t1 like nottl_tbl archive_mode='ttl'
+cannot create
+## error_msg: $# without specifying both #$
+create table like_t1 like ttl_tbl_without_arc archive_mode='ttl'
+without specifying both
+## error_msg: $# without specifying both #$
+create table like_t1 like ttl_tbl_without_arc engine='columnar'
+without specifying both
+create table like_t1 like ttl_tbl_without_arc
+show create table like_t1
+Table,Create Table
+like_t1,CREATE TABLE `like_t1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+## error_msg: $#cannot create #$
+create table like_t2 like ttl_tbl_with_arc
+cannot create
+set ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI=true
+create table like_t2 like ttl_tbl_with_arc
+create table like_t3 like nottl_tbl
+show create table like_t3
+Table,Create Table
+like_t3,CREATE TABLE `like_t3` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+drop table if exists nottl_tbl
+drop table if exists ttl_tbl_without_arc
+drop table if exists ttl_tbl_with_arc
+drop table if exists like_t1
+drop table if exists like_t2
+drop table if exists like_t3;

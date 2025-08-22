@@ -4,7 +4,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -16,6 +18,11 @@ public class DdlResourceManagerUtils {
     public static final String DN_CPU = ":DN_CPU";
     public static final String CN_NETWORK = ":CN_NETWORK";
     public static final String CN_CPU = ":CN_CPU";
+    public static final String MOVE_PARTITION_BEFORE_CHECK = ":MOVE_PARTITION_BEFORE_CHECK";
+
+    public static final Set<String> validateResourcesNames = Arrays.stream(new String[] {
+        DN_STORAGE, DN_NETWORK, DN_IO, DN_SYSTEM_LOCK,
+        DN_CPU, CN_NETWORK, CN_CPU}).collect(Collectors.toSet());
 
     public static void initializeResources(DdlEngineResources resourceToAllocate) {
         List<String> readyStorageInsts = ScaleOutPlanUtil.getStorageInstReady();

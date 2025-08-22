@@ -55,6 +55,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -161,10 +162,13 @@ public class InsertSelectExec extends SourceExec {
         ExecutionContext insertContext = context.copy();
 
         LogicalInsert newInsert = insert.buildInsertWithValues();
+
+        final int valuesCount = newInsert.getInsertRowType().getFieldCount();
+
+        // Update duplicate key update list if necessary
         final Map<Integer, Integer> duplicateKeyParamMapping = new HashMap<>();
-        newInsert = newInsert
-            .updateDuplicateKeyUpdateList(newInsert.getInsertRowType().getFieldCount(),
-                duplicateKeyParamMapping);
+        newInsert = newInsert.updateDuplicateKeyUpdateList(new AtomicInteger(valuesCount), duplicateKeyParamMapping);
+
         boolean use_parallel = context.getParamManager().getBoolean(ConnectionParams.INSERT_SELECT_MPP_BY_PARALLEL);
         //使用单机并行执行
         if (use_parallel) {

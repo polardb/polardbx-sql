@@ -67,6 +67,9 @@ public class ColumnarFileMappingAccessor extends AbstractAccessor {
     private static final String DELETE_BY_SCHEMA_AND_TABLE_LIMIT = "delete from " + COLUMNAR_FILE_MAPPING_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? limit ? ";
 
+    private static final String DELETE_BY_TABLE_FILE_NAME = "delete from " + COLUMNAR_FILE_MAPPING_TABLE
+        + " where `logical_schema` = ? and `logical_table` = ? and `file_name` = ?";
+
     private static final String DELETE_BY_SCHEMA_AND_TABLE_AND_PARTITION = "delete from " + COLUMNAR_FILE_MAPPING_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? and `logical_partition` = ? ";
 
@@ -232,6 +235,23 @@ public class ColumnarFileMappingAccessor extends AbstractAccessor {
 
             DdlMetaLogUtil.logSql(DELETE_BY_SCHEMA_AND_TABLE_AND_PARTITION, params);
             return MetaDbUtil.delete(DELETE_BY_SCHEMA_AND_TABLE_AND_PARTITION, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_FILE_MAPPING_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_FILE_MAPPING_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int deleteByFileName(String logicalSchema, String tableId, String fileName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableId);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, fileName);
+
+            DdlMetaLogUtil.logSql(DELETE_BY_TABLE_FILE_NAME, params);
+            return MetaDbUtil.delete(DELETE_BY_TABLE_FILE_NAME, params, connection);
         } catch (Exception e) {
             LOGGER.error("Failed to delete from system table " + COLUMNAR_FILE_MAPPING_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",

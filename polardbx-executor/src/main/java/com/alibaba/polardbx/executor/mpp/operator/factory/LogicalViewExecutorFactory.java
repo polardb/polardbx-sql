@@ -45,6 +45,8 @@ import com.alibaba.polardbx.executor.operator.DrivingStreamTableScanExec;
 import com.alibaba.polardbx.executor.operator.DrivingStreamTableScanSortExec;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.LookupTableScanExec;
+import com.alibaba.polardbx.executor.operator.LookupTableSortRangeScanExec;
+import com.alibaba.polardbx.executor.operator.LookupTableSortScanExec;
 import com.alibaba.polardbx.executor.operator.MergeSortTableScanClient;
 import com.alibaba.polardbx.executor.operator.MergeSortWithBufferTableScanClient;
 import com.alibaba.polardbx.executor.operator.NormalRangeScanClient;
@@ -62,6 +64,7 @@ import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpres
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
+import com.alibaba.polardbx.executor.vectorized.build.InExpressionParamRewriter;
 import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
 import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
@@ -120,6 +123,8 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
     private boolean randomSplits;
 
     private RangeScanMode rangeScanMode;
+
+    private Map<Integer, Map<String, List>> rewriterParams;
 
     public LogicalViewExecutorFactory(
         PipelineFragment fragment, LogicalView logicalView,
@@ -189,21 +194,7 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
             if (bSort) {
                 if (rangeScanMode != null) {
-                    if (rangeScanMode == RangeScanMode.SERIALIZE) {
-                        if (totalPrefetch != 1) {
-                            MPP_LOGGER.warn(String.format(
-                                "prefetch under serialize mode should be 1, but was %s, and trace id is %s",
-                                totalPrefetch, context.getTraceId()));
-                        }
-                        this.scanClient = new SerializeRangeScanClient(context, meta, useTransactionConnection);
-                    } else if (rangeScanMode == RangeScanMode.NORMAL) {
-                        this.scanClient =
-                            new NormalRangeScanClient(context, meta, useTransactionConnection, totalPrefetch,
-                                RangeScanMode.NORMAL);
-                    } else {
-                        this.scanClient =
-                            new AdaptiveRangeScanClient(context, meta, useTransactionConnection, totalPrefetch);
-                    }
+                    this.scanClient = getRangeScanClient(context, useTransactionConnection);
                 } else {
                     long limit = context.getParamManager().getLong(ConnectionParams.MERGE_SORT_BUFFER_SIZE);
                     if (limit > 0 && logicalView.pushedRelNodeIsSort()) {
@@ -270,6 +261,11 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
         if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCAN_EXEC)) {
             ColumnarScanExec exec = new ColumnarScanExec(ossTableScan, context, dataTypeList);
             registerRuntimeStat(exec, logicalView, context);
+
+            if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_IN_VALUE_LIST_REWRITE) && rewriterParams == null) {
+                rewriterParams = InExpressionParamRewriter.rewriterParams(ossTableScan, context);
+            }
+            exec.setRewriterParams(rewriterParams);
 
             if (fragment.getFragmentRFManager() != null) {
                 FragmentRFManager fragmentRFManager = fragment.getFragmentRFManager();
@@ -412,24 +408,42 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
     public TableScanExec createLookupScanExec(ExecutionContext context, boolean canShard,
                                               LookupPredicate predicate, List<LookupEquiJoinKey> allJoinKeys) {
-        boolean allowMultipleReadConn = ExecUtils.allowMultipleReadConns(context, logicalView);
         boolean useTransaction = ExecUtils.useExplicitTransaction(context);
-
-        int prefetch = 1;
-        if (allowMultipleReadConn) {
-            prefetch = calculatePrefetchNum(counter.incrementAndGet(), parallelism);
-            if (parallelism > 1 && totalPrefetch > 1) {
-                //由于bkaJoin有动态裁剪能力，会导致部分scan的分配split被裁剪为0，浪费prefetch的分配名额
-                prefetch = prefetch == 1 ? 2 : prefetch;
+        if (bSort) {
+            TableScanExec scanExec = null;
+            if (rangeScanMode != null) {
+                this.scanClient = getRangeScanClient(context, useTransaction);
+                scanExec = new LookupTableSortRangeScanExec(
+                    logicalView, context, scanClient.incrementSourceExec(), maxRowCount, skip, fetch,
+                    spillerFactory, dataTypeList);
+            } else {
+                this.scanClient = new MergeSortTableScanClient(
+                    context, meta, useTransaction, totalPrefetch);
+                scanExec = new LookupTableSortScanExec(
+                    logicalView, context, scanClient.incrementSourceExec(), maxRowCount, skip, fetch, spillerFactory,
+                    dataTypeList);
             }
-        }
 
-        TableScanClient scanClient = new TableScanClient(context, meta, useTransaction, prefetch);
-        TableScanExec scanExec =
-            new LookupTableScanExec(logicalView, context, scanClient.incrementSourceExec(), canShard, spillerFactory,
-                predicate, allJoinKeys, dataTypeList);
-        registerRuntimeStat(scanExec, logicalView, context);
-        return scanExec;
+            registerRuntimeStat(scanExec, logicalView, context);
+            return scanExec;
+        } else {
+            boolean allowMultipleReadConn = ExecUtils.allowMultipleReadConns(context, logicalView);
+            int prefetch = 1;
+            if (allowMultipleReadConn) {
+                prefetch = calculatePrefetchNum(counter.incrementAndGet(), parallelism);
+                if (parallelism > 1 && totalPrefetch > 1) {
+                    //由于bkaJoin有动态裁剪能力，会导致部分scan的分配split被裁剪为0，浪费prefetch的分配名额
+                    prefetch = prefetch == 1 ? 2 : prefetch;
+                }
+            }
+            TableScanClient scanClient = new TableScanClient(context, meta, useTransaction, prefetch);
+            TableScanExec scanExec =
+                new LookupTableScanExec(logicalView, context, scanClient.incrementSourceExec(), canShard,
+                    spillerFactory,
+                    predicate, allJoinKeys, dataTypeList);
+            registerRuntimeStat(scanExec, logicalView, context);
+            return scanExec;
+        }
     }
 
     private int calculatePrefetchNum(int index, int parallelism) {
@@ -455,5 +469,24 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
     public int getParallelism() {
         return this.parallelism;
+    }
+
+    private TableScanClient getRangeScanClient(ExecutionContext context, boolean useTransactionConnection) {
+        if (rangeScanMode == RangeScanMode.SERIALIZE) {
+            if (totalPrefetch != 1) {
+                MPP_LOGGER.warn(String.format(
+                    "prefetch under serialize mode should be 1, but was %s, and trace id is %s",
+                    totalPrefetch, context.getTraceId()));
+            }
+            this.scanClient = new SerializeRangeScanClient(context, meta, useTransactionConnection);
+        } else if (rangeScanMode == RangeScanMode.NORMAL) {
+            this.scanClient =
+                new NormalRangeScanClient(context, meta, useTransactionConnection, totalPrefetch,
+                    RangeScanMode.NORMAL);
+        } else {
+            this.scanClient =
+                new AdaptiveRangeScanClient(context, meta, useTransactionConnection, totalPrefetch);
+        }
+        return scanClient;
     }
 }

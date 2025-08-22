@@ -29,8 +29,8 @@ import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.gms.metadb.misc.ImportTableSpaceInfoStatAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.ImportTableSpaceInfoStatRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.SqlIdentifierUtil;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
@@ -40,7 +40,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -95,9 +94,10 @@ public class ImportTableSpaceDdlTask extends BaseDdlTask implements RemoteExecut
         if (ioAdvise >= 10L && ioAdvise <= 100L) {
             importTableSpaceIo = ioAdvise;
         }
-        resourceRequired.request(targetDnId + DN_IO, importTableSpaceIo, owner);
-        resourceRequired.request(targetDnId + DN_CPU, 25L, owner);
-        resourceRequired.request(targetDnId + DN_SYSTEM_LOCK, 40L, owner);
+        String fullDnResourceName = DdlEngineResources.concateDnResourceName(targetHost, targetDnId);
+        resourceRequired.requestForce(fullDnResourceName + DN_IO, importTableSpaceIo, owner);
+        resourceRequired.requestForce(fullDnResourceName + DN_CPU, 25L, owner);
+        resourceRequired.requestForce(fullDnResourceName + DN_SYSTEM_LOCK, 40L, owner);
         return resourceRequired;
     }
 
@@ -113,7 +113,8 @@ public class ImportTableSpaceDdlTask extends BaseDdlTask implements RemoteExecut
         HashMap<String, Object> variables = new HashMap<>();
         //disable sql_lon_bin
         variables.put(PhysicalBackfillUtils.SQL_LOG_BIN, "OFF");
-        String importTableSpace = "alter table " + phyTableName + " import tablespace";
+        String importTableSpace =
+            String.format("alter table %s import tablespace", SqlIdentifierUtil.escapeIdentifierString(phyTableName));
         try (
             XConnection conn = (XConnection) (PhysicalBackfillUtils.getXConnectionForStorage(phyDbName,
                 targetHost.getKey(), targetHost.getValue(), userAndPasswd.getKey(), userAndPasswd.getValue(), -1))) {
@@ -139,15 +140,7 @@ public class ImportTableSpaceDdlTask extends BaseDdlTask implements RemoteExecut
             }
 
         } catch (Exception ex) {
-            try {
-                if (tableSpaceExistError(ex.toString())) {
-                    //pass
-                } else {
-                    throw ex;
-                }
-            } catch (SQLException e) {
-                throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, e, "import tablespace error");
-            }
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex, "import tablespace error");
         }
     }
 

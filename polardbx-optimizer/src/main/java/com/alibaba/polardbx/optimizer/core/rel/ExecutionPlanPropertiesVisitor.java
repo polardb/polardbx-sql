@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.utils.ConcurrentHashSet;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -35,7 +36,6 @@ import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -137,20 +137,22 @@ public class ExecutionPlanPropertiesVisitor extends SqlBasicVisitor<SqlNode> {
         return super.visit(call);
     }
 
-    public BitSet appendPlanProperties(BitSet old, String schemaName, ExecutionContext ec) {
-        BitSet result = old == null ? new BitSet() : old;
+    public ConcurrentHashSet<Integer> appendPlanProperties(ConcurrentHashSet<Integer> old,
+                                                           String schemaName,
+                                                           ExecutionContext ec) {
+        final ConcurrentHashSet<Integer> result = (old == null ? new ConcurrentHashSet<>() : old);
 
         if (null != sqlKind && sqlKind.belongsTo(SqlKind.DML)) {
             Map<String, RelUtils.TableProperties> tableProperties =
                 RelUtils.buildTablePropertiesMap(this.tableNames, schemaName, ec);
             if (RelUtils.containsBroadcastTable(tableProperties, this.modifiedTableNames)) {
-                result.set(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
+                result.add(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
             }
             if (RelUtils.containsGsiTable(tableProperties, this.modifiedTableNames)) {
-                result.set(ExecutionPlanProperties.MODIFY_GSI_TABLE);
+                result.add(ExecutionPlanProperties.MODIFY_GSI_TABLE);
             }
             if (RelUtils.containsReplicateWriableTable(tableProperties, this.modifiedTableNames, ec)) {
-                result.set(ExecutionPlanProperties.REPLICATE_TABLE);
+                result.add(ExecutionPlanProperties.REPLICATE_TABLE);
             }
         }
 

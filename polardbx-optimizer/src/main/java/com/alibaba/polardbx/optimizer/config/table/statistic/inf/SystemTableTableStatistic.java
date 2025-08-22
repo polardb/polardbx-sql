@@ -21,6 +21,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -55,7 +56,7 @@ public interface SystemTableTableStatistic {
 
     Collection<Row> selectAll(long sinceTime);
 
-    void batchReplace(final List<SystemTableTableStatistic.Row> rowList);
+    void batchReplace(final List<SystemTableTableStatistic.Row> rowList) throws SQLException;
 
     class Row {
 

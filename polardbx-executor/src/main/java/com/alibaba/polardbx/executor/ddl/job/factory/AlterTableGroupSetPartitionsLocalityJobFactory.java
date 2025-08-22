@@ -27,9 +27,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.locality.LocalityDetailInfoRecord;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSetPartitionsLocalityPreparedData;
@@ -42,7 +42,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author taojinkun
@@ -72,8 +71,9 @@ public class AlterTableGroupSetPartitionsLocalityJobFactory extends DdlJobFactor
         //TODO: create task of modify locality.
         //TODO: create Subjob of rebalance.
         //TODO: create task of recover locality.
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+
 
         Map<String, Long> tablesVersion = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -107,8 +107,7 @@ public class AlterTableGroupSetPartitionsLocalityJobFactory extends DdlJobFactor
             localityInfo,
             toChangeMetaLocalityItems);
         DdlTask tablesSyncTask =
-            new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, true, initWait, interval,
-                TimeUnit.MILLISECONDS);
+            new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, true, preemptiveTime);
 
         DdlTask validateTask =
             new AlterTableGroupValidateTask(preparedData.getSchemaName(), preparedData.getTableGroupName(),

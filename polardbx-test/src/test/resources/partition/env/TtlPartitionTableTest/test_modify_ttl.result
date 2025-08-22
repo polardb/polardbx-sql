@@ -1,21 +1,21 @@
 ## DISABLE_FAST_SQL_PARSER
-set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = true;
-set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = true
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
 create table my_ttl_t2(
 a int not null auto_increment,
 b datetime default current_timestamp,
 primary key(a)
 )
-partition by key(a) partitions 2;
-alter table my_ttl_t2 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00';
-alter table my_ttl_t2 modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE = 4 ARCHIVE_TABLE_POST_ALLOCATE = 3;
-show create table my_ttl_t2;
+partition by key(a) partitions 2
+alter table my_ttl_t2 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00'
+alter table my_ttl_t2 modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE = 4 ARCHIVE_TABLE_POST_ALLOCATE = 3
+show create table my_ttl_t2
 Table,Create Table
 my_ttl_t2,CREATE TABLE `my_ttl_t2` (
 	`a` int(11) NOT NULL AUTO_INCREMENT,
 	`b` datetime DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (`a`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 3 )
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '* * */2 * * ?', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, MONTH), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 3 )
 PARTITION BY KEY(`a`)
 PARTITIONS 2
 alter table my_ttl_t2 modify ttl set TTL_EXPR = `b` EXPIRE AFTER 30 DAY TIMEZONE '+08:00' TTL_JOB = CRON '* * */4 * * ?' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 4 ARCHIVE_TABLE_POST_ALLOCATE = 6;

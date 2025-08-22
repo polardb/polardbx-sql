@@ -66,7 +66,7 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
             planSelectHashCheckSrc, planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
             planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
             planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
-            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
+            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst, null, false);
     }
 
     /**

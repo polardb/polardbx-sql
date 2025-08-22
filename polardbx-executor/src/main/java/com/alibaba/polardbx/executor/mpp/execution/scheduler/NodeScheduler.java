@@ -39,7 +39,7 @@ public class NodeScheduler {
         this.nodeTaskMap = nodeTaskMap;
     }
 
-    public NodeSelector createNodeSelector(Session session, int limit, boolean randomNode) {
+    public NodeSelector createNodeSelector(Session session, int limit, RandomNodeMode randomNode) {
         int maxSplitsPerNode =
             session.getClientContext().getParamManager().getInt(ConnectionParams.MPP_SCHEDULE_MAX_SPLITS_PER_NODE);
 
@@ -63,7 +63,7 @@ public class NodeScheduler {
 
             return new ColumnarNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode,
                 enableOSSRoundRobin,
-                randomNode, enableTwoChoiceSchedule, preferLocal);
+                randomNode, enableTwoChoiceSchedule, preferLocal, session.getClientContext());
         } else {
             return new SimpleNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode, enableOSSRoundRobin,
                 randomNode, preferLocal);

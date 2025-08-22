@@ -42,6 +42,7 @@ import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.sql.Types;
 import java.time.ZoneId;
 import java.util.Map;
@@ -141,7 +142,7 @@ class DateColumnProvider implements ColumnProvider<Long> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        ByteBuffer bytes = row.getBytes(columnId);
         long result = ColumnProvider.convertDateToLong(bytes);
 
         blockBuilder.writeDatetimeRawLong(result);

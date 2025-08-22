@@ -43,6 +43,7 @@ import com.google.common.io.BaseEncoding;
 import io.airlift.slice.Slice;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -68,7 +69,8 @@ public class Transformer {
      */
     public static List<Map<Integer, ParameterContext>> convertUpperBoundWithDefault(Cursor cursor, boolean useBinary,
                                                                                     BiFunction<ColumnMeta, Integer,
-                                                                                        ParameterContext> defaultGen) {
+                                                                                        ParameterContext> defaultGen,
+                                                                                    Set<String> notConvertColumns) {
         final List<Map<Integer, ParameterContext>> batchParams = new ArrayList<>();
 
         Row row;
@@ -77,8 +79,11 @@ public class Transformer {
 
             final Map<Integer, ParameterContext> params = new HashMap<>(columns.size());
             for (int i = 0; i < columns.size(); i++) {
+                ColumnMeta columnMeta = columns.get(i);
+                String colName = columnMeta.getName();
+                boolean canConvert = useBinary && (notConvertColumns == null || !notConvertColumns.contains(colName));
 
-                ParameterContext pc = buildColumnParam(row, i, useBinary);
+                ParameterContext pc = buildColumnParam(row, i, canConvert);
 
                 final DataType columnType = columns.get(i).getDataType();
                 if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.FloatType, DataTypes.DoubleType)) {
@@ -321,7 +326,8 @@ public class Transformer {
                     method = ParameterMethod.setString;
                 } else if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.BitType, DataTypes.BigBitType)) {
                     // 使用表示范围更大的类型，规避序列化/反序列化上下界时丢失数据
-                    value = new BigInteger(row.getString(i));
+                    final byte[] bytes = row.getBytes(i);
+                    value = new BigInteger(ByteBuffer.allocate(1 + bytes.length).put((byte) 0).put(bytes).array());
                     method = ParameterMethod.setBit;
                 } else if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.FloatType, DataTypes.DoubleType)) {
                     // 使用表示范围更大的类型，规避序列化/反序列化上下界时丢失数据

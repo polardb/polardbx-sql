@@ -82,7 +82,7 @@ import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
  */
 public class LogicalShowVariablesMyHandler extends HandlerCommon {
     private static final Set<String> LEGACY_VARIABLES = ImmutableSet.of(
-        "transaction policy", "trans.policy", "drds_transaction_policy"
+        "transaction policy", "trans.policy"
     );
 
     private static final Logger logger = LoggerFactory.getLogger(LogicalShowVariablesMyHandler.class);
@@ -170,24 +170,22 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
             ConnectionProperties.SQL_SELECT_LIMIT.toLowerCase(Locale.ROOT),
             executionContext.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
 
-        if (DynamicConfig.getInstance().isDisableLegacyVariable()) {
-            // TRANSACTION_POLICY
-            String policy = executionContext.getConnection().getTrxPolicy().toString();
-            ITransactionManager transactionManager =
-                ExecutorContext.getContext(DEFAULT_DB_NAME).getTransactionManager();
-            if ("XA".equalsIgnoreCase(policy) && executionContext.isEnableXaTso()
-                && null != transactionManager && transactionManager.supportXaTso()) {
-                policy = "XA_TSO";
-            }
-            variables.put(
-                ConnectionProperties.TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
-                policy);
-        } else {
-            // DRDS_TRANSACTION_POLICY
-            variables.put(
-                TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
-                executionContext.getConnection().getTrxPolicy().toString());
+        // TRANSACTION_POLICY
+        String policy = executionContext.getConnection().getTrxPolicy().toString();
+        ITransactionManager transactionManager =
+            ExecutorContext.getContext(DEFAULT_DB_NAME).getTransactionManager();
+        if ("XA".equalsIgnoreCase(policy) && executionContext.isEnableXaTso()
+            && null != transactionManager && transactionManager.supportXaTso()) {
+            policy = "XA_TSO";
         }
+        variables.put(
+            ConnectionProperties.TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
+            policy);
+
+        // DRDS_TRANSACTION_POLICY
+        variables.put(
+            TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
+            policy);
 
         // BATCH_INSERT_POLICY
         variables.put(

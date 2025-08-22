@@ -1,0 +1,66 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION =true;
+
+create table auto_rng_part_tc4_t8(
+a int not null auto_increment,
+b int not null,
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than(1000),
+partition p2 values less than(2000),
+partition p3 values less than(3000),
+partition pmax values less than(maxvalue)
+)
+;
+
+alter table auto_rng_part_tc4_t8 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='PARTITION', ttl_part_interval=interval(1000, NUMBER);
+show create table auto_rng_part_tc4_t8;
+
+alter table auto_rng_part_tc4_t8 cleanup expired data;
+show create table auto_rng_part_tc4_t8;
+
+alter table auto_rng_part_tc4_t8 drop partition p1;
+show create table auto_rng_part_tc4_t8;
+
+alter table auto_rng_part_tc4_t8 cleanup expired data;
+show create table auto_rng_part_tc4_t8;
+
+drop table auto_rng_part_tc4_t8;
+
+
+create table auto_rng_part_tc4_t9(
+a int not null auto_increment,
+b int not null,
+primary key(a)
+)
+partition by key(a) 
+partitions 2
+subpartition by range columns(b)
+(
+subpartition sp1 values less than(1000),
+subpartition sp2 values less than(2000),
+subpartition sp3 values less than(3000),
+subpartition spm values less than(maxvalue)
+)
+;
+
+alter table auto_rng_part_tc4_t9 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='SUBPARTITION', ttl_part_interval=interval(1000, NUMBER);
+show create table auto_rng_part_tc4_t9;
+
+alter table auto_rng_part_tc4_t9 cleanup expired data;
+show create table auto_rng_part_tc4_t9;
+
+alter table auto_rng_part_tc4_t9 drop subpartition sp1;
+show create table auto_rng_part_tc4_t9;
+
+alter table auto_rng_part_tc4_t9 cleanup expired data;
+show create table auto_rng_part_tc4_t9;
+
+drop table auto_rng_part_tc4_t9;

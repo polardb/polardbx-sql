@@ -1,7 +1,6 @@
 package com.alibaba.polardbx.executor.columnar.pruning.data;
 
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.executor.columnar.pruning.index.BitMapRowGroupIndex;
 import com.alibaba.polardbx.executor.columnar.pruning.index.IndexPruneContext;
 import com.alibaba.polardbx.executor.columnar.pruning.index.LongSortKeyIndex;
@@ -21,10 +20,12 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.junit.Assert;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author fangwu
@@ -155,5 +156,22 @@ public class PruneUtilsTest {
             bitmap);
 
         Assert.assertTrue(bitmap.getCardinality() == 90);
+    }
+
+    @Test
+    public void testBitmapRgIndex() {
+        RoaringBitmap bitmap1 = RoaringBitmap.bitmapOfRange(0, 100);
+        RoaringBitmap bitmap2 = RoaringBitmap.bitmapOfRange(150, 200);
+
+        Map<String, RoaringBitmap> bitmapMap = Maps.newHashMap();
+        bitmapMap.put("1", bitmap1);
+        bitmapMap.put("2", bitmap2);
+        Map<Integer, Map<String, RoaringBitmap>> val = Maps.newHashMap();
+        val.put(99, bitmapMap);
+
+        BitMapRowGroupIndex bitMapRowGroupIndex = new BitMapRowGroupIndex(1, val, Maps.newHashMap());
+        Assert.assertEquals(bitmap1.getLongSizeInBytes() + bitmap2.getLongSizeInBytes(),
+            bitMapRowGroupIndex.getSizeInBytes());
+        System.out.println(bitMapRowGroupIndex.getSizeInBytes());
     }
 }

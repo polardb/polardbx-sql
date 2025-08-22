@@ -73,6 +73,7 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.RexUtils.NullableState;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRule;
@@ -1809,14 +1810,14 @@ public class RelUtils {
     // 不可下推的 DML 中，last_insert_id 不可下推 (带有GSI，Scale-out，拆分键变更（DDL），修改分区键，广播表)
     public static boolean existUnPushableLastInsertId(ExecutionPlan plan) {
         final boolean isModifyShardingColumn =
-            plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
-        final boolean modifyGsiTable = plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_GSI_TABLE);
+            plan.getPlanProperties().contains(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
+        final boolean modifyGsiTable = plan.getPlanProperties().contains(ExecutionPlanProperties.MODIFY_GSI_TABLE);
         final boolean modifyScaleOutTable =
-            plan.getPlanProperties().get(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
+            plan.getPlanProperties().contains(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
         final boolean modifyOnlineColumnTable =
-            plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
+            plan.getPlanProperties().contains(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
         final boolean modifyBroadcastTable =
-            plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
+            plan.getPlanProperties().contains(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
 
         return existUnPushableLastInsertId(plan.getPlan(), isModifyShardingColumn, modifyGsiTable, modifyScaleOutTable,
             modifyOnlineColumnTable, modifyBroadcastTable);
@@ -2193,5 +2194,46 @@ public class RelUtils {
         FlashbackVisitor visitor = new FlashbackVisitor();
         relNode.accept(visitor);
         return visitor.isContainFlashback();
+    }
+
+    public static class NullRefFinder extends RelVisitor {
+        private int refIndex;
+        private NullableState nullableState = null;
+
+        public NullRefFinder(int refIndex) {
+            this.refIndex = refIndex;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, RelNode parent) {
+            if (nullableState != null) {
+                return;
+            }
+
+            if (node instanceof Project) {
+                final List<RexNode> projects = ((Project) node).getProjects();
+                final RexNode rex = projects.get(refIndex);
+                if (rex instanceof RexInputRef) {
+                    refIndex = ((RexInputRef) rex).getIndex();
+                } else {
+                    nullableState = RexUtils.checkNullableState(rex);
+                    return;
+                }
+            }
+
+            if (node instanceof Project || node instanceof Filter || node instanceof Sort) {
+                super.visit(node, ordinal, parent);
+            } else if (node instanceof LogicalView) {
+                this.visit(((LogicalView) node).getPushedRelNode(), 0, node);
+            } else if (!node.getRowType().getFieldList().get(refIndex).getType().isNullable()) {
+                nullableState = NullableState.IS_NOT_NULL;
+            } else {
+                nullableState = NullableState.BOTH;
+            }
+        }
+
+        public NullableState getNullableState() {
+            return Optional.ofNullable(nullableState).orElse(NullableState.BOTH);
+        }
     }
 }

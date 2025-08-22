@@ -58,7 +58,7 @@ public class AllowReadTransaction extends BaseTransaction {
 
     public AllowReadTransaction(ExecutionContext ec, ITransactionManager manager) {
         super(ec, manager);
-        readConnectionHolder = new AutoCommitConnectionHolder();
+        readConnectionHolder = new AutoCommitConnectionHolder(ec);
         writeConnectionHolder = new StrictConnectionHolder();
 
         this.ch = new ConnectionHolderCombiner(readConnectionHolder, writeConnectionHolder);

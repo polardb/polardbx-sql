@@ -244,6 +244,7 @@ public class BushyJoinToLogicalJoinRule extends RelOptRule {
         final Pair<RelNode, Mappings.TargetMapping> top = Util.last(relNodes);
         relBuilder.push(top.left)
             .project(relBuilder.fields(top.right));
+        relBuilder.rename(bushyJoin.getRowType().getFieldNames());
         call.transformTo(relBuilder.build());
     }
 

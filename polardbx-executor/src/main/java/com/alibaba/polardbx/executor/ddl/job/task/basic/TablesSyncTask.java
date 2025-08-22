@@ -23,12 +23,12 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangeSyncAction;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Joiner;
 import lombok.Getter;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 @Getter
 @TaskName(name = "TablesSyncTask")
@@ -36,67 +36,86 @@ public class TablesSyncTask extends BaseSyncTask {
 
     final List<String> tableNames;
     final boolean preemptive;
-    final Long initWait;
-    final Long interval;
-    final TimeUnit timeUnit;
     final boolean forceSyncFailed;
+    final boolean forceNoPreemptive;
+    PreemptiveTime preemptiveTime;
+
 
     public TablesSyncTask(String schemaName,
                           List<String> tableNames) {
         super(schemaName);
         this.tableNames = tableNames;
         this.preemptive = false;
-        this.initWait = null;
-        this.interval = null;
-        this.timeUnit = null;
+        this.preemptiveTime = null;
         this.forceSyncFailed = false;
+        this.forceNoPreemptive = false;
+    }
+
+    public TablesSyncTask(String schemaName,
+                          List<String> tableNames,
+                          boolean forceNoPreemptive
+    ) {
+        super(schemaName);
+        this.tableNames = tableNames;
+        this.preemptive = false;
+        this.preemptiveTime = null;
+        this.forceSyncFailed = false;
+        this.forceNoPreemptive = forceNoPreemptive;
     }
 
     public TablesSyncTask(String schemaName,
                           List<String> tableNames,
                           boolean preemptive,
-                          Long initWait,
-                          Long interval,
-                          TimeUnit timeUnit) {
+                          PreemptiveTime preemptiveTime){
         super(schemaName);
         this.tableNames = tableNames;
         this.preemptive = preemptive;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
         this.forceSyncFailed = false;
+        this.forceNoPreemptive = false;
     }
 
     public TablesSyncTask(String schemaName,
                           List<String> tableNames,
                           boolean preemptive,
-                          Long initWait,
-                          Long interval,
-                          TimeUnit timeUnit,
+                          PreemptiveTime preemptiveTime,
                           boolean forceSyncFailed) {
         super(schemaName);
         this.tableNames = tableNames;
         this.preemptive = preemptive;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
         this.forceSyncFailed = forceSyncFailed;
+        this.forceNoPreemptive = false;
+    }
+
+    public TablesSyncTask(String schemaName,
+                          List<String> tableNames,
+                          boolean preemptive,
+                          PreemptiveTime preemptiveTime,
+                          boolean forceSyncFailed,
+                          boolean forceNoPreemptive) {
+        super(schemaName);
+        this.tableNames = tableNames;
+        this.preemptive = preemptive;
+        this.forceSyncFailed = forceSyncFailed;
+        this.forceNoPreemptive = forceNoPreemptive;
+        this.preemptiveTime = preemptiveTime;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         try {
             if (!preemptive) {
-                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames, forceSyncFailed), SyncScope.ALL, true);
+                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames, forceSyncFailed, forceNoPreemptive), SyncScope.ALL, true);
             } else {
                 SyncManagerHelper.sync(
-                    new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit, forceSyncFailed),
+                    new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, preemptiveTime, forceSyncFailed),
                     SyncScope.ALL,
                     true);
             }
         } catch (Throwable t) {
             LOGGER.error(String.format(
-                "error occurs while sync table meta, schemaName:%s, tableNames:%s", schemaName, tableNames.toString()));
+                    "error occurs while sync table meta, schemaName:%s, tableNames:%s", schemaName, tableNames.toString()));
             throw GeneralUtil.nestedException(t);
         }
     }

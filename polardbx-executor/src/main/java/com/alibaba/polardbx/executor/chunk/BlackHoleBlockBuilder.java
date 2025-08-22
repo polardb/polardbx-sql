@@ -159,4 +159,9 @@ public class BlackHoleBlockBuilder implements BlockBuilder {
     public final void writePositionTo(int position, BlockBuilder blockBuilder) {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public long getMemoryUsage() {
+        return getElementUsedBytes();
+    }
 }

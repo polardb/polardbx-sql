@@ -60,6 +60,7 @@ public class InformationSchemaColumnarStatusHandler extends BaseVirtualViewSubCl
         final int schemaIndex = InformationSchemaColumnarStatus.getSchemaIndex();
         final int tableIndex = InformationSchemaColumnarStatus.getTableIndex();
         final int indexIndex = InformationSchemaColumnarStatus.getIndexNameIndex();
+        final int indexIdIndex = InformationSchemaColumnarStatus.getIndexIdIndex();
 
         Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
 
@@ -94,23 +95,27 @@ public class InformationSchemaColumnarStatusHandler extends BaseVirtualViewSubCl
         Set<String> schemaNames = new TreeSet<>(String::compareToIgnoreCase);
         Set<String> tableNames = new TreeSet<>(String::compareToIgnoreCase);
         Set<String> indexNames = new TreeSet<>(String::compareToIgnoreCase);
+        Set<String> indexIdNames = new TreeSet<>(String::compareToIgnoreCase);
 
         for (ColumnarTableMappingRecord record : columnarRecords) {
             schemaNames.add(record.tableSchema);
             tableNames.add(record.tableName);
             indexNames.add(record.indexName);
+            indexIdNames.add(String.valueOf(record.tableId));
         }
 
         //过滤条件，确定需要统计的index
         schemaNames = virtualView.applyFilters(schemaIndex, params, schemaNames);
         tableNames = virtualView.applyFilters(tableIndex, params, tableNames);
         indexNames = virtualView.applyFilters(indexIndex, params, indexNames);
+        indexIdNames = virtualView.applyFilters(indexIdIndex, params, indexIdNames);
 
         List<ColumnarTableMappingRecord> needReadIndexRecords = new ArrayList<>();
         for (ColumnarTableMappingRecord record : columnarRecords) {
             if (schemaNames.contains(record.tableSchema)
                 && tableNames.contains(record.tableName)
-                && indexNames.contains(record.indexName)) {
+                && indexNames.contains(record.indexName)
+                && indexIdNames.contains(String.valueOf(record.tableId))) {
                 needReadIndexRecords.add(record);
             }
         }

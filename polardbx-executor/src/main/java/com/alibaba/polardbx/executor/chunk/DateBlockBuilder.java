@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
@@ -31,6 +32,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.sql.Date;
 import java.sql.Types;
@@ -42,13 +44,21 @@ import java.util.TimeZone;
  *
  */
 public class DateBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(DateBlockBuilder.class).instanceSize();
 
     final BatchedArrayList.BatchLongArrayList packed;
+
+    @FieldMemoryCounter(value = false)
     final DataType<? extends Date> dataType;
+
+    @FieldMemoryCounter(value = false)
     final ExecutionContext context;
+
     // timezone is mutable
+    @FieldMemoryCounter(value = false)
     TimeZone timezone;
 
+    @FieldMemoryCounter(value = false)
     private DriverObjectPool<long[]> objectPool;
     private int chunkLimit;
 
@@ -71,6 +81,11 @@ public class DateBlockBuilder extends AbstractBlockBuilder {
         this.timezone = InternalTimeZone.DEFAULT_TIME_ZONE;
         this.objectPool = objectPool;
         this.chunkLimit = context.getParamManager().getInt(ConnectionParams.CHUNK_SIZE);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + packed.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

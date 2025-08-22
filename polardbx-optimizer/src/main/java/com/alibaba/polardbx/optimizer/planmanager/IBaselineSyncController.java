@@ -19,9 +19,9 @@ package com.alibaba.polardbx.optimizer.planmanager;
 public interface IBaselineSyncController {
     void updateBaselineSync(String schemaName, BaselineInfo baselineInfo);
 
-    void deleteBaseline(String schemaName, BaselineInfo baselineInfo);
+    void deleteBaseline(String schemaName, Integer baselineId);
 
-    void deletePlan(String schemaName, BaselineInfo baselineInfo, PlanInfo planInfo);
+    void deletePlan(String schemaName, Integer baselineId, Integer planId);
 
     String scheduledJobsInfo();
 }

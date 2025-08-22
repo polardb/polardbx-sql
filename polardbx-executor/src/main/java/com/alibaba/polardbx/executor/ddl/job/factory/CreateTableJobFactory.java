@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -156,6 +158,10 @@ public class CreateTableJobFactory extends DdlJobFactory {
         LocalityDesc locality = physicalPlanData.getLocalityDesc();
         if (locality == null) {
             locality = new LocalityDesc();
+        }
+        if (!locality.holdEmptyDnList()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format(
+                "We don't support locality in drds mode any more, if you want to use locality, please in your database to auto mode."));
         }
         StoreTableLocalityTask storeLocalityTask =
             new StoreTableLocalityTask(schemaName, logicalTableName, locality.toString(), false);

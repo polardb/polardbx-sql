@@ -60,7 +60,6 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -244,6 +243,19 @@ public abstract class BasePlannerTest {
 
     public BasePlannerTest(String dbname) {
         appName = dbname;
+        try {
+            loadStatistic();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        initBasePlannerTestEnv();
+        initAppNameConfig(dbname);
+        ignoreBaseTest = true;
+    }
+
+    public BasePlannerTest(String dbname, boolean useNewPartDb) {
+        appName = dbname;
+        this.useNewPartDb = useNewPartDb;
         try {
             loadStatistic();
         } catch (Exception e) {
@@ -746,13 +758,13 @@ public abstract class BasePlannerTest {
         }
     }
 
-    protected LogicalCreateTable buildLogicalCreateTable(String appName, TableMeta tm,
-                                                         SqlCreateTable sqlCreateTable,
-                                                         String logicalTableName,
-                                                         PartitionTableType tblType,
-                                                         PlannerContext plannerContext) {
+    public static LogicalCreateTable buildLogicalCreateTable(String appName, TableMeta tm,
+                                                             SqlCreateTable sqlCreateTable,
+                                                             String logicalTableName,
+                                                             PartitionTableType tblType,
+                                                             PlannerContext plannerContext) {
         LogicalCreateTable logicalCreateTable;
-        SqlConverter converter = SqlConverter.getInstance(appName, ec);
+        SqlConverter converter = SqlConverter.getInstance(appName, plannerContext.getExecutionContext());
         SqlNode validatedNode = converter.validate(sqlCreateTable);
         // sqlNode to relNode
         RelNode relNode = converter.toRel(validatedNode, plannerContext);
@@ -1568,8 +1580,9 @@ public abstract class BasePlannerTest {
             .build();
     }
 
-    protected PartitionInfo buildPartitionInfoByLogCreateTbl(String schema, LogicalCreateTable logicalCreateTable,
-                                                             ExecutionContext executionContext) {
+    protected static PartitionInfo buildPartitionInfoByLogCreateTbl(String schema,
+                                                                    LogicalCreateTable logicalCreateTable,
+                                                                    ExecutionContext executionContext) {
 
         logicalCreateTable.prepareData(new ExecutionContext(schema));
         PartitionTableType tblType = PartitionTableType.SINGLE_TABLE;

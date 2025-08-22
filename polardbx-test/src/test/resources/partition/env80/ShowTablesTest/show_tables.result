@@ -1,0 +1,76 @@
+## DISABLE_FAST_SQL_PARSER
+use polardbx
+drop database if exists show_tb_auto
+create database show_tb_auto mode=auto
+use show_tb_auto
+create tablegroup tg_auto1
+create tablegroup tg_auto2
+create table t1(a int) partition by hash(a) partitions 2 tablegroup=tg_auto1
+create table t2(a int) partition by hash(a) partitions 2 tablegroup=tg_auto1
+create table t3(a int) partition by hash(a) partitions 2 tablegroup=tg_auto1
+create table t4(a int) partition by hash(a) partitions 2 tablegroup=tg_auto2
+create view v1 as select * from t1
+create view v2 as select * from t2
+show full tables
+Tables_in_show_tb_auto,Table_type,Auto_partition,Table_group
+t1,BASE TABLE,NO,tg_auto1
+t2,BASE TABLE,NO,tg_auto1
+t3,BASE TABLE,NO,tg_auto1
+t4,BASE TABLE,NO,tg_auto2
+v1,VIEW,NO,-
+v2,VIEW,NO,-
+show full tables where table_type='BASE TABLE'
+Tables_in_show_tb_auto,Table_type,Auto_partition,Table_group
+t1,BASE TABLE,NO,tg_auto1
+t2,BASE TABLE,NO,tg_auto1
+t3,BASE TABLE,NO,tg_auto1
+t4,BASE TABLE,NO,tg_auto2
+show full tables where table_type='VIEW'
+Tables_in_show_tb_auto,Table_type,Auto_partition,Table_group
+v1,VIEW,NO,-
+v2,VIEW,NO,-
+show full tables where table_group='tg_auto1'
+Tables_in_show_tb_auto,Table_type,Auto_partition,Table_group
+t1,BASE TABLE,NO,tg_auto1
+t2,BASE TABLE,NO,tg_auto1
+t3,BASE TABLE,NO,tg_auto1
+show full tables where table_group='tg_auto2'
+Tables_in_show_tb_auto,Table_type,Auto_partition,Table_group
+t4,BASE TABLE,NO,tg_auto2
+show full tables where table_group='-'
+Tables_in_show_tb_auto,Table_type,Auto_partition,Table_group
+v1,VIEW,NO,-
+v2,VIEW,NO,-
+show tables
+Tables_in_show_tb_auto
+t1
+t2
+t3
+t4
+v1
+v2
+show tables like '%t1%'
+Tables_in_show_tb_auto
+t1
+drop database if exists show_tb_drds
+create database show_tb_drds mode=drds
+use show_tb_drds
+create table t1(a int) dbpartition by hash(a)
+create table t2(a int) dbpartition by hash(a)
+create view v1 as select * from t1
+show full tables
+Tables_in_show_tb_drds,Table_type,Auto_partition,Table_group
+t1,BASE TABLE,NO,-
+t2,BASE TABLE,NO,-
+v1,VIEW,NO,-
+show tables
+Tables_in_show_tb_drds
+t1
+t2
+v1
+show tables like '%t1%'
+Tables_in_show_tb_drds
+t1
+show full tables where Table_type='view'
+Tables_in_show_tb_drds,Table_type,Auto_partition,Table_group
+v1,VIEW,NO,-

@@ -3,6 +3,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.ttl;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.TtlLoggerUtil;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;
 import org.slf4j.Logger;
@@ -63,11 +64,23 @@ public class TtlIntraTaskExecutor extends AbstractLifecycle {
 
     protected void iniTtlIntraTaskExecutor() {
 
-        int selectTaskExecutorSize = TtlConfigUtil.getTtlGlobalDeleteWorkerCount();
+        int selectTaskExecutorSize = TtlConfigUtil.getTtlGlobalSelectWorkerCount();
+        if (selectTaskExecutorSize == 0) {
+            /**
+             * For invalid worker count
+             */
+            selectTaskExecutorSize = 4;
+        }
         selectTaskExecutor =
             createWorkerThreadPool("Ttl-SelectTaskExecutor", selectTaskExecutorSize, selectTaskQueueSize);
 
         int deleteTaskExecutorSize = TtlConfigUtil.getTtlGlobalDeleteWorkerCount();
+        if (deleteTaskExecutorSize == 0) {
+            /**
+             * For invalid worker count
+             */
+            deleteTaskExecutorSize = 4;
+        }
         deleteTaskExecutor =
             createWorkerThreadPool("Ttl-DeleteTaskExecutor", deleteTaskExecutorSize, deleteTaskQueueSize);
 
@@ -207,6 +220,14 @@ public class TtlIntraTaskExecutor extends AbstractLifecycle {
             actualWorkerCount = 4;
         }
         return actualWorkerCount;
+    }
+
+    public ThreadPoolExecutor getDeleteTaskExecutor() {
+        return deleteTaskExecutor;
+    }
+
+    public ThreadPoolExecutor getSelectTaskExecutor() {
+        return selectTaskExecutor;
     }
 
 }

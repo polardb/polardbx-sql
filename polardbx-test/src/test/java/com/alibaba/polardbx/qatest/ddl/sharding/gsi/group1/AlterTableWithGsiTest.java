@@ -1037,13 +1037,13 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         sql = String.format("alter table %s change column a a1 bigint(10) primary key", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
-            "optimize error by Do not support change the column name of sharding key");
+            "Do not support change the column name of sharding key ");
 
         final String looseHint = "/*+TDDL:cmd_extra(ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI=true)*/";
 
         sql = String.format(looseHint + "alter table %s change column b b1 varchar(40)", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql,
-            "optimize error by Do not support change the column name of sharding key");
+            "Do not support change the column name of sharding key");
 
         sql = String.format(looseHint + "alter table %s change column c c1 varchar(40)", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);

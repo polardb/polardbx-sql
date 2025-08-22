@@ -53,6 +53,22 @@ public class Reporter implements CheckerCallback {
     private final AtomicLong primaryCounter = new AtomicLong(0);
     private final AtomicLong gsiCounter = new AtomicLong(0);
 
+    public void setForceReportIntoMetaDb(Boolean forceReportIntoMetaDb) {
+        this.forceReportIntoMetaDb = forceReportIntoMetaDb;
+    }
+
+    private Boolean forceReportIntoMetaDb = false;
+
+    public String getReportName() {
+        return reportName;
+    }
+
+    public void setReportName(String reportName) {
+        this.reportName = reportName;
+    }
+
+    protected String reportName = "Reporter.";
+
     public Reporter(long earlyFailNumber) {
         this.earlyFailNumber = earlyFailNumber;
     }
@@ -72,12 +88,39 @@ public class Reporter implements CheckerCallback {
     }
 
     public static String pkString(Checker checker, List<Pair<ParameterContext, byte[]>> row) {
-        return '(' + checker.getPrimaryKeys()
-            .stream()
-            .mapToInt(idx -> idx)
-            .mapToObj(idx -> String.valueOf(row.get(idx).getKey().getArgs()[1]))
-            .collect(Collectors.joining(",")) + ')';
+        List<Object> pks = checker.getPrimaryKeys().stream().mapToInt(idx -> idx).mapToObj(idx->row.get(idx).getKey().getArgs()[1]).collect(
+            Collectors.toList());
+        return JSON.toJSONString(pks);
     }
+
+    public static String detailString(List<Pair<ParameterContext, byte[]>> row){
+        if(row == null){
+            return "null";
+        }
+        List<Object> rowData = new ArrayList<>();
+        for(int i = 0; i < row.size(); i++){
+            rowData.add(row.get(i).getKey().getArgs()[1]);
+        }
+        return JSON.toJSONString(rowData);
+    }
+
+    public static String detailString(List<List<Pair<ParameterContext, byte[]>>> baseRows, List<List<Pair<ParameterContext, byte[]>>> checkRows){
+        String detailStringTemplate = " pk range {%s, %s} on primary table, pk range {%s, %s} on mirror copy table";
+        String primaryTableBound1 = "null";
+        String primaryTableBound2 = "null";
+        String gsiTableBound1 = "null";
+        String gsiTableBound2 = "null";
+        if(!GeneralUtil.isEmpty(baseRows)){
+            primaryTableBound1 = detailString(baseRows.get(0));
+            primaryTableBound2 = detailString(baseRows.get(baseRows.size() - 1));
+        }
+        if(!GeneralUtil.isEmpty(checkRows)){
+            gsiTableBound1 = detailString(checkRows.get(0));
+            gsiTableBound2 = detailString(checkRows.get(checkRows.size() - 1));
+        }
+        return String.format(detailStringTemplate, primaryTableBound1, primaryTableBound2, gsiTableBound1, gsiTableBound2);
+    }
+
 
     public static String detailString(Checker checker, List<Pair<ParameterContext, byte[]>> primaryRow,
                                       List<Pair<ParameterContext, byte[]>> gsiRow) {
@@ -104,7 +147,7 @@ public class Reporter implements CheckerCallback {
         // Insert start mark.
         checker.getManager()
             .insertReports(ImmutableList.of(CheckerManager.CheckerReport
-                .create(checker, "", "", "START", CheckerManager.CheckerReportStatus.START, "--", "--", "Reporter.")));
+                .create(checker, "", "", "START", CheckerManager.CheckerReportStatus.START, "--", "--", reportName)));
     }
 
     @Override
@@ -128,7 +171,9 @@ public class Reporter implements CheckerCallback {
                     CheckerManager.CheckerReportStatus.FOUND,
                     pkString(checker, row),
                     detailString(checker, primaryToGsi ? row : null, primaryToGsi ? null : row),
-                    "Reporter."));
+                    reportName
+                ));
+
             }
         }
 
@@ -159,7 +204,7 @@ public class Reporter implements CheckerCallback {
                 CheckerManager.CheckerReportStatus.FOUND,
                 null == primaryRow ? pkString(checker, indexRow) : pkString(checker, primaryRow),
                 details,
-                "Reporter.",
+                reportName,
                 // Only no lock with recheck context.
                 checker.getPrimaryLock() == SqlSelect.LockMode.UNDEF && null != primaryRow ?
                     new RecheckContext(dbIndex, phyTable, true, primaryRow) : null));
@@ -171,15 +216,15 @@ public class Reporter implements CheckerCallback {
                 return false;
             }
 
-            final String type;
-            final String details;
+            String type = null;
+            String details = null;
             if (null == primaryRow) {
                 type = "ORPHAN";
                 details = detailString(checker, null, indexRow);
-            } else {
-                type = null;
-                details = null;
-            }
+            } else if (indexRow != null) {
+                type = "GSI_CONFLICT";
+                details = detailString(checker, primaryRow, indexRow);
+            } // or only primaryRow is valid, this will be record when check on primary to GSI
 
             if (details != null) {
                 tmpResult.add(CheckerManager.CheckerReport.create(checker,
@@ -189,7 +234,7 @@ public class Reporter implements CheckerCallback {
                     CheckerManager.CheckerReportStatus.FOUND,
                     pkString(checker, indexRow),
                     details,
-                    "Reporter.",
+                    reportName,
                     // Only no lock with recheck context.
                     checker.getGsiLock() == SqlSelect.LockMode.UNDEF ? new RecheckContext(dbIndex,
                         phyTable,
@@ -200,8 +245,9 @@ public class Reporter implements CheckerCallback {
             return true;
         });
 
+        Boolean holdLock = (primaryToGsi ? checker.getPrimaryLock() : checker.getGsiLock()) != SqlSelect.LockMode.UNDEF;
         // Commit if hold lock.
-        if ((primaryToGsi ? checker.getPrimaryLock() : checker.getGsiLock()) != SqlSelect.LockMode.UNDEF) {
+        if (holdLock) {
             try {
                 selectEc.getTransaction().commit();
             } catch (Exception e) {
@@ -209,9 +255,11 @@ public class Reporter implements CheckerCallback {
                 return false; // Retry this batch.
             }
             // No false positive so put it into checker reports system table directly.
-            checker.getManager().insertReports(tmpResult);
         } // Or we will recheck in finish and put correct result in reports.
 
+        if ((holdLock || forceReportIntoMetaDb) && tmpResult.size() > 0) {
+            checker.getManager().insertReports(tmpResult);
+        }
         // For debug.
         final String dbgInfo = selectEc.getParamManager().getString(ConnectionParams.GSI_DEBUG);
         if (!TStringUtil.isEmpty(dbgInfo) && dbgInfo.equalsIgnoreCase("recheck") && 0 == errorCount.get()) {
@@ -285,7 +333,7 @@ public class Reporter implements CheckerCallback {
                 CheckerManager.CheckerReportStatus.FINISH,
                 "--",
                 finishDetails,
-                "Reporter.")));
+                reportName)));
     }
 
     private static class RecheckContext {

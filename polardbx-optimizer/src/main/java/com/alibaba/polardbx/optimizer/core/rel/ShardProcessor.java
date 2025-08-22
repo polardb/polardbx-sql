@@ -68,10 +68,11 @@ public abstract class ShardProcessor {
                                                              String tableName,
                                                              PartitionPruneStep stepInfo,
                                                              PartitionTupleRouteInfo routeInfo,
-                                                             boolean isQueryRouting) {
+                                                             boolean isQueryRouting,
+                                                             ExecutionContext ecOfPlan) {
         ShardProcessor shardProcessor;
         if (isQueryRouting) {
-            shardProcessor = new PartTableQueryShardProcessor(stepInfo);
+            shardProcessor = new PartTableQueryShardProcessor(stepInfo, ecOfPlan);
         } else {
             shardProcessor = new PartTableInsertShardProcessor(routeInfo);
         }
@@ -128,7 +129,7 @@ public abstract class ShardProcessor {
     }
 
     public static SimpleShardProcessor buildSimple(LogicalView logicalView, String tableName, ExecutionContext ec) {
-        TddlRuleManager or = ec.getSchemaManager().getTddlRuleManager();
+        TddlRuleManager or = ec.getSchemaManager(logicalView.getSchemaName()).getTddlRuleManager();
         TableRule tr = or.getTableRule(tableName);
 
         List<String> shardColumns = tr.getShardColumns();
@@ -240,8 +241,10 @@ public abstract class ShardProcessor {
 
         } else {
             // the table is in new part db
+            ExecutionContext ecOfPlan = PlannerContext.getPlannerContext(logicalInsert).getExecutionContext();
             processor = ShardProcessor
-                .createPartTblShardProcessor(schemaName, tableName, null, logicalInsert.getTupleRoutingInfo(), false);
+                .createPartTblShardProcessor(schemaName, tableName, null, logicalInsert.getTupleRoutingInfo(), false,
+                    ecOfPlan);
         }
 
         return processor;

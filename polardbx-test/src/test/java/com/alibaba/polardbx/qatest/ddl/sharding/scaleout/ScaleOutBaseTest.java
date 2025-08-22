@@ -153,7 +153,7 @@ public abstract class ScaleOutBaseTest extends AsyncDDLBaseNewDBTestCase {
             }
         }
         Set<String> ignoreError = new HashSet<>();
-        ignoreError.add("Please use SHOW DDL");
+        ignoreError.add("The DDL job has been cancelled or interrupted");
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, tddlSql, ignoreError);
     }
 
@@ -183,7 +183,7 @@ public abstract class ScaleOutBaseTest extends AsyncDDLBaseNewDBTestCase {
 
             tddlSql = tddlSql + " to '" + storageIDs.get((groupNames.get(k).getValue() + 1) % storageIDs.size()) + "'";
             Set<String> ignoreError = new HashSet<>();
-            ignoreError.add("Please use SHOW DDL");
+            ignoreError.add("The DDL job has been cancelled or interrupted");
             JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, tddlSql, ignoreError);
 
             k++;

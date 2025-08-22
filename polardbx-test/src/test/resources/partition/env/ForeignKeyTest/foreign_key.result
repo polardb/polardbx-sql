@@ -768,6 +768,7 @@ foreign_key_test.t2:Columns,check,status,OK
 t2._local_ind:Local Index,check,status,OK
 t2.t2_ibfk_1:Local Index,check,status,OK
 foreign_key_test.t2.ind_$:Topology,check,status,OK
+ind_$.auto_shard_key_c:Local Index,check,status,OK
 foreign_key_test.t2.ind_$:Covering Columns,check,status,OK
 DROP TABLE t2;
 DROP TABLE t1;

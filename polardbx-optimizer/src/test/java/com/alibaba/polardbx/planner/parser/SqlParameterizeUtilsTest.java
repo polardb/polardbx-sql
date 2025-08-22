@@ -466,6 +466,35 @@ public class SqlParameterizeUtilsTest extends TestCase {
 
     }
 
+    public void testInsertCalDigest() {
+        String sql = "   INSERT INTO table_name (column1, column2, column3)"
+            + "   VALUES (1, null, now())"
+            + "   ON DUPLICATE KEY UPDATE column1=VALUES(column1), column2=VALUES(column2)";
+        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql);
+        assertTrue(sqlParameterized.getDigest(true) == 0L);
+
+        sql = "   INSERT INTO table_name (column1, column2, column3)"
+            + "   VALUES (1, null, substring(\"test\", 2, 3))"
+            + "   ON DUPLICATE KEY UPDATE column1=VALUES(column1), column2=VALUES(column2)";
+        sqlParameterized = SqlParameterizeUtils.parameterize(sql);
+        assertTrue(sqlParameterized.getDigest(true) != 0L);
+
+        sql = "   replace INTO table_name (column1, column2, column3)"
+            + "   VALUES (1, null, substring(\"test\", 2, 3))";
+        sqlParameterized = SqlParameterizeUtils.parameterize(sql);
+        assertTrue(sqlParameterized.getDigest(true) != 0L);
+
+        sql = "   replace INTO table_name (column1, column2, column3)"
+            + "   VALUES (1, null, now())";
+        sqlParameterized = SqlParameterizeUtils.parameterize(sql);
+        assertTrue(sqlParameterized.getDigest(true) == 0L);
+
+        sql = "   replace INTO table_name (column1, column2, column3)"
+            + "   VALUES (1, null, now(3))";
+        sqlParameterized = SqlParameterizeUtils.parameterize(sql);
+        assertTrue(sqlParameterized.getDigest(true) != 0L);
+    }
+
     public void testIntervalNoParameter() {
         String sql = "select date_add(str_to_date('20180808','%Y%m%d'), interval 1 day);";
         SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql);

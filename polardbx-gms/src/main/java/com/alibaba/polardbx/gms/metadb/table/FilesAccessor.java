@@ -265,6 +265,9 @@ public class FilesAccessor extends AbstractAccessor {
     private static final String UPDATE_WHOLE_TABLE_REMOVE_TS = "update " + FILES_TABLE
         + " set `remove_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and commit_ts is not null && remove_ts is null";
 
+    private static final String UPDATE_WHOLE_TABLE_REMOVE_TS_LIMIT = "update " + FILES_TABLE
+        + " set `remove_ts` = ? where `logical_schema_name` = ? and `logical_table_name` = ? and commit_ts is not null && remove_ts is null limit ? ";
+
     private static final String UPDATE_TABLE_SCHEMA =
         "update " + FILES_TABLE + " set `table_schema` = ? where `file_id` in (%s)";
 
@@ -303,6 +306,27 @@ public class FilesAccessor extends AbstractAccessor {
         + "    and `file_type` = 'TABLE_FILE' \n"
         + "    and RIGHT(file_name, 3) = 'orc';";
 
+    /**
+     * 统计
+     */
+    private static final String SELECT_SUM_CSV_FILES_BY_TSO_AND_TABLE = "select\n"
+        + "    count(*) AS file_counts, \n"
+        + "    sum(table_rows) AS row_counts, \n"
+        + "    sum(extent_size) AS file_sizes \n"
+        + " from \n"
+        + FILES_TABLE
+        + " where \n"
+        + "    `commit_ts` <= ? \n"
+        + "    and (\n"
+        + "        `remove_ts` is null \n"
+        + "        or `remove_ts` > ? \n"
+        + "    )\n"
+        + "    and `logical_schema_name` = ? \n"
+        + "    and `logical_table_name` = ? \n"
+        + "    and `file_type` = 'TABLE_FILE' \n"
+        + "    and RIGHT(file_name, 3) = 'csv' \n"
+        + "    and `extent_size` > 0 ;";
+
     private static final String SELECT_FILES_BY_NAMES =
         "select * from " + FILES_TABLE
             + " where `file_name` in (%s)";
@@ -320,6 +344,15 @@ public class FilesAccessor extends AbstractAccessor {
             + " else `deleted_checksum` "
             + " end "
             + " where `file_id` in (%s)";
+
+    private static final String UPDATE_FILE_SIZE_AND_ROWS_BY_FILE_NAME =
+        "update " + FILES_TABLE
+            + " set `extent_size` = ?, `table_rows` = ? "
+            + " where `file_name` = ? ";
+
+    public static FilesAccessor create() {
+        return new FilesAccessor();
+    }
 
     /**
      * 不包含file_meta列的select
@@ -340,13 +373,35 @@ public class FilesAccessor extends AbstractAccessor {
     private static final String SELECT_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_TSO = SELECT_FILE_INFO
         + " where `logical_schema_name` = ? and `logical_table_name` = ? and `remove_ts` is not null and `remove_ts` < ? ";
 
+    /**
+     * 用来判断是否存在需要purge文件
+     */
+    private static final String SELECT_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_TSO_LIMIT_1 = SELECT_FILE_INFO
+        + " where `logical_schema_name` = ? and `logical_table_name` = ? and `remove_ts` is not null and `remove_ts` < ? ";
+
+    private static final String SELECT_CSV_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_RANGE_TSO = SELECT_FILE_INFO
+        + " where `logical_schema_name` = ? and `logical_table_name` = ? and RIGHT(`file_name`, 3) = 'csv' and `extent_size` = 0  and `remove_ts` is not null and `remove_ts` >= ? and `remove_ts` < ? ";
+
+    /**
+     * 用来判断是否存在某个remove tso范围内的文件
+     */
+    private static final String SELECT_CSV_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_RANGE_TSO_LIMIT_1 = SELECT_FILE_INFO
+        + " where `logical_schema_name` = ? and `logical_table_name` = ? and RIGHT(`file_name`, 3) = 'csv' and `extent_size` = 0  and `remove_ts` is not null and `remove_ts` >= ? and `remove_ts` < ? limit 1";
+
     private static final String SELECT_FILE_INFO_BY_START_TSO_AND_END_TSO = SELECT_FILE_INFO_JOIN_TABLE
         + " where `commit_ts` <= ? and ( `remove_ts` is null or `remove_ts` >= ? ) and RIGHT(`file_name`, 3) in ('orc', 'sst');";
+
+    private static final String SELECT_SNAPSHOT_CSV_FILE_INFO_BY_START_TSO_AND_END_TSO = SELECT_FILE_INFO_JOIN_TABLE
+        + " where `commit_ts` <= ? and ( `remove_ts` is null or `remove_ts` >= ? ) and RIGHT(`file_name`, 3) in ('csv') and `extent_size` > 0 ;";
 
     private static final String DELETE_TWO_BY_LOGICAL_SCHEMA_TABLE_TSO =
         "delete a,b from " + FILES_TABLE + " as a  join " + COLUMNAR_FILE_MAPPING_TABLE
             + " as b on a.file_name = b.file_name and a.logical_schema_name = b.logical_schema and a.logical_table_name = b.logical_table "
             + " where a.`logical_schema_name` = ? and a.`logical_table_name` = ? and a.`remove_ts` is not null and a.`remove_ts` < ? ";
+
+    private static final String DELETE_BY_LOGICAL_SCHEMA_TABLE_TSO_LIMIT =
+        "delete from " + FILES_TABLE
+            + " where `logical_schema_name` = ? and `logical_table_name` = ? and `remove_ts` is not null and `remove_ts` < ? limit ? ";
 
     private static final String DELETE_ORC_BY_TSO =
         "delete a,b from " + FILES_TABLE + " as a  join " + COLUMNAR_FILE_MAPPING_TABLE
@@ -364,6 +419,10 @@ public class FilesAccessor extends AbstractAccessor {
             + " as b on a.file_name = b.file_name and a.logical_schema_name = b.logical_schema and a.logical_table_name = b.logical_table "
             + " set a.`remove_ts` = null "
             + " where a.`remove_ts` > ? ";
+
+    private static final String SELECT_WH_BY_TABLE_AND_REMOVE_TSO =
+        "select * from " + FILES_TABLE
+            + "where logical_schema_name = ? and`remove_ts` is not null and b.`remove_ts` < ?";
 
     public int[] insert(List<FilesRecord> records, String tableSchema, String tableName) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -496,6 +555,39 @@ public class FilesAccessor extends AbstractAccessor {
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
         MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, tso);
         return query(SELECT_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_TSO, FILES_TABLE, FileInfoRecord.class, params);
+    }
+
+    public List<FileInfoRecord> queryFileInfoByLogicalSchemaTableTsoLimitOne(String logicalSchemaName,
+                                                                             String logicalTableName,
+                                                                             long tso) {
+        Map<Integer, ParameterContext> params = new HashMap<>(4);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, tso);
+        return query(SELECT_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_TSO_LIMIT_1, FILES_TABLE, FileInfoRecord.class, params);
+    }
+
+    public List<FileInfoRecord> queryCSVFileInfoByLogicalSchemaTableRangeTso(String logicalSchemaName,
+                                                                             String logicalTableName,
+                                                                             long startTso, long endTso) {
+        Map<Integer, ParameterContext> params = new HashMap<>(8);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, startTso);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setLong, endTso);
+        return query(SELECT_CSV_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_RANGE_TSO, FILES_TABLE, FileInfoRecord.class, params);
+    }
+
+    public List<FileInfoRecord> queryCSVFileInfoByLogicalSchemaTableRangeTsoLimitOne(String logicalSchemaName,
+                                                                                     String logicalTableName,
+                                                                                     long startTso, long endTso) {
+        Map<Integer, ParameterContext> params = new HashMap<>(8);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, startTso);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setLong, endTso);
+        return query(SELECT_CSV_FILE_INFO_BY_LOGICAL_SCHEMA_TABLE_RANGE_TSO_LIMIT_1, FILES_TABLE, FileInfoRecord.class,
+            params);
     }
 
     public List<FilesRecord> queryTableFormatByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
@@ -703,6 +795,27 @@ public class FilesAccessor extends AbstractAccessor {
         }
     }
 
+    /**
+     * 快照表可能csv没有append记录了，直接files中记录
+     */
+    public List<OrcFileStatusRecord> querySnapshotCSVFileStatusByTsoAndTableId(long tso, String logicalSchema, String tableId) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(5);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, tableId);
+
+            return MetaDbUtil.query(SELECT_SUM_CSV_FILES_BY_TSO_AND_TABLE, params, OrcFileStatusRecord.class,
+                connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
     public void updateFilesCommitTs(Long ts, String logicalSchemaName, String logicalTableName, Long taskId) {
         Map<Integer, ParameterContext> params = new HashMap<>(3);
         if (ts == null) {
@@ -773,7 +886,7 @@ public class FilesAccessor extends AbstractAccessor {
         MetaDbUtil.setParameter(5, params, ParameterMethod.setString, engine);
         MetaDbUtil.setParameter(6, params, ParameterMethod.setInt, limit);
         try {
-            DdlMetaLogUtil.logSql(SELECT_BY_PARTITION_AND_TYPE_ORDER_BY_TSO_WITH_LIMIT, params);
+            //DdlMetaLogUtil.logSql(SELECT_BY_PARTITION_AND_TYPE_ORDER_BY_TSO_WITH_LIMIT, params);
             return MetaDbUtil.query(SELECT_BY_PARTITION_AND_TYPE_ORDER_BY_TSO_WITH_LIMIT, params, FilesRecord.class,
                 connection);
         } catch (Exception e) {
@@ -901,6 +1014,19 @@ public class FilesAccessor extends AbstractAccessor {
         try {
             DdlMetaLogUtil.logSql(SELECT_FILE_INFO_BY_START_TSO_AND_END_TSO, params);
             return MetaDbUtil.query(SELECT_FILE_INFO_BY_START_TSO_AND_END_TSO, params, FileInfoRecord.class,
+                connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<FileInfoRecord> querySnapshotCSVFileInfoByTso(long startTso, long endTso) {
+        Map<Integer, ParameterContext> params = new HashMap<>(4);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, endTso);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, startTso);
+
+        try {
+            return MetaDbUtil.query(SELECT_SNAPSHOT_CSV_FILE_INFO_BY_START_TSO_AND_END_TSO, params, FileInfoRecord.class,
                 connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
@@ -1048,6 +1174,20 @@ public class FilesAccessor extends AbstractAccessor {
         }
     }
 
+    public int deleteLimitByTableAndTso(String schemaName, String tableName, long tso, long limit) {
+        Map<Integer, ParameterContext> params = new HashMap<>(8);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, tso);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setLong, limit);
+        try {
+            DdlMetaLogUtil.logSql(DELETE_BY_LOGICAL_SCHEMA_TABLE_TSO_LIMIT, params);
+            return MetaDbUtil.delete(DELETE_BY_LOGICAL_SCHEMA_TABLE_TSO_LIMIT, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
     public int deleteOrcMetaByCommitTso(long tso) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
@@ -1177,7 +1317,7 @@ public class FilesAccessor extends AbstractAccessor {
         }
     }
 
-    public void updateTableRemoveTs(Long ts, String logicalSchemaName, String logicalTableName) {
+    public int updateTableRemoveTs(Long ts, String logicalSchemaName, String logicalTableName) {
         int paramIndex = 1;
         Map<Integer, ParameterContext> params = new HashMap<>();
         if (ts == null) {
@@ -1190,7 +1330,27 @@ public class FilesAccessor extends AbstractAccessor {
 
         try {
             DdlMetaLogUtil.logSql(UPDATE_WHOLE_TABLE_REMOVE_TS, params);
-            MetaDbUtil.update(UPDATE_WHOLE_TABLE_REMOVE_TS, params, connection);
+            return MetaDbUtil.update(UPDATE_WHOLE_TABLE_REMOVE_TS, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public int updateTableRemoveTsLimit(Long ts, String logicalSchemaName, String logicalTableName, long limit) {
+        int paramIndex = 1;
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        if (ts == null) {
+            MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setNull1, ts);
+        } else {
+            MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setLong, ts);
+        }
+        MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setLong, limit);
+
+        try {
+            DdlMetaLogUtil.logSql(UPDATE_WHOLE_TABLE_REMOVE_TS_LIMIT, params);
+            return MetaDbUtil.update(UPDATE_WHOLE_TABLE_REMOVE_TS_LIMIT, params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
@@ -1244,5 +1404,18 @@ public class FilesAccessor extends AbstractAccessor {
             TStringUtil.equalsIgnoreCase(newRecord.tableName, existingRecord.tableName) &&
             TStringUtil.equalsIgnoreCase(newRecord.fileName, existingRecord.fileName) &&
             TStringUtil.equalsIgnoreCase(newRecord.fileType, existingRecord.fileType);
+    }
+
+    public int updateFileSizeAndRowsByFileName(long fileSize, long rowCount, String fileName) {
+        Map<Integer, ParameterContext> params = new HashMap<>(4);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, fileSize);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, rowCount);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, fileName);
+        try {
+            DdlMetaLogUtil.logSql(UPDATE_FILE_SIZE_AND_ROWS_BY_FILE_NAME, params);
+            return MetaDbUtil.update(UPDATE_FILE_SIZE_AND_ROWS_BY_FILE_NAME, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
     }
 }

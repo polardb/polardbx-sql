@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.privilege.Permission;
 import com.alibaba.polardbx.gms.privilege.PermissionCheckContext;
 import com.alibaba.polardbx.gms.privilege.PolarAccount;
@@ -35,6 +36,7 @@ import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
 import com.alibaba.polardbx.gms.privilege.PrivilegeKind;
 import com.alibaba.polardbx.gms.lbac.LBACPrivilegeCheckUtils;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.lbac.LBACException;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -238,6 +240,24 @@ public class PolarPrivilegeUtils {
                     pc.getHost(),
                     db);
             }
+        }
+    }
+
+
+    public static boolean checkPrivilegeForPreparedStmt() {
+        int mode = InstConfUtil.getInt(ConnectionParams.CHECK_PRIVILEGE_IN_PREPARE_MODE);
+        if (mode == 0) {
+            return true;
+        }else if (mode == 1) {
+            return false;
+        }else {
+            // 5419全部都是老实例，所以默认不check
+            return false;
+//            if (MetaDbUtil.isNewInstance()) {
+//                return true;
+//            }else {
+//                return false;
+//            }
         }
     }
 }

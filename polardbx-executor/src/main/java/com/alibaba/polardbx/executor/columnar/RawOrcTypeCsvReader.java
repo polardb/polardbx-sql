@@ -39,6 +39,7 @@ import org.apache.orc.impl.TypeUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -75,7 +76,11 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
         this.length = length == EOF ? Integer.MAX_VALUE : length;
 
         this.columnMetas = columnMetas;
-        this.rowReader = new ByteCSVReader(csvFileName, inputStream, this.length);
+
+        byte[] reusableNulls = new byte[fieldNum];
+        int[] reusableOffsets = new int[fieldNum];
+
+        this.rowReader = new ByteCSVReader(csvFileName, inputStream, this.length, reusableNulls, reusableOffsets);
         this.offset = offset;
     }
 
@@ -125,12 +130,13 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        ByteBuffer bytes = row.getBytes(columnId);
+        int bufPos = bytes.position();
         switch (dataType.fieldType()) {
         // we can hold data using long value from bit(1) to bit(64)
         case MYSQL_TYPE_BIT: {
             //大端模式
-            blockBuilder.writeLong(ColumnProvider.bigBitLongFromByte(bytes, bytes.length));
+            blockBuilder.writeLong(ColumnProvider.bigBitLongFromByte(bytes));
             return;
         }
 
@@ -139,9 +145,9 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             long longVal;
             boolean isUnsigned = dataType.isUnsigned();
             if (isUnsigned) {
-                longVal = getUint8(bytes, 0);
+                longVal = getUint8(bytes);
             } else {
-                longVal = getInt8(bytes, 0);
+                longVal = getInt8(bytes);
             }
             blockBuilder.writeLong(longVal);
             return;
@@ -150,9 +156,9 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             long longVal;
             boolean isUnsigned = dataType.isUnsigned();
             if (isUnsigned) {
-                longVal = getUint16(bytes, 0);
+                longVal = getUint16(bytes);
             } else {
-                longVal = getInt16(bytes, 0);
+                longVal = getInt16(bytes);
             }
             blockBuilder.writeLong(longVal);
             return;
@@ -161,9 +167,9 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             long longVal;
             boolean isUnsigned = dataType.isUnsigned();
             if (isUnsigned) {
-                longVal = getUint24(bytes, 0);
+                longVal = getUint24(bytes);
             } else {
-                longVal = getInt24(bytes, 0);
+                longVal = getInt24(bytes);
             }
             blockBuilder.writeLong(longVal);
             return;
@@ -172,9 +178,9 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             long longVal;
             boolean isUnsigned = dataType.isUnsigned();
             if (isUnsigned) {
-                longVal = getUint32(bytes, 0);
+                longVal = getUint32(bytes);
             } else {
-                longVal = getInt32(bytes, 0);
+                longVal = getInt32(bytes);
             }
             blockBuilder.writeLong(longVal);
             return;
@@ -183,12 +189,11 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
         // for bigint, bigint unsigned.
         case MYSQL_TYPE_LONGLONG: {
             long longVal;
-            int length = Math.min(8, bytes.length);
             boolean isUnsigned = dataType.isUnsigned();
             if (isUnsigned) {
-                longVal = longFromByte(bytes, length) ^ UInt64Utils.FLIP_MASK;
+                longVal = longFromByte(bytes) ^ UInt64Utils.FLIP_MASK;
             } else {
-                longVal = longFromByte(bytes, length);
+                longVal = longFromByte(bytes);
             }
             blockBuilder.writeLong(longVal);
             return;
@@ -196,12 +201,12 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
 
         // for real type.
         case MYSQL_TYPE_FLOAT: {
-            int result = ColumnProvider.intFromByte(bytes, bytes.length);
+            int result = ColumnProvider.intFromByte(bytes);
             blockBuilder.writeDouble(Float.intBitsToFloat(result));
             return;
         }
         case MYSQL_TYPE_DOUBLE: {
-            long result = ColumnProvider.longFromByte(bytes, bytes.length);
+            long result = ColumnProvider.longFromByte(bytes);
             blockBuilder.writeDouble(Double.longBitsToDouble(result));
             return;
         }
@@ -235,7 +240,7 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             final int scale = dataType.getScale();
             long second = 0;
             for (int i = 0; i < 4; i++) {
-                byte b = bytes[i];
+                byte b = bytes.get(bufPos + i);
                 second = (second << 8) | (b >= 0 ? (int) b : (b + 256));
             }
 
@@ -245,7 +250,7 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             if (length > 0) {
                 int fraction = 0;
                 for (int i = 4; i < (4 + length); i++) {
-                    byte b = bytes[i];
+                    byte b = bytes.get(bufPos + i);
                     fraction = (fraction << 8) | (b >= 0 ? (int) b : (b + 256));
                 }
                 micro = fraction * (int) Math.pow(100, 3 - length);
@@ -259,7 +264,7 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
 
         // for year type.
         case MYSQL_TYPE_YEAR: {
-            long longVal = ColumnProvider.longFromByte(bytes, bytes.length);
+            long longVal = ColumnProvider.longFromByte(bytes);
             blockBuilder.writeLong(longVal == 0 ? 0 : longVal + 1900);
             return;
         }
@@ -273,13 +278,13 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
                 blockBuilder.writeLong(getUnscaledDecimal(bytes, precision, scale));
             } else {
                 // fall back to byte[] representation
-                blockBuilder.writeByteArray(bytes);
+                blockBuilder.writeByteArray(bytes.array(), bytes.position(), bytes.remaining());
             }
             return;
         }
 
         case MYSQL_TYPE_ENUM: {
-            int val = ColumnProvider.intFromByte(bytes, bytes.length);
+            int val = ColumnProvider.intFromByte(bytes);
             EnumType enumType = (EnumType) dataType;
             blockBuilder.writeByteArray(enumType.convertTo(val).getBytes());
             return;
@@ -299,30 +304,34 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
                     byte[] paddingBytes = ColumnProvider.convertToPaddingBytes(bytes, binaryType);
                     blockBuilder.writeByteArray(paddingBytes);
                 } else {
-                    blockBuilder.writeByteArray(bytes);
+                    blockBuilder.writeByteArray(bytes.array(), bytes.position(), bytes.remaining());
                 }
             } else {
-                blockBuilder.writeByteArray(convertFromBinary(dataType.getCharsetName(), bytes));
+                ByteBuffer convertedBuffer = convertFromBinary(dataType.getCharsetName(), bytes);
+                blockBuilder.writeByteArray(convertedBuffer.array(), convertedBuffer.position(),
+                    convertedBuffer.remaining());
             }
             return;
         }
         case MYSQL_TYPE_SET: {
-            int val = ColumnProvider.intFromByte(bytes, bytes.length);
+            int val = ColumnProvider.intFromByte(bytes);
             SetType setType = (SetType) dataType;
             blockBuilder.writeByteArray(String.join(",", setType.convertFromBinary(val)).getBytes());
             return;
         }
         case MYSQL_TYPE_STRING:
             if (dataType instanceof SetType) {
-                int val = ColumnProvider.intFromByte(bytes, bytes.length);
+                int val = ColumnProvider.intFromByte(bytes);
                 SetType setType = (SetType) dataType;
                 blockBuilder.writeByteArray(String.join(",", setType.convertFromBinary(val)).getBytes());
             } else {
-                blockBuilder.writeByteArray(convertFromBinary(dataType.getCharsetName(), bytes));
+                ByteBuffer convertedBuffer = convertFromBinary(dataType.getCharsetName(), bytes);
+                blockBuilder.writeByteArray(convertedBuffer.array(), convertedBuffer.position(),
+                    convertedBuffer.remaining());
             }
             return;
         default:
-            blockBuilder.writeByteArray(bytes);
+            blockBuilder.writeByteArray(bytes.array(), bytes.position(), bytes.remaining());
         }
     }
 
@@ -339,44 +348,54 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
         }
     }
 
-    public static int getInt8(byte[] buf, int pos) {
-        return buf[pos];
+    public static int getInt8(ByteBuffer buf) {
+        int pos = buf.position();
+        return buf.get(pos);
     }
 
-    public static int getUint8(byte[] buf, int pos) {
-        return 0xff & buf[pos];
+    public static int getUint8(ByteBuffer buf) {
+        int pos = buf.position();
+        return 0xff & buf.get(pos);
     }
 
-    public static int getInt16(byte[] buf, int pos) {
-        return (0xff & buf[pos]) | ((buf[pos + 1]) << 8);
+    public static int getInt16(ByteBuffer buf) {
+        int pos = buf.position();
+        return (0xff & buf.get(pos)) | ((buf.get(pos + 1)) << 8);
     }
 
-    public static int getUint16(byte[] buf, int pos) {
-        return (0xff & buf[pos]) | ((0xff & buf[pos + 1]) << 8);
+    public static int getUint16(ByteBuffer buf) {
+        int pos = buf.position();
+        return (0xff & buf.get(pos)) | ((0xff & buf.get(pos + 1)) << 8);
     }
 
-    public static int getInt24(byte[] buf, int pos) {
-        return (0xff & buf[pos]) | ((0xff & buf[pos + 1]) << 8) | ((buf[pos + 2]) << 16);
+    public static int getInt24(ByteBuffer buf) {
+        int pos = buf.position();
+        return (0xff & buf.get(pos)) | ((0xff & buf.get(pos + 1)) << 8) | ((buf.get(pos + 2)) << 16);
     }
 
-    public static int getUint24(byte[] buf, int pos) {
-        return (0xff & buf[pos]) | ((0xff & buf[pos + 1]) << 8) | ((0xff & buf[pos + 2]) << 16);
+    public static int getUint24(ByteBuffer buf) {
+        int pos = buf.position();
+        return (0xff & buf.get(pos)) | ((0xff & buf.get(pos + 1)) << 8) | ((0xff & buf.get(pos + 2)) << 16);
     }
 
-    public static int getInt32(byte[] buf, int pos) {
-        return (0xff & buf[pos]) | ((0xff & buf[pos + 1]) << 8) | ((0xff & buf[pos + 2]) << 16)
-            | ((buf[pos + 3]) << 24);
+    public static int getInt32(ByteBuffer buf) {
+        int pos = buf.position();
+        return (0xff & buf.get(pos)) | ((0xff & buf.get(pos + 1)) << 8) | ((0xff & buf.get(pos + 2)) << 16)
+            | ((buf.get(pos + 3)) << 24);
     }
 
-    public static long getUint32(byte[] buf, int pos) {
-        return ((long) (0xff & buf[pos])) | ((long) (0xff & buf[pos + 1]) << 8) | ((long) (0xff & buf[pos + 2]) << 16)
-            | ((long) (0xff & buf[pos + 3]) << 24);
+    public static long getUint32(ByteBuffer buf) {
+        int pos = buf.position();
+        return ((long) (0xff & buf.get(pos))) |
+            ((long) (0xff & buf.get(pos + 1)) << 8) |
+            ((long) (0xff & buf.get(pos + 2)) << 16) |
+            ((long) (0xff & buf.get(pos + 3)) << 24);
     }
 
-    public static byte[] convertFromBinary(CharsetName charsetName, byte[] bytes) {
+    public static ByteBuffer convertFromBinary(CharsetName charsetName, ByteBuffer bytes) {
         if (charsetName == CharsetName.UTF8MB4 || charsetName == CharsetName.UTF8) {
             return bytes;
         }
-        return new String(bytes, charsetName.toJavaCharset()).getBytes(DEFAULT_CHARSET);
+        return DEFAULT_CHARSET.encode(charsetName.toJavaCharset().decode(bytes));
     }
 }

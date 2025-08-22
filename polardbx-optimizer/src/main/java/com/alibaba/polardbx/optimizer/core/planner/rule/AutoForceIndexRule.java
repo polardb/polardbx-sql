@@ -32,11 +32,7 @@ public class AutoForceIndexRule extends RelOptRule {
     @Override
     public void onMatch(RelOptRuleCall call) {
         TableScan scan = call.rel(0);
-        SqlNode sqlNode = new SqlNodeList(ImmutableList.of(
-            new SqlIndexHint(SqlLiteral.createCharString("FORCE INDEX", SqlParserPos.ZERO), null,
-                new SqlNodeList(ImmutableList.of(SqlLiteral.createCharString(
-                    SqlIdentifier.surroundWithBacktick(indexName), SqlParserPos.ZERO)),
-                    SqlParserPos.ZERO), SqlParserPos.ZERO)), SqlParserPos.ZERO);
+        SqlNode sqlNode = ForceIndexUtil.genForceSqlNode(indexName);
         LogicalTableScan newScan =
             LogicalTableScan.create(scan.getCluster(), scan.getTable(), scan.getHints(),
                 sqlNode, scan.getFlashback(), scan.getFlashbackOperator(), scan.getPartitions());

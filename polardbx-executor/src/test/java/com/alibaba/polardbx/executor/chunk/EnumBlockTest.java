@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -31,9 +32,12 @@ public class EnumBlockTest extends BaseBlockTest {
             blockBuilder.writeString(String.valueOf((char) ('a' + i % enumMap.size())));
         }
         blockBuilder.appendNull();
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         EnumBlock fromBlock = (EnumBlock) blockBuilder.build();
+        MemoryCountable.checkDeviation(fromBlock, .05d, true);
 
         EnumBlock newBlock = EnumBlock.from(fromBlock, fromBlock.positionCount, null);
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
         for (int i = 0; i < count; i++) {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.getString(i), newBlock.getString(i));
             Assert.assertEquals("Failed at pos: " + i, fromBlock.hashCode(i), newBlock.hashCode(i));
@@ -42,6 +46,7 @@ public class EnumBlockTest extends BaseBlockTest {
             Assert.assertTrue("Failed at pos: " + i, fromBlock.equals(i, newBlock, i));
             Assert.assertTrue("Failed at pos: " + i, fromBlock.equals(i, blockBuilder, i));
         }
+
         EnumBlock newBlock2 = EnumBlock.from(fromBlock, sel.length, sel);
         // should do nothing after compact
         fromBlock.compact(sel);
@@ -53,12 +58,15 @@ public class EnumBlockTest extends BaseBlockTest {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.checksum(j), newBlock2.checksum(i));
         }
         Assert.assertTrue(newBlock.estimateSize() > 0);
+        MemoryCountable.checkDeviation(newBlock2, .05d, true);
 
         EnumBlockBuilder blockBuilder2 = new EnumBlockBuilder(count, 16, enumMap);
         for (int i = 0; i < count; i++) {
             fromBlock.writePositionTo(i, blockBuilder2);
         }
+        MemoryCountable.checkDeviation(blockBuilder2, .05d, true);
         EnumBlock newBlock3 = (EnumBlock) blockBuilder2.build();
+        MemoryCountable.checkDeviation(newBlock3, .05d, true);
         for (int i = 0; i < count; i++) {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.getString(i), newBlock3.getString(i));
             Assert.assertEquals("Failed at pos: " + i, fromBlock.hashCode(i), newBlock3.hashCode(i));

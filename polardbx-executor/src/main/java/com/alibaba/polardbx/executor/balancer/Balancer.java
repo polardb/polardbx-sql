@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.balancer;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -174,7 +175,7 @@ public class Balancer extends AbstractLifecycle {
             .filter(DbInfoRecord::isUserDb).map(x -> x.dbName).collect(Collectors.toList());
 
         Map<String, BalanceStats> stats = schemaList.stream().map(schema ->
-            collectBalanceStatsOfDatabase(schema)
+            collectBalanceStatsOfDatabase(schema, ec)
         ).collect(Collectors.toMap(BalanceStats::getSchema, x -> x));
 
         List<BalanceAction> actions = new ArrayList<>();
@@ -229,7 +230,7 @@ public class Balancer extends AbstractLifecycle {
             .filter(DbInfoRecord::isUserDb).map(x -> x.dbName).collect(Collectors.toList());
 
         Map<String, BalanceStats> stats = schemaList.stream().map(schema ->
-            collectBalanceStatsOfDatabase(schema)
+            collectBalanceStatsOfDatabase(schema, ec)
         ).collect(Collectors.toMap(BalanceStats::getSchema, x -> x));
 
         for (BalancePolicy policy : policies) {
@@ -248,7 +249,7 @@ public class Balancer extends AbstractLifecycle {
         if (isSharding) {
             throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE, "only partition database support rebalance table");
         }
-        BalanceStats stats = collectBalanceStatsOfTable(schema, tableName);
+        BalanceStats stats = collectBalanceStatsOfTable(schema, tableName, ec);
 
         return rebalanceTableImpl(ec, options, stats, schema, tableName);
     }
@@ -266,7 +267,7 @@ public class Balancer extends AbstractLifecycle {
 
     public List<BalanceAction> rebalanceTenantDb(ExecutionContext ec, String storagePoolName, BalanceOptions options) {
         String schema = ec.getSchemaName();
-        BalanceStats stats = collectBalanceStatsOfDatabase(schema);
+        BalanceStats stats = collectBalanceStatsOfDatabase(schema, ec);
         return rebalanceTanantDbImpl(ec, options, stats, storagePoolName, schema);
     }
 
@@ -281,7 +282,7 @@ public class Balancer extends AbstractLifecycle {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "unable to acquire rebalance locks");
         }
 
-        BalanceStats stats = collectBalanceStatsOfDatabase(schema);
+        BalanceStats stats = collectBalanceStatsOfDatabase(schema, ec);
 
         if (!jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name))) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "unable to acquire rebalance locks");
@@ -379,9 +380,16 @@ public class Balancer extends AbstractLifecycle {
         return new PolicyPartitionBalance();
     }
 
-    public static BalanceStats collectBalanceStatsOfTable(String schema, String tableName) {
+    public static BalanceStats collectBalanceStatsOfTable(String schema, String tableName, ExecutionContext ec) {
         if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
-            List<TableGroupStat> tableGroupStats = StatsUtils.getTableGroupsStats(schema, tableName);
+            boolean fetchFromTableSpace =
+                ec.getParamManager().getBoolean(ConnectionParams.FETCH_TABLE_SIZE_FROM_TABLESPACE);
+            List<TableGroupStat> tableGroupStats;
+            if (!fetchFromTableSpace) {
+                tableGroupStats = StatsUtils.getTableGroupsStats(schema, tableName, ec);
+            } else {
+                tableGroupStats = StatsUtils.getTableGroupsStatsFromTableSpace(schema, tableName, ec);
+            }
             return BalanceStats.createForPartition(schema, tableGroupStats);
         } else {
             List<GroupStats.GroupsOfStorage> groupStats = GroupStats.getGroupsOfDb(schema);
@@ -398,8 +406,8 @@ public class Balancer extends AbstractLifecycle {
         }
     }
 
-    public static BalanceStats collectBalanceStatsOfDatabase(String schema) {
-        return collectBalanceStatsOfTable(schema, null);
+    public static BalanceStats collectBalanceStatsOfDatabase(String schema, ExecutionContext ec) {
+        return collectBalanceStatsOfTable(schema, null, ec);
     }
 
 }

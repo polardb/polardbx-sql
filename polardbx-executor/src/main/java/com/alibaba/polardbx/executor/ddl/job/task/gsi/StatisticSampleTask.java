@@ -19,7 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
+import com.alibaba.polardbx.executor.gms.util.StatisticFullProcessUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.module.LogLevel;
 import com.alibaba.polardbx.gms.module.LogPattern;
@@ -42,7 +42,7 @@ public class StatisticSampleTask extends BaseDdlTask {
 
     @Override
     protected void beforeTransaction(ExecutionContext executionContext) {
-        StatisticUtils.sampleOneTable(schemaName, logicalTableName);
+        StatisticFullProcessUtils.sampleOneTable(schemaName, logicalTableName);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, LogPattern.PROCESS_END,

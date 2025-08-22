@@ -193,7 +193,7 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
     @Override
     public List<Map<String, Object>> sync(IGmsSyncAction action, String schemaName, String serverKey) {
         GmsNode localNode = GmsNodeManager.getInstance().getLocalNode();
-        List<GmsNode> remoteNodes = GmsNodeManager.getInstance().getRemoteNodes();
+        List<GmsNode> remoteNodes = GmsNodeManager.getInstance().getAllNodes();
 
         if (GeneralUtil.isEmpty(remoteNodes) || localNode == null ||
             TStringUtil.equals(localNode.getServerKey(), serverKey)) {

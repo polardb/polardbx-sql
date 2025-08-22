@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.pl;
 
 import com.alibaba.polardbx.common.exception.TddlException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -201,7 +202,7 @@ public abstract class AbstractPl {
             .containsKey(errorCode)) {
             if (blockStatement != null && (blockStatement.getParent() instanceof SQLCreateProcedureStatement
                 || blockStatement.getParent() instanceof SQLCreateFunctionStatement)) {
-                throw new RuntimeException("execute procedure/function failed: " + ex.getMessage()
+                throw new TddlRuntimeException(ErrorCode.ERR_NO_MATCHED_EXCEPTION_HANDLER, ex, "execute procedure/function failed: " + ex.getMessage()
                     + ", and no related exception handler found");
             }
             blockStatement = nextParentBlockStmt(blockStatement);

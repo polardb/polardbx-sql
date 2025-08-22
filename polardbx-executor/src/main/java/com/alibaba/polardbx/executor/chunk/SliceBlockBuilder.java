@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
 import com.alibaba.polardbx.executor.operator.scan.impl.DictionaryMapping;
 import com.alibaba.polardbx.executor.operator.scan.impl.DictionaryMappingImpl;
@@ -30,32 +32,52 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.util.List;
 
 import static com.alibaba.polardbx.common.charset.MySQLUnicodeUtils.LATIN1_TO_UTF8_BYTES;
 
 public class SliceBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(SliceBlockBuilder.class).instanceSize();
+
     private static final int EXPECTED_STRING_SIZE_IN_BYTES = 64;
-    final IntArrayList offsets; // records where the bytes end at
+    final MemoryCountableIntArrayList offsets; // records where the bytes end at
+
+    @FieldMemoryCounter(value = false)
     final SliceType dataType;
     final boolean compatible;
-    final IntArrayList values;
+    final MemoryCountableIntArrayList values;
     SliceOutput sliceOutput;
+
+    @FieldMemoryCounter(value = false)
     ExecutionContext context;
+
     // for dictionary
+    @FieldMemoryCounter(value = false)
     BlockDictionary blockDictionary;
-    DictionaryMapping mapping = null;
+
+    @FieldMemoryCounter(value = false)
+    DictionaryMapping mapping = null; // todo
 
     public SliceBlockBuilder(DataType dataType, int initialCapacity, ExecutionContext context, boolean compatible) {
         super(initialCapacity);
         Preconditions.checkArgument(dataType instanceof SliceType);
         this.dataType = (SliceType) dataType;
-        this.offsets = new IntArrayList(initialCapacity);
+        this.offsets = new MemoryCountableIntArrayList(initialCapacity);
         this.context = context;
         this.sliceOutput = new DynamicSliceOutput(EXPECTED_STRING_SIZE_IN_BYTES * initialCapacity);
         this.compatible = compatible;
-        this.values = new IntArrayList(4);
+        this.values = new MemoryCountableIntArrayList(4);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE
+            + FastMemoryCounter.sizeOf(offsets)
+            + FastMemoryCounter.sizeOf(values)
+            + FastMemoryCounter.sizeOf(sliceOutput)
+            + FastMemoryCounter.sizeOf(valueIsNull);
     }
 
     @Override

@@ -1,0 +1,60 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table ts_t2(
+a int,
+b int,
+c timestamp(3)
+)
+partition by range(unix_timestamp(c))
+(
+partition p1 values less than (unix_timestamp('2022-02-03 00:00:00.000')),
+partition p2 values less than (unix_timestamp('2022-02-03 00:00:01.000')),
+partition p3 values less than (unix_timestamp('2022-02-03 00:00:02.000')),
+partition p4 values less than (unix_timestamp('2022-02-03 00:00:03.000')),
+partition p5 values less than (unix_timestamp('2022-02-03 00:00:04.000')),
+partition pm values less than (maxvalue)
+);
+
+insert into ts_t2 values(1, 1, '2022-02-03 00:00:01.499');
+insert into ts_t2 values(2, 2, '2022-02-03 00:00:01.501');
+insert into ts_t2 values(3, 3, '2022-02-03 00:00:02.001');
+
+select * from ts_t2 where c = '2022-02-03 00:00:01.499';
+select * from ts_t2 where c = '2022-02-03 00:00:02.001';
+select * from ts_t2 where c between '2022-02-03 00:00:01.499' and '2022-02-03 00:00:02.001' order by c;
+select * from ts_t2 where c = '2022-02-03 00:00:02.001';
+
+explain  select * from ts_t2 where c = '2022-02-03 00:00:01.499';
+explain  select * from ts_t2 where c = '2022-02-03 00:00:02.001';
+explain  select * from ts_t2 where c between '2022-02-03 00:00:01.499' and '2022-02-03 00:00:02.001' order by c;
+explain  select * from ts_t2 where c = '2022-02-03 00:00:02.001';
+
+
+create table ts_t1(
+a int,
+b int,
+c timestamp(6)
+)
+partition by range(unix_timestamp(c))
+(
+partition p1 values less than (unix_timestamp('2022-02-03 00:00:00')),
+partition p2 values less than (unix_timestamp('2022-02-03 00:00:01')),
+partition p3 values less than (unix_timestamp('2022-02-03 00:00:02')),
+partition p4 values less than (unix_timestamp('2022-02-03 00:00:03')),
+partition p5 values less than (unix_timestamp('2022-02-03 00:00:04')),
+partition pm values less than (maxvalue)
+);
+
+insert into ts_t1 values(1, 1, '2022-02-03 00:00:01.000499');
+insert into ts_t1 values(2, 2, '2022-02-03 00:00:01.000501');
+insert into ts_t1 values(3, 3, '2022-02-03 00:00:02.000001');
+
+select * from ts_t1 where c = '2022-02-03 00:00:01.000499';
+select * from ts_t1 where c = '2022-02-03 00:00:02.000001';
+select * from ts_t1 where c between '2022-02-03 00:00:01.000499' and '2022-02-03 00:00:02.000001' order by c;
+select * from ts_t1 where c = '2022-02-03 00:00:02.000001';
+
+explain  select * from ts_t1 where c = '2022-02-03 00:00:01.000499';
+explain  select * from ts_t1 where c = '2022-02-03 00:00:02.000001';
+explain  select * from ts_t1 where c between '2022-02-03 00:00:01.000499' and '2022-02-03 00:00:02.000001' order by c;
+explain  select * from ts_t1 where c = '2022-02-03 00:00:02.000001';

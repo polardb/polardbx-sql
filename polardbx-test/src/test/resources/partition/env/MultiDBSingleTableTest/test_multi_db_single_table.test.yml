@@ -72,6 +72,8 @@ use drds_single_t5;
 `b3` bigint(20) UNSIGNED NOT NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single  locality='dn=$dn1';
 
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 where t1.a1 in (select t2.a2 from single_t2.single_t2_s1 as t2);
+
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;
 
 select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;

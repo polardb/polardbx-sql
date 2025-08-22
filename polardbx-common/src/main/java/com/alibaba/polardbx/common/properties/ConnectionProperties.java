@@ -163,6 +163,15 @@ public class ConnectionProperties {
      */
     public static final String DML_PUSH_DUPLICATE_CHECK = "DML_PUSH_DUPLICATE_CHECK";
 
+    /**
+     * UPSERT 语句中 ON DUPLICATE KEY UPDATE 的目标列中存在 timestamp 类型列时，是否强制逻辑执行
+     */
+    public static final String DML_CHECK_UPSERT_DYNAMIC_IMPLICIT_WITH_COLUMN_REF =
+        "DML_CHECK_UPSERT_DYNAMIC_IMPLICIT_WITH_COLUMN_REF";
+
+    /**
+     * 是否忽略不改变实际值的 UPDATE
+     */
     public static final String DML_SKIP_TRIVIAL_UPDATE = "DML_SKIP_TRIVIAL_UPDATE";
 
     public static final String DML_SKIP_DUPLICATE_CHECK_FOR_PK = "DML_SKIP_DUPLICATE_CHECK_FOR_PK";
@@ -195,6 +204,13 @@ public class ConnectionProperties {
         "DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN";
 
     /**
+     * 是否只允许使用 主表 检查主键冲突，false 代表个可以使用 按照主键分区的 gsi 来检查主键冲突
+     * 对新购实例默认为 false
+     */
+    public static final String DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY =
+        "DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY";
+
+    /**
      * 是否使用 GSI 检查冲突的插入值
      */
     public static final String DML_GET_DUP_USING_GSI = "DML_GET_DUP_USING_GSI";
@@ -208,6 +224,12 @@ public class ConnectionProperties {
      * DML 检查冲突列时，在允许时是否使用 IN 来代替 UNION；会增加死锁概率
      */
     public static final String DML_GET_DUP_USING_IN = "DML_GET_DUP_USING_IN";
+
+    /**
+     * DML 检查冲突列时，对于多列UK，是否是用 key1=value1 and key2=value2 代替 (key1,key2) in ((value1,value2))
+     * 后者在 8.0 DN 上会因为类型转化而查不到结果（比如 key1 是数字类型，value1 是字符串）
+     */
+    public static final String DML_GET_DUP_USING_UNION_EQUAL = "DML_GET_DUP_USING_UNION_EQUAL";
 
     /**
      * DML 检查冲突列时下发 DN 的一条 SQL 所能包含的最大 IN 数量，<= 0 表示无限制
@@ -233,6 +255,10 @@ public class ConnectionProperties {
      * Rebalance组装任务时生成的单个DDL job迁移对最大数据量，单位为MB.
      */
     public static final String REBALANCE_MAX_UNIT_SIZE = "REBALANCE_MAX_UNIT_SIZE";
+
+    public static final String REBALANCE_MAX_TABLEGROUP_SOLVED_BY_LP = "REBALANCE_MAX_TABLEGROUP_SOLVED_BY_LP";
+
+    public static final String REBALANCE_MAX_UNIT_PARTITION_COUNT = "REBALANCE_MAX_UNIT_PARTITION_COUNT";
 
     /**
      * 是否开启 Foreign Key
@@ -273,6 +299,29 @@ public class ConnectionProperties {
     public static final String ENABLE_DROP_TRUNCATE_CCI_PARTITION = "ENABLE_DROP_TRUNCATE_CCI_PARTITION";
 
     /**
+     * 是否允许主表DROP PARTITION时，向影子表中插入数据，生成BINLOG（用于CCI删除）
+     */
+    public static final String ENABLE_SHADOW_INSERT_ON_DROP_PARTITION = "ENABLE_SHADOW_INSERT_ON_DROP_PARTITION";
+
+    /**
+     * INSERT SELECT 到影子表的批次大小
+     */
+    public static final String SHADOW_INSERT_BATCH_SIZE = "SHADOW_INSERT_BATCH_SIZE";
+
+    /**
+     * INSERT SELECT 到影子表的批次间隔时间（ms）
+     */
+    public static final String SHADOW_INSERT_BATCH_INTERVAL = "SHADOW_INSERT_BATCH_INTERVAL";
+    /**
+     * 生成影子表时忽略CCI
+     */
+    public static final String IGNORE_CCI_WHEN_CREATE_SHADOW_TABLE = "IGNORE_CCI_WHEN_CREATE_SHADOW_TABLE";
+    /**
+     * 生成影子表的引擎
+     */
+    public static final String CREATE_SHADOW_TABLE_ENGINE = "CREATE_SHADOW_TABLE_ENGINE";
+
+    /**
      * 在 RelocateWriter 中是否通过 PartitionField 判断拆分键是否变化
      */
     public static final String DML_USE_NEW_SK_CHECKER = "DML_USE_NEW_SK_CHECKER";
@@ -305,6 +354,46 @@ public class ConnectionProperties {
      * INSERT 中的 VALUES 出现列名时是否替换为插入值而不是默认值，以兼容 MySQL 行为；会对 INSERT 的 INPUT 按 VALUES 顺序排序
      */
     public static final String DML_REF_PRIOR_COL_IN_VALUE = "DML_REF_PRIOR_COL_IN_VALUE";
+
+    /**
+     * 是否检查向包含 implicit default 值的列(比如类型为 bigint not null的列)写入数据的表达式 rex,
+     * 并可能为 NULL 的 rex， 替换为 IFNULL(rex, defaultLiteral)
+     */
+    public static final String DML_REPLACE_IMPLICIT_DEFAULT =
+        "DML_REPLACE_IMPLICIT_DEFAULT";
+
+    /**
+     * 是否将向包含 dynamic implicit default 值的列(比如类型为 timestamp not null的列)写入数据的可能为 NULL 的表达式 rex，
+     * 替换为使用 IFNULL(rex, defaultRex)
+     */
+    public static final String DML_REPLACE_DYNAMIC_IMPLICIT_DEFAULT =
+        "DML_REPLACE_DYNAMIC_IMPLICIT_DEFAULT";
+
+    /**
+     * 将向包含 dynamic implicit default 值的列(比如类型为 timestamp not null的列)写入数据的表达式，
+     * 使用 IFNULL(rex, defaultRex) 表达式包裹后，替换为 RexCallParam
+     */
+    public static final String DML_FORCE_REPLACE_DYNAMIC_IMPLICIT_DEFAULT_WITH_PARAM =
+        "DML_FORCE_REPLACE_DYNAMIC_IMPLICIT_DEFAULT_WITH_PARAM";
+
+    /**
+     * 一次性完成全部 dynamic implicit default 求值，
+     * 保持与 MySQL 相同行为(batch insert 中，所有使用 current_timestamp 作为隐式 default 值的列，最终写入的值相同)
+     */
+    public static final String DML_COMPUTE_ALL_DYNAMIC_IMPLICIT_DEFAULT_REF_IN_ONE_GO =
+        "DML_COMPUTE_ALL_DYNAMIC_IMPLICIT_DEFAULT_REF_IN_ONE_GO";
+
+    /**
+     * 一次性完成全部 dynamic implicit default 求值的同时，将显示指定的 REX_CALL 替换为 相同的值, 保持与 MySQL 相同行为:
+     * <pre>
+     * batch insert 中，
+     * 所有使用 current_timestamp 作为隐式 default 值的列
+     * 和 所有通过 default 或者 CURRENT_TIMESTAMP() 函数 赋值的列，
+     * 最终写入的值相同
+     * </pre>
+     */
+    public static final String DML_REPLACE_EXPLICIT_REX_CALL_WITH_COMPUTED_DYNAMIC_IMPLICIT_DEFAULT =
+        "DML_REPLACE_EXPLICIT_REX_CALL_WITH_COMPUTED_DYNAMIC_IMPLICIT_DEFAULT";
 
     /**
      * 在逻辑DDL中校验建表语句时，主动在物理连接上等待的时间，仅用于测试
@@ -374,6 +463,20 @@ public class ConnectionProperties {
     public static final String ENABLE_CHANGESET_FOR_OMC = "ENABLE_CHANGESET_FOR_OMC";
 
     public static final String ENABLE_BACKFILL_OPT_FOR_OMC = "ENABLE_BACKFILL_OPT_FOR_OMC";
+
+    public static final String ENABLE_INSERT_IGNORE_FOR_OMC = "ENABLE_INSERT_IGNORE_FOR_OMC";
+
+    public static final String ENABLE_OMC_CHECK_TX_ISOLATION = "ENABLE_OMC_CHECK_TX_ISOLATION";
+
+    public static final String OMC_BACKFILL_BATCH_SIZE_MAX = "OMC_BACKFILL_BATCH_SIZE_MAX";
+
+    public static final String OMC_BACKFILL_BATCH_FILE_SIZE = "OMC_BACKFILL_BATCH_FILE_SIZE";
+
+    public static final String OMC_BACKFILL_SPEED_LIMITATION = "OMC_BACKFILL_SPEED_LIMITATION";
+
+    public static final String OMC_BACKFILL_SPEED_MIN = "OMC_BACKFILL_SPEED_MIN";
+
+    public static final String OMC_BACKFILL_PARALLELISM = "OMC_BACKFILL_PARALLELISM";
 
     /**
      * Online Modify Column / Add Generated Column 回填后是否进行检查
@@ -658,6 +761,23 @@ public class ConnectionProperties {
      */
     public static final String COLUMNAR_TSO_UPDATE_DELAY = "COLUMNAR_TSO_UPDATE_DELAY";
 
+    public static final String COLUMNAR_DELAY_WARNING_THRESHOLD = "COLUMNAR_DELAY_WARNING_THRESHOLD";
+
+    /**
+     * 强制 CN purge 延迟相对于最新版本超过一定时间的版本链版本，单位为毫秒。-1 表示关闭，默认 1 小时
+     */
+    public static final String FORCE_COLUMNAR_PURGE_DURATION_MS = "FORCE_COLUMNAR_PURGE_DURATION_MS";
+
+    /**
+     * 支持在非主实例上执行列存 purge 操作，默认为 false
+     */
+    public static final String COLUMNAR_SLAVE_SUPPORT_PURGE = "COLUMNAR_SLAVE_SUPPORT_PURGE";
+
+    /**
+     * 强制本次列存查询走最新的 TSO，供预热脚本使用
+     */
+    public static final String USE_LATEST_COLUMNAR_TSO = "USE_LATEST_COLUMNAR_TSO";
+
     /**
      * 默认事务清理开始时间（在该时间段内随机）
      */
@@ -775,6 +895,18 @@ public class ConnectionProperties {
 
     public static final String ENABLE_JOIN_CLUSTERING = "ENABLE_JOIN_CLUSTERING";
 
+    public static final String MOCK_SQL_ENGINE_ALERT = "MOCK_SQL_ENGINE_ALERT";
+
+    public static final String ENABLE_SQL_ENGINE_ALERT = "ENABLE_SQL_ENGINE_ALERT";
+
+    public static final String ENABLE_SQL_ENGINE_ALERT_NORMAL = "ENABLE_SQL_ENGINE_ALERT_NORMAL";
+
+    public static final String ENABLE_SQL_ENGINE_ALERT_MAJOR = "ENABLE_SQL_ENGINE_ALERT_MAJOR";
+
+    public static final String ENABLE_SQL_ENGINE_ALERT_CRITICAL = "ENABLE_SQL_ENGINE_ALERT_CRITICAL";
+
+    public static final String ENABLE_SQL_ENGINE_ALERT_COLUMNAR_READ = "ENABLE_SQL_ENGINE_ALERT_COLUMNAR_READ";
+
     public static final String JOIN_CLUSTERING_CONDITION_PROPAGATION_LIMIT =
         "JOIN_CLUSTERING_CONDITION_PROPAGATION_LIMIT";
 
@@ -853,6 +985,19 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_SORT_MERGE_JOIN = "ENABLE_SORT_MERGE_JOIN";
 
+    public static final String ENABLE_IN_TO_UNION_ALL = "ENABLE_IN_TO_UNION_ALL";
+
+    public static final String IN_TO_UNION_STRICT_MODE = "IN_TO_UNION_STRICT_MODE";
+
+    public static final String ENABLE_IN_TO_EXPAND_IN = "ENABLE_IN_TO_EXPAND_IN";
+
+    public static final String ENABLE_SPLIT_MERGE_SORT = "ENABLE_SPLIT_MERGE_SORT";
+
+    public static final String IN_TO_UNION_ALL_THRESHOLD = "IN_TO_UNION_ALL_THRESHOLD";
+
+    /**
+     * enable bka join default true
+     */
     public static final String ENABLE_BKA_JOIN = "ENABLE_BKA_JOIN";
 
     /**
@@ -883,6 +1028,8 @@ public class ConnectionProperties {
     public static final String ENABLE_SEMI_NL_JOIN = "ENABLE_SEMI_NL_JOIN";
 
     public static final String ENABLE_SEMI_HASH_JOIN = "ENABLE_SEMI_HASH_JOIN";
+
+    public static final String ENABLE_REVERSE_HASH_JOIN = "ENABLE_REVERSE_HASH_JOIN";
 
     public static final String ENABLE_REVERSE_SEMI_HASH_JOIN = "ENABLE_REVERSE_SEMI_HASH_JOIN";
 
@@ -931,13 +1078,37 @@ public class ConnectionProperties {
 
     public static final String ENABLE_LV_SUBQUERY_UNWRAP = "ENABLE_LV_SUBQUERY_UNWRAP";
 
+    public static final String ENABLE_PAGING_FORCE_TO_JOIN = "ENABLE_PAGING_FORCE_TO_JOIN";
+
     public static final String ENABLE_AUTO_FORCE_INDEX = "ENABLE_AUTO_FORCE_INDEX";
+
+    public static final String ENABLE_AUTO_PAGINATION_INDEX = "ENABLE_AUTO_PAGINATION_INDEX";
+
+    public static final String ENABLE_AUTO_PAGINATION_IGNORE_INDEX = "ENABLE_AUTO_PAGINATION_IGNORE_INDEX";
+
+    public static final String ENABLE_AUTO_PAGINATION_PAGING_FORCE = "ENABLE_AUTO_PAGINATION_PAGING_FORCE";
+
+    public static final String SKIP_SORT_EQ_PRE_COL = "SKIP_SORT_EQ_PRE_COL";
+
+    public static final String SORT_EQ_PRE_COL = "SORT_EQ_PRE_COL";
 
     public static final String ENABLE_DELETE_FORCE_CC_INDEX = "ENABLE_DELETE_FORCE_CC_INDEX";
 
     public static final String EXPLAIN_PRUNING_DETAIL = "EXPLAIN_PRUNING_DETAIL";
 
     public static final String ENABLE_FILTER_REORDER = "ENABLE_FILTER_REORDER";
+
+    public static final String PREFILTER_COLUMNS = "PREFILTER_COLUMNS";
+
+    public static final String ENABLE_PREFILTER_TO_SUBQUERY = "ENABLE_PREFILTER_TO_SUBQUERY";
+
+    public static final String ENABLE_PREFILTER_LOWER_BOUND = "ENABLE_PREFILTER_LOWER_BOUND";
+
+    public static final String ENABLE_PREFILTER_UPPER_BOUND = "ENABLE_PREFILTER_UPPER_BOUND";
+
+    public static final String ENABLE_PLANNER_TIMEOUT = "ENABLE_PLANNER_TIMEOUT";
+
+    public static final String PLANNER_MAX_TIME = "PLANNER_MAX_TIME";
 
     public static final String ENABLE_CONSTANT_FOLD = "ENABLE_CONSTANT_FOLD";
 
@@ -978,6 +1149,8 @@ public class ConnectionProperties {
     public static final String AGG_MAX_HASH_TABLE_FACTOR = "AGG_MAX_HASH_TABLE_FACTOR";
 
     public static final String AGG_MIN_HASH_TABLE_FACTOR = "AGG_MIN_HASH_TABLE_FACTOR";
+
+    public static final String AGG_MAX_HASH_TABLE_INITIAL_SIZE = "AGG_MAX_HASH_TABLE_INITIAL_SIZE";
 
     public static final String ENABLE_HASH_WINDOW = "ENABLE_HASH_WINDOW";
 
@@ -1212,6 +1385,8 @@ public class ConnectionProperties {
 
     public static final String GSI_BACKFILL_USE_FASTCHECKER = "GSI_BACKFILL_USE_FASTCHECKER";
 
+    public static final String GSI_BACKFILL_ONLY_USE_FASTCHECKER = "GSI_BACKFILL_ONLY_USE_FASTCHECKER";
+
     public static final String GSI_BACKFILL_OVERRIDE_DDL_PARAMS = "GSI_BACKFILL_OVERRIDE_DDL_PARAMS";
 
     public static final String GSI_BUILD_LOCAL_INDEX_LATER = "GSI_BUILD_LOCAL_INDEX_LATER";
@@ -1225,6 +1400,8 @@ public class ConnectionProperties {
     public static final String GSI_PK_RANGE_CPU_ACQUIRE = "GSI_PK_RANGE_CPU_ACQUIRE";
 
     public static final String GSI_PK_RANGE_LOCK_READ = "GSI_PK_RANGE_LOCK_READ";
+
+    public static final String FP_FAILED_TABLE_SYNC = "FP_FAILED_TABLE_SYNC";
 
     /**
      * fastChecker use thread pool to control parallelism
@@ -1247,6 +1424,8 @@ public class ConnectionProperties {
      * fastchecker max batch file size (bytes)
      */
     public static final String FASTCHECKER_BATCH_FILE_SIZE = "FASTCHECKER_BATCH_FILE_SIZE";
+    public static final String FASTCHECKER_BATCH_PARALLEL = "FASTCHECKER_BATCH_PARALLEL";
+    public static final String FASTCHECKER_ERROR_REPORT = "FASTCHECKER_ERROR_REPORT";
 
     /**
      * when fastchecker check table by batch, we limit the max sample percentage
@@ -1254,14 +1433,16 @@ public class ConnectionProperties {
     public static final String FASTCHECKER_MAX_SAMPLE_PERCENTAGE = "FASTCHECKER_MAX_SAMPLE_PERCENTAGE";
 
     /**
+     * enable resend snapshot seq for snapshot too old
+     */
+    public static final String FASTCHECKER_RESEND_SNAPSHOT = "FASTCHECKER_RESEND_SNAPSHOT";
+
+    /**
      * when fastchecker check table by batch, we limit the max sample size
      */
     public static final String FASTCHECKER_MAX_SAMPLE_SIZE = "FASTCHECKER_MAX_SAMPLE_SIZE";
 
-    /**
-     * parallelism limit for GsiFastChecker
-     */
-    public static final String GSI_FASTCHECKER_PARALLELISM = "GSI_FASTCHECKER_PARALLELISM";
+    public static final String FASTCHECKER_MAX_RECHECK_BATCH = "FASTCHECKER_MAX_RECHECK_BATCH";
 
     /**
      * allow to push down dml for the non-gsi and non-broadcast table
@@ -1535,6 +1716,8 @@ public class ConnectionProperties {
      */
     public static final String PREFETCH_SHARDS = "PREFETCH_SHARDS";
 
+    public static final String PHYSICAL_DDL_PARALLELISM = "PHYSICAL_DDL_PARALLELISM";
+
     public static final String MAX_CACHE_PARAMS = "MAX_CACHE_PARAMS";
 
     public static final String MAX_EXECUTE_MEMORY = "MAX_EXECUTE_MEMORY";
@@ -1698,6 +1881,8 @@ public class ConnectionProperties {
      */
     public static final String PHYSICAL_DDL_MDL_WAITING_TIMEOUT = "PHYSICAL_DDL_MDL_WAITING_TIMEOUT";
 
+    public static final String BACKFILL_MPP_CN_KEYS = "BACKFILL_MPP_CN_KEYS";
+
     /**
      * Check if server should automatically recover left jobs during initialization.
      */
@@ -1776,7 +1961,7 @@ public class ConnectionProperties {
 
     public static final String MPP_NODE_SIZE = "MPP_NODE_SIZE";
 
-    public static final String MPP_NODE_RANDOM = "MPP_NODE_RANDOM";
+    public static final String MPP_NODE_RANDOM_MODE = "MPP_NODE_RANDOM_MODE";
 
     public static final String MPP_PREFER_LOCAL_NODE = "MPP_PREFER_LOCAL_NODE";
 
@@ -1914,7 +2099,7 @@ public class ConnectionProperties {
 
     public static final String MPP_ELAPSED_QUERY_THRESHOLD_MILLS = "MPP_ELAPSED_QUERY_THRESHOLD_MILLS";
 
-    public static final String ENABLE_MPP_UI = "ENABLE_MPP_UI";
+    public static final String MPP_ENABLE_UI = "MPP_ENABLE_UI";
 
     public static final String MPP_METRIC_LEVEL = "MPP_METRIC_LEVEL";
 
@@ -1942,6 +2127,8 @@ public class ConnectionProperties {
     public static final String ENABLE_INDEX_SKYLINE = "ENABLE_INDEX_SKYLINE";
     public static final String ENABLE_MERGE_INDEX = "ENABLE_MERGE_INDEX";
     public static final String ENABLE_OSS_INDEX_SELECTION = "ENABLE_OSS_INDEX_SELECTION";
+
+    public static final String ENABLE_PROJECT_TO_WINDOW_OPT = "ENABLE_PROJECT_TO_WINDOW_OPT";
 
     /**
      * whether to use plan cache for columnar plan
@@ -2047,6 +2234,25 @@ public class ConnectionProperties {
      * X-Protocol / XRPC TCP aging time in seconds.
      */
     public static final String XPROTO_TCP_AGING = "XPROTO_TCP_AGING";
+
+    /**
+     * Enable smooth switchover.
+     */
+    public static final String ENABLE_SMOOTH_SWITCHOVER = "ENABLE_SMOOTH_SWITCHOVER";
+    /**
+     * Timeout of switchover wait in millis.
+     */
+    public static final String SWITCHOVER_WAIT_TIMEOUT_IN_MILLIS = "SWITCHOVER_WAIT_TIMEOUT_IN_MILLIS";
+    /**
+     * Switchover check interval in millis.
+     */
+    public static final String SWITCHOVER_CHECK_INTERVAL_IN_MILLIS = "SWITCHOVER_CHECK_INTERVAL_IN_MILLIS";
+    /**
+     * Release dirty read connection when switchover.
+     */
+    public static final String RELEASE_DIRTY_READ_CONNECTION_WHEN_SWITCHOVER =
+        "RELEASE_DIRTY_READ_CONNECTION_WHEN_SWITCHOVER";
+
     /**
      * The storage inst list of all single groups when creating new database
      */
@@ -2084,6 +2290,7 @@ public class ConnectionProperties {
     public static final String LOOKUP_JOIN_BLOCK_SIZE_PER_SHARD = "LOOKUP_JOIN_BLOCK_SIZE_PER_SHARD";
     public static final String ENABLE_CONSISTENT_REPLICA_READ = "ENABLE_CONSISTENT_REPLICA_READ";
     public static final String EXPLAIN_LOGICALVIEW = "EXPLAIN_LOGICALVIEW";
+    public static final String ENABLE_CREATE_VIEW = "ENABLE_CREATE_VIEW";
     public static final String ENABLE_HTAP = "ENABLE_HTAP";
     public static final String IN_SUB_QUERY_THRESHOLD = "IN_SUB_QUERY_THRESHOLD";
     public static final String ENABLE_OR_OPT = "ENABLE_OR_OPT";
@@ -2179,6 +2386,8 @@ public class ConnectionProperties {
      * Whether ignore histogram of string column
      */
     public static final String STATISTICS_DUMP_IGNORE_STRING = "STATISTICS_DUMP_IGNORE_STRING";
+
+    public static final String STATISTICS_COLLECT_HISTOGRAM_STRING = "STATISTICS_COLLECT_HISTOGRAM_STRING";
     /**
      * Use range-format to show hash/key partitioned table
      */
@@ -2230,7 +2439,27 @@ public class ConnectionProperties {
     public static final String ENABLE_INTERVAL_ENUMERATION_IN_PRUNING = "ENABLE_INTERVAL_ENUMERATION_IN_PRUNING";
     public static final String PARTITION_PRUNING_STEP_COUNT_LIMIT = "PARTITION_PRUNING_STEP_COUNT_LIMIT";
     public static final String USE_FAST_SINGLE_POINT_INTERVAL_MERGING = "USE_FAST_SINGLE_POINT_INTERVAL_MERGING";
+
+    /**
+     * Label if allow fast routing for point-select of prefix part cols
+     * <pre>
+     *    if ENABLE_FAST_PREFIX_PART_COL_SINGLE_POINT_ROUTING = true,
+     *    that mean
+     *    for part cols: (a,b,c) and b and c is not using:
+     *    a=? == > tuple(?,any,any) and do tuple routing
+     * </pre>
+     */
+    public static final String ENABLE_FAST_PREFIX_PART_COL_EQ_COND_ROUTING =
+        "ENABLE_FAST_PREFIX_PART_COL_EQ_COND_ROUTING";
+
+    /**
+     * Allow to cache the result of const expressions during pruning
+     */
     public static final String ENABLE_CONST_EXPR_EVAL_CACHE = "ENABLE_CONST_EXPR_EVAL_CACHE";
+
+    /**
+     * The max length of the enumerable interval in pruning
+     */
     public static final String MAX_ENUMERABLE_INTERVAL_LENGTH = "MAX_ENUMERABLE_INTERVAL_LENGTH";
     /**
      * The max size of in value from the InSubQuery pruning
@@ -2418,11 +2647,13 @@ public class ConnectionProperties {
     public static final String ENABLE_EXPIRE_FILE_STORAGE_TEST_PAUSE = "ENABLE_EXPIRE_FILE_STORAGE_TEST_PAUSE";
     public static final String FILE_STORAGE_TASK_PARALLELISM = "FILE_STORAGE_TASK_PARALLELISM";
     public static final String ENABLE_FILE_STORE_CHECK_TABLE = "ENABLE_FILE_STORE_CHECK_TABLE";
+    public static final String ENABLE_CHECK_GPP_FOR_LOCAL_INDEX = "ENABLE_CHECK_GPP_FOR_LOCAL_INDEX";
     public static final String ENABLE_OSS_BUFFER_POOL = "ENABLE_OSS_BUFFER_POOL";
     public static final String ENABLE_OSS_DELAY_MATERIALIZATION = "ENABLE_OSS_DELAY_MATERIALIZATION";
     public static final String ENABLE_OSS_ZERO_COPY = "ENABLE_OSS_ZERO_COPY";
     public static final String ENABLE_OSS_COMPATIBLE = "ENABLE_OSS_COMPATIBLE";
     public static final String OSS_STREAM_BUFFER_SIZE = "OSS_STREAM_BUFFER_SIZE";
+    public static final String OSS_MAX_READ_AHEAD_PART_NUMBER = "OSS_MAX_READ_AHEAD_PART_NUMBER";
 
     public static final String ENABLE_PAIRWISE_SHUFFLE_COMPATIBLE = "ENABLE_PAIRWISE_SHUFFLE_COMPATIBLE";
 
@@ -2434,7 +2665,6 @@ public class ConnectionProperties {
         "ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN";
     public static final String ENABLE_REUSE_VECTOR = "ENABLE_REUSE_VECTOR";
     public static final String ENABLE_DECIMAL_FAST_VEC = "ENABLE_DECIMAL_FAST_VEC";
-    public static final String ENABLE_IN_VEC_AUTO_TYPE = "ENABLE_IN_VEC_AUTO_TYPE";
     public static final String ENABLE_AND_FAST_VEC = "ENABLE_AND_FAST_VEC";
     public static final String ENABLE_OR_FAST_VEC = "ENABLE_OR_FAST_VEC";
     public static final String ENABLE_UNIQUE_HASH_KEY = "ENABLE_UNIQUE_HASH_KEY";
@@ -2451,7 +2681,8 @@ public class ConnectionProperties {
 
     public static final String ALLOW_CREATE_TABLE_LIKE_FILE_STORE = "ALLOW_CREATE_TABLE_LIKE_FILE_STORE";
 
-    public static final String ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI = "ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI";
+    public static final String ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI =
+        "ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI";
 
     /**
      * is enable collect partitions heatmap, dynamic, default:true
@@ -2546,14 +2777,18 @@ public class ConnectionProperties {
     public static final String PARTITION_NAME = "PARTITION_NAME";
     public static final String FORBID_REMOTE_DDL_TASK = "FORBID_REMOTE_DDL_TASK";
     public static final String ENABLE_STANDBY_BACKFILL = "ENABLE_STANDBY_BACKFILL";
+    public static final String FORCE_STANDBY_BACKFILL = "FORCE_STANDBY_BACKFILL";
     public static final String PHYSICAL_DDL_IGNORED_ERROR_CODE = "PHYSICAL_DDL_IGNORED_ERROR_CODE";
     public static final String DDL_PAUSE_DURING_EXCEPTION = "DDL_PAUSE_DURING_EXCEPTION";
     public static final String OUTPUT_MYSQL_ERROR_CODE = "OUTPUT_MYSQL_ERROR_CODE";
 
     public static final String MAPPING_TO_MYSQL_ERROR_CODE = "MAPPING_TO_MYSQL_ERROR_CODE";
 
+    public static final String ROLLBACK_ON_CHECKER = "ROLLBACK_ON_CHECKER";
+
     public static final String CHANGE_SET_REPLAY_TIMES = "CHANGE_SET_REPLAY_TIMES";
     public static final String CHANGE_SET_APPLY_BATCH = "CHANGE_SET_APPLY_BATCH";
+    public static final String CHANGE_SET_APPLY_LOCK_BATCH = "CHANGE_SET_APPLY_LOCK_BATCH";
     public static final String CHANGE_SET_MEMORY_LIMIT = "CHANGE_SET_MEMORY_LIMIT";
     public static final String ENABLE_CHANGESET = "ENABLE_CHANGESET";
     public static final String CN_ENABLE_CHANGESET = "CN_ENABLE_CHANGESET";
@@ -2719,6 +2954,16 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_BLOCK_CACHE = "ENABLE_BLOCK_CACHE";
 
+    public static final String ENABLE_COLUMNAR_CSV_CACHE = "ENABLE_COLUMNAR_CSV_CACHE";
+
+    public static final String ENABLE_COLUMNAR_DEL_CACHE = "ENABLE_COLUMNAR_DEL_CACHE";
+
+    public static final String ENABLE_COLUMNAR_SNAPSHOT_CACHE = "ENABLE_COLUMNAR_SNAPSHOT_CACHE";
+
+    public static final String COLUMNAR_SNAPSHOT_CACHE_TTL_MS = "COLUMNAR_SNAPSHOT_CACHE_TTL_MS";
+
+    public static final String CSV_CACHE_SIZE = "CSV_CACHE_SIZE";
+
     public static final String ENABLE_USE_IN_FLIGHT_BLOCK_CACHE = "ENABLE_USE_IN_FLIGHT_BLOCK_CACHE";
 
     /**
@@ -2788,14 +3033,29 @@ public class ConnectionProperties {
         "PHYSICAL_BACKFILL_IMPORT_TABLESPACE_IO_ADVISE";
     public static final String PHYSICAL_BACKFILL_PIPELINE_SIZE = "PHYSICAL_BACKFILL_PIPELINE_SIZE";
 
+    public static final String FLUSH_TABLE_TIMEOUT_FOR_DDL_ON_XPROTO_CONN =
+        "FLUSH_TABLE_TIMEOUT_FOR_DDL_ON_XPROTO_CONN";
+
     public static final String DISCARD_TABLESPACE_USE_GROUP_CONCURRENT_BLOCK =
         "DISCARD_TABLESPACE_USE_GROUP_CONCURRENT_BLOCK";
 
     public static final String PHYSICAL_BACKFILL_SPEED_TEST =
         "PHYSICAL_BACKFILL_SPEED_TEST";
 
+    public static final String PHYSICAL_BACKFILL_CLONE_DATA_FROM_LEADER =
+        "PHYSICAL_BACKFILL_CLONE_DATA_FROM_LEADER";
+
+    public static final String FETCH_TABLE_SIZE_FROM_TABLESPACE =
+        "FETCH_TABLE_SIZE_FROM_TABLESPACE";
+
+    public static final String TABLE_SIZE_THRESHOLD_TO_ENABLE_PHYSICAL_BACKFILL =
+        "TABLE_SIZE_THRESHOLD_TO_ENABLE_PHYSICAL_BACKFILL";
+
     public static final String ANALYZE_TABLE_AFTER_IMPORT_TABLESPACE =
         "ANALYZE_TABLE_AFTER_IMPORT_TABLESPACE";
+
+    public static final String CHECK_TABLE_DISCARD_STATE =
+        "CHECK_TABLE_DISCARD_STATE";
 
     public static final String REBALANCE_MAINTENANCE_ENABLE = "REBALANCE_MAINTENANCE_ENABLE";
     public static final String REBALANCE_MAINTENANCE_TIME_START = "REBALANCE_MAINTENANCE_TIME_START";
@@ -2814,6 +3074,11 @@ public class ConnectionProperties {
     public static final String MAX_KEEP_DEADLOCK_LOGS = "MAX_KEEP_DEADLOCK_LOGS";
 
     public static final String DEADLOCK_DETECTION_SKIP_ROUND = "DEADLOCK_DETECTION_SKIP_ROUND";
+
+    public static final String ENABLE_FLASHBACK_AREA = "ENABLE_FLASHBACK_AREA";
+
+    // In milliseconds.
+    public static final String MIN_SNAPSHOT_KEEP_TIME = "MIN_SNAPSHOT_KEEP_TIME";
 
     public static final String MOCK_COLUMNAR_INDEX = "MOCK_COLUMNAR_INDEX";
     public static final String MCI_FORMAT = "MCI_FORMAT";
@@ -2848,6 +3113,8 @@ public class ConnectionProperties {
     public static final String ENABLE_AUTO_COMMIT_TSO = "ENABLE_AUTO_COMMIT_TSO";
 
     public static final String MAX_CONNECTIONS = "MAX_CONNECTIONS";
+
+    public static final String MAX_SHOW_DDL_RESULT_STMT_LENGTH = "MAX_SHOW_DDL_RESULT_STMT_LENGTH";
 
     public static final String ENABLE_ENCDB = "ENABLE_ENCDB";
 
@@ -2931,12 +3198,16 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_SYNC_POINT = "ENABLE_SYNC_POINT";
 
+    public static final String PRINT_MORE_INFO_FOR_DEADLOCK_DETECTION = "PRINT_MORE_INFO_FOR_DEADLOCK_DETECTION";
+
     /**
      * Mark this trx as sync point trx, for inner usage.
      */
     public static final String MARK_SYNC_POINT = "MARK_SYNC_POINT";
 
     public static final String SYNC_POINT_TASK_INTERVAL = "SYNC_POINT_TASK_INTERVAL";
+
+    public static final String KILL_PHYSICAL_CONNECTION_DELAY = "KILL_PHYSICAL_CONNECTION_DELAY";
 
     public static final String DISABLE_LEGACY_VARIABLE = "DISABLE_LEGACY_VARIABLE";
 
@@ -3090,6 +3361,11 @@ public class ConnectionProperties {
     public static final String TTL_ALTER_ADD_PART_STMT_HINT = "TTL_ALTER_ADD_PART_STMT_HINT";
 
     /**
+     * The query hint for alter table drop parts stmt of cci of ttl-table or arctmp of ttl-table
+     */
+    public static final String TTL_ALTER_DROP_PART_STMT_HINT = "TTL_ALTER_DROP_PART_STMT_HINT";
+
+    /**
      * The default group_parallelism of conn of select stmt, 0 means use the default val of inst_config
      */
     public static final String TTL_GROUP_PARALLELISM_ON_DQL_CONN = "TTL_GROUP_PARALLELISM_ON_DQL_CONN";
@@ -3123,6 +3399,21 @@ public class ConnectionProperties {
      * Label if ignore maintain window in ttl ddl job
      */
     public static final String TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB = "TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB";
+
+    /**
+     * Label if use TTL_JOB_MAINTENANCE_WINDOW, default val is true
+     */
+    public static final String TTL_JOB_MAINTENANCE_ENABLE = "TTL_JOB_MAINTENANCE_ENABLE";
+
+    /**
+     * Label the independent maintain start time of ttl_job
+     */
+    public static final String TTL_JOB_MAINTENANCE_TIME_START = "TTL_JOB_MAINTENANCE_TIME_START";
+
+    /**
+     * Label the independent maintain end time of ttl_job
+     */
+    public static final String TTL_JOB_MAINTENANCE_TIME_END = "TTL_JOB_MAINTENANCE_TIME_END";
 
     /**
      * The ratio of global-worker / rw-dn-count, default is 2
@@ -3177,6 +3468,12 @@ public class ConnectionProperties {
     public static final String TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = "TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI";
 
     /**
+     * Label if need mark the drop partition as archive cleanup for cdc
+     */
+    public static final String TTL_MARK_DROP_PARTITION_AS_ARCHIVE_CLEANUP_FOR_CDC =
+        "TTL_MARK_DROP_PARTITION_AS_ARCHIVE_CLEANUP_FOR_CDC";
+
+    /**
      *
      * ===========================
      * The following Config Params for polardbx-stmt-level
@@ -3194,6 +3491,11 @@ public class ConnectionProperties {
     public static final String TTL_FORCE_DROP_ARCHIVE_CCI_VIEW = "TTL_FORCE_DROP_ARCHIVE_CCI_VIEW";
 
     /**
+     * auto hide ttl definition in Show create table
+     */
+    public static final String HIDE_TTL_DEFINITION_IN_SHOW_CREATE_TABLE = "HIDE_TTL_DEFINITION_IN_SHOW_CREATE_TABLE";
+
+    /**
      * ================ Param keys for ttl job end ================
      */
 
@@ -3209,10 +3511,13 @@ public class ConnectionProperties {
      * All write trx will start a standard 2PC TSO transaction, even in auto-commit mode.
      */
     public static final String ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX = "ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX";
-
+    public static final String ENABLE_CLOSE_CONNECTION_WHEN_TRX_FATAL = "ENABLE_CLOSE_CONNECTION_WHEN_TRX_FATAL";
     public static final String CCI_INCREMENTAL_CHECK_PARALLELISM = "CCI_INCREMENTAL_CHECK_PARALLELISM";
     public static final String CCI_INCREMENTAL_CHECK_BATCH_SIZE = "CCI_INCREMENTAL_CHECK_BATCH_SIZE";
     public static final String ENABLE_COLUMNAR_DEBUG = "ENABLE_COLUMNAR_DEBUG";
+    public static final String ENABLE_COLUMNAR_SNAPSHOT_AUTO_POSITION = "ENABLE_COLUMNAR_SNAPSHOT_AUTO_POSITION";
+    public static final String ENABLE_COLUMNAR_READ_INSTANCE_AUTO_GENERATE_SNAPSHOT =
+        "ENABLE_COLUMNAR_READ_INSTANCE_AUTO_GENERATE_SNAPSHOT";
 
     public static final String MPP_QUERY_RESULT_MAX_WAIT_IN_MILLIS = "MPP_QUERY_RESULT_MAX_WAIT_IN_MILLIS";
 
@@ -3221,4 +3526,25 @@ public class ConnectionProperties {
     public static final String CN_DIV_PRECISION_INCREMENT = "CN_DIV_PRECISION_INCREMENT";
 
     public static final String ENABLE_DRDS_TYPE_SYSTEM = "ENABLE_DRDS_TYPE_SYSTEM";
+    public static final String DISABLE_PARTITION_BEFORE_DROP = "DISABLE_PARTITION_BEFORE_DROP";
+
+    public static final String CONSTANT_FOLD_BLACKLIST = "CONSTANT_FOLD_BLACKLIST";
+    public static final String CONSTANT_FOLD_WHITELIST = "CONSTANT_FOLD_WHITELIST";
+
+    public static final String ENABLE_PARALLEL_SORT_WINDOW = "ENABLE_PARALLEL_SORT_WINDOW";
+    public static final String ENABLE_PUSH_TOPN_AND_AGG = "ENABLE_PUSH_TOPN_AND_AGG";
+    public static final String STATISTICS_MISS_MIN_ROWCOUNT = "STATISTICS_MISS_MIN_ROWCOUNT";
+
+    public static final String ENABLE_IN_VALUE_LIST_REWRITE = "ENABLE_IN_VALUE_LIST_REWRITE";
+
+    public static final String FULL_SCAN_TABLE_BLACK_LIST = "FULL_SCAN_TABLE_BLACK_LIST";
+
+    public static final String OMC_THREAD_POOL_SIZE = "OMC_THREAD_POOL_SIZE";
+
+    public static final String DRDS_TO_AUTO_DB_PARTITIONS_DEFAULT = "DRDS_TO_AUTO_DB_PARTITIONS_DEFAULT";
+
+    public static final String EXECUTE_AFTER_DRDS_AUTO_MODE_CONVERSION = "EXECUTE_AFTER_DRDS_AUTO_MODE_CONVERSION";
+
+    public static final String CHECK_PRIVILEGE_IN_PREPARE_MODE = "CHECK_PRIVILEGE_IN_PREPARE_MODE";
+
 }

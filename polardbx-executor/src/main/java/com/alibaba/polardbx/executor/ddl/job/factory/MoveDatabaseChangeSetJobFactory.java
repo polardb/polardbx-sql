@@ -25,7 +25,6 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.MoveTableBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CloneTableDataFileTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePhyTableWithRollbackCheckTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DiscardTableSpaceDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.ImportTableSpaceDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PhysicalBackfillTask;
@@ -77,7 +76,7 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                                            List<PhyDdlTableOperation> discardTableSpaceOperations,
                                            Map<String, String> sourceAndTarDnMap,
                                            Map<String, Pair<String, String>> storageInstAndUserInfos,
-                                           Map<String, List<List<String>>> tableTopology,
+                                           TreeMap<String, List<List<String>>> tableTopology,
                                            Map<String, Set<String>> targetTableTopology,
                                            Map<String, Set<String>> sourceTableTopology,
                                            ChangeSetApplyExecutorInitTask changeSetApplyExecutorInitTask,
@@ -129,7 +128,7 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
         List<DdlTask> discardTableSpaceTasks = null;
         if (usePhysicalBackfill) {
             discardTableSpaceTasks = ScaleOutUtils.generateDiscardTableSpaceDdlTask(schemaName, tableTopology,
-                discardTableSpaceOperations, executionContext);
+                discardTableSpaceOperations, tarGroupAndStorageIds, true, executionContext);
         } else {
             moveTableBackFillTask =
                 new MoveTableBackFillTask(schemaName, tableName, sourceTableTopology, targetTableTopology,
@@ -161,6 +160,7 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
             null,
             sourceTableTopology,
             preparedData.getSourceTargetGroupMap(),
+            null,
             ComplexTaskMetaManager.ComplexTaskType.MOVE_DATABASE,
             changeSetId
         );
@@ -205,7 +205,7 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                 Pair<String, String> tarDbAndGroup = Pair.of(tarDbName.toLowerCase(),
                     srcTarGroup.getValue());
                 Pair<String, Integer> sourceHostIpAndPort =
-                    PhysicalBackfillUtils.getMySQLOneFollowerIpAndPort(sourceStorageId);
+                    PhysicalBackfillUtils.getSrcMySQLHostForCloneTask(sourceStorageId, executionContext);
                 List<Pair<String, Integer>> targetHostsIpAndPort =
                     PhysicalBackfillUtils.getMySQLServerNodeIpAndPorts(targetStorageId, healthyCheck);
                 final long batchSize =
@@ -239,11 +239,12 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                         temPhyPartNames.addAll(phyPartNames);
                     }
                     PolarxPhysicalBackfill.GetFileInfoOperator fileInfoOperator =
-                            PhysicalBackfillUtils.checkFileExistence(srcDnUserAndPasswd, srcDbAndGroup.getKey(),
-                                    phyTb.toLowerCase(),
-                                    temPhyPartNames,
-                                    true, PhysicalBackfillUtils.getMySQLLeaderIpAndPort(sourceStorageId));
-                    long dataSize = 0l;
+                        PhysicalBackfillUtils.checkFileExistence(srcDnUserAndPasswd, srcDbAndGroup.getKey(),
+                            phyTb.toLowerCase(),
+                            temPhyPartNames,
+                            hasNoPhyPart,
+                            PhysicalBackfillUtils.getMySQLLeaderIpAndPort(sourceStorageId));
+                    long dataSize = 0;
                     for (PolarxPhysicalBackfill.FileInfo fileInfo : fileInfoOperator.getTableInfo().getFileInfoList()) {
                         dataSize += fileInfo.getDataSize();
                     }

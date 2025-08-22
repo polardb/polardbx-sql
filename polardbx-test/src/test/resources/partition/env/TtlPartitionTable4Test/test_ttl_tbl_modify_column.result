@@ -1,0 +1,30 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION=true;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-04 11:00:00';
+create table ttl_chcol_t1(
+a int not null auto_increment,
+b datetime not null,
+c varchar(32),
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than ('2024-01-01'),
+partition p2 values less than ('2024-02-01')
+);
+alter table ttl_chcol_t1 modify ttl
+set
+ttl_expr=`b` expire after 3 day timezone '+08:00',
+ttl_part_interval=interval(1,day),
+archive_type='partition',
+ttl_cleanup='on',
+archive_table_post_allocate=2,
+archive_table_pre_allocate=4;
+## error_msg: $# not support #$
+alter table ttl_chcol_t1 change column b b2 datetime not null;
+not support
+drop table ttl_chcol_t1;

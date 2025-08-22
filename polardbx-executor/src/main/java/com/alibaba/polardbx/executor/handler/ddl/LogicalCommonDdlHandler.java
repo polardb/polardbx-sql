@@ -244,8 +244,6 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
 
         executionContext.setDdlContext(ddlContext);
 
-        ForeignKeyUtils.rewriteOriginSqlWithForeignKey(logicalDdlPlan, executionContext, schemaName, objectName);
-
         rewriteOriginSqlToCdcMarkSql(logicalDdlPlan, executionContext, schemaName, objectName);
     }
 
@@ -254,6 +252,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             return;
         }
         DdlContext ddlContext = executionContext.getDdlContext();
+        ddlContext.setDdlJobFactoryName(ddlJob.getDdlJobFactoryName());
         if (ddlContext.isSubJob()) {
             DdlEngineRequester.create(ddlJob, executionContext).executeSubJob(
                 ddlContext.getParentJobId(), ddlContext.getParentTaskId(), ddlContext.isForRollback());
@@ -347,7 +346,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         }
     }
 
-    protected boolean isAvailableForRecycleBin(String tableName, ExecutionContext executionContext) {
+    public static boolean isAvailableForRecycleBin(String tableName, ExecutionContext executionContext) {
         final String appName = executionContext.getAppName();
         final RecycleBin recycleBin = RecycleBinManager.instance.getByAppName(appName);
         return executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_RECYCLEBIN) &&
@@ -459,7 +458,11 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
                     }
                 }
             }
-            ec.getDdlContext().setCdcRewriteDdlStmt(stmt.toString(VisitorFeature.OutputHashPartitionsByRange));
+            String cdcRewriteDdlStmt = ForeignKeyUtils.rewriteOriginSqlWithForeignKey(
+                logicalDdlPlan, ec, schemaName, tableName,
+                stmt.toString(VisitorFeature.OutputHashPartitionsByRange)
+            );
+            ec.getDdlContext().setCdcRewriteDdlStmt(cdcRewriteDdlStmt);
         } else if (logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE &&
             statementList.get(0) instanceof SQLAlterTableStatement) {
             final SQLAlterTableStatement stmt = (SQLAlterTableStatement) statementList.get(0);
@@ -519,7 +522,11 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
                     }
                 }
             }
-            ec.getDdlContext().setCdcRewriteDdlStmt(stmt.toString(VisitorFeature.OutputHashPartitionsByRange));
+            String cdcRewriteDdlStmt = ForeignKeyUtils.rewriteOriginSqlWithForeignKey(
+                logicalDdlPlan, ec, schemaName, tableName,
+                stmt.toString(VisitorFeature.OutputHashPartitionsByRange)
+            );
+            ec.getDdlContext().setCdcRewriteDdlStmt(cdcRewriteDdlStmt);
         }
     }
 }

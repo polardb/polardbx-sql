@@ -1,0 +1,33 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists blsc_db
+create database if not exists blsc_db mode='auto'
+use blsc_db
+CREATE TABLE `bl_scan_test` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(8) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+insert into bl_scan_test (a,b) values('123','123')
+select * from bl_scan_test
+a,b
+123,123
+set global FULL_SCAN_TABLE_BLACK_LIST='blsc_db.bl_scan_test'
+select sleep(2)
+sleep(2)
+0
+## error_msg: $# now allowed #$
+select * from bl_scan_test
+now allowed
+select * from bl_scan_test where a='123'
+a,b
+123,123
+set global FULL_SCAN_TABLE_BLACK_LIST=''
+select sleep(2)
+sleep(2)
+0
+select * from bl_scan_test
+a,b
+123,123
+use polardbx
+drop database if exists blsc_db;

@@ -50,7 +50,7 @@ public class SpecifiedCsvColumnarSplit extends CsvColumnarSplit {
                                      OSSColumnTransformer columnTransformer,
                                      int begin, int end, long tsoV0, long tsoV1) {
         super(executionContext, columnarManager, tso, null, csvFile, fileId, sequenceId, inputRefsForFilter,
-            inputRefsForProject, preProcessor, lazyEvaluator, partNum, nodePartCount, columnTransformer);
+            inputRefsForProject, preProcessor, lazyEvaluator, partNum, nodePartCount, false, columnTransformer);
         this.begin = begin;
         this.end = end;
         this.tsoV0 = tsoV0;
@@ -153,6 +153,11 @@ public class SpecifiedCsvColumnarSplit extends CsvColumnarSplit {
         @Override
         public ColumnarSplitBuilder isColumnarMode(boolean isColumnarMode) {
             // do nothing because the csv split is always in columnar mode.
+            return this;
+        }
+
+        @Override
+        public ColumnarSplitBuilder isFlashback(boolean isFlashback) {
             return this;
         }
 

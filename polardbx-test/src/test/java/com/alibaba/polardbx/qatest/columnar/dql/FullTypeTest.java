@@ -55,8 +55,9 @@ public class FullTypeTest extends ColumnarReadBaseTestCase {
         waitForRowCountEquals(tddlConnection, PRIMARY_TABLE_NAME, COLUMNAR_INDEX_NAME);
 
         checkColumnOneByOne();
-        String columnarSql = "select * from " + PRIMARY_TABLE_NAME + " force index (" + COLUMNAR_INDEX_NAME + ")";
-        String primarySql = "select * from " + PRIMARY_TABLE_NAME + " force index (primary)";
+        String columnarSql =
+            "select * from " + PRIMARY_TABLE_NAME + " force index (" + COLUMNAR_INDEX_NAME + ") order by id";
+        String primarySql = "select * from " + PRIMARY_TABLE_NAME + " force index (primary) order by id";
         DataValidator.selectContentSameAssertWithDiffSql(columnarSql, primarySql, null, tddlConnection, tddlConnection,
             false, false, false);
     }
@@ -73,9 +74,12 @@ public class FullTypeTest extends ColumnarReadBaseTestCase {
         ColumnarUtils.createColumnarIndex(tddlConnection,
             COLUMNAR_INDEX_NAME, PRIMARY_TABLE_NAME, "id", "id", 4);
 
+        waitForRowCountEquals(tddlConnection, PRIMARY_TABLE_NAME, COLUMNAR_INDEX_NAME);
+
         checkColumnOneByOne();
-        String columnarSql = "select * from " + PRIMARY_TABLE_NAME + " force index (" + COLUMNAR_INDEX_NAME + ")";
-        String primarySql = "select * from " + PRIMARY_TABLE_NAME + " force index (primary)";
+        String columnarSql =
+            "select * from " + PRIMARY_TABLE_NAME + " force index (" + COLUMNAR_INDEX_NAME + ") order by id";
+        String primarySql = "select * from " + PRIMARY_TABLE_NAME + " force index (primary) order by id";
         DataValidator.selectContentSameAssertWithDiffSql(columnarSql, primarySql, null, tddlConnection, tddlConnection,
             false, false, false);
     }
@@ -155,8 +159,8 @@ public class FullTypeTest extends ColumnarReadBaseTestCase {
 
     private void checkColumnOneByOne() {
         String columnarSqlFormat =
-            "select %s from " + PRIMARY_TABLE_NAME + " force index (" + COLUMNAR_INDEX_NAME + ")";
-        String primarySqlFormat = "select %s from " + PRIMARY_TABLE_NAME + " force index (primary)";
+            "select %s from " + PRIMARY_TABLE_NAME + " force index (" + COLUMNAR_INDEX_NAME + ") order by id";
+        String primarySqlFormat = "select %s from " + PRIMARY_TABLE_NAME + " force index (primary) order by id";
         List<String> checkFailedList = new ArrayList<>();
         for (String columnName : TableConstant.FULL_TYPE_TABLE_COLUMNS) {
             boolean checkOk = true;

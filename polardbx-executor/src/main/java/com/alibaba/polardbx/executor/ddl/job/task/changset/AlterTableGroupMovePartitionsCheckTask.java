@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+
 import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.corrector.Reporter;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
@@ -31,9 +32,12 @@ import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.ResourceContainer;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
+import com.alibaba.polardbx.executor.fastchecker.CheckerBatch;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGroupChecker;
 import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGroupReporter;
 import com.alibaba.polardbx.executor.partitionmanagement.fastchecker.AlterTableGroupFastChecker;
@@ -45,54 +49,107 @@ import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.Lists;
 import io.airlift.slice.DataSize;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.util.Pair;
 
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_CPU;
 import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_IO;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.MOVE_PARTITION_BEFORE_CHECK;
 
 @TaskName(name = "AlterTableGroupMovePartitionsCheckTask")
 @Getter
-public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
+public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask {
     final private String logicalTableName;
+    final private Map<String, List<String>> ptbGroupMap;
     final private Map<String, Set<String>> sourcePhyTableNames;
     final private Map<String, Set<String>> targetPhyTableNames;
     final private Boolean stopDoubleWrite;
     final private List<String> relatedTables;
     final private long dataSize;
+    final private String tableGroupName;
+    final private List<String> physicalPartitionNames;
 
-    @JSONCreator
     public AlterTableGroupMovePartitionsCheckTask(String schemaName, String logicalTableName,
+                                                  Map<String, org.apache.calcite.util.Pair<String, String>> ptbGroupMap,
                                                   Map<String, Set<String>> sourcePhyTableNames,
                                                   Map<String, Set<String>> targetPhyTableNames,
                                                   Boolean stopDoubleWrite,
                                                   List<String> relatedTables,
                                                   Set<String> sourceStorageInsts,
                                                   Set<String> targetStorageInsts,
-                                                  long dataSize
+                                                  long dataSize,
+                                                  String tableGroupName,
+                                                  List<String> physicalPartitionNames,
+                                                  String nothing
     ) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
+        this.ptbGroupMap = new HashMap<>();
+        if (ptbGroupMap != null) {
+            for (Map.Entry<String, org.apache.calcite.util.Pair<String, String>> entry : ptbGroupMap.entrySet()) {
+                this.ptbGroupMap.put(entry.getKey(), Lists.newArrayList(entry.getValue().getKey(),
+                    entry.getValue().getValue()));
+            }
+        }
         this.sourcePhyTableNames = sourcePhyTableNames;
         this.targetPhyTableNames = targetPhyTableNames;
         this.stopDoubleWrite = stopDoubleWrite;
         this.relatedTables = relatedTables;
         this.dataSize = dataSize;
+        this.tableGroupName = tableGroupName;
+        this.physicalPartitionNames = physicalPartitionNames;
         if (sourceStorageInsts != null && targetStorageInsts != null) {
-            setResourceAcquired(buildResourceRequired(sourceStorageInsts, targetStorageInsts, dataSize));
+            setResourceAcquired(buildResourceRequired(sourceStorageInsts, targetStorageInsts, dataSize, tableGroupName,
+                physicalPartitionNames));
+        }
+        onExceptionTryRollback();
+    }
+
+    @JSONCreator
+    public AlterTableGroupMovePartitionsCheckTask(String schemaName, String logicalTableName,
+                                                  Map<String, List<String>> ptbGroupMap,
+                                                  Map<String, Set<String>> sourcePhyTableNames,
+                                                  Map<String, Set<String>> targetPhyTableNames,
+                                                  Boolean stopDoubleWrite,
+                                                  List<String> relatedTables,
+                                                  Set<String> sourceStorageInsts,
+                                                  Set<String> targetStorageInsts,
+                                                  long dataSize,
+                                                  String tableGroupName,
+                                                  List<String> physicalPartitionNames
+    ) {
+        super(schemaName);
+        this.logicalTableName = logicalTableName;
+        this.ptbGroupMap = ptbGroupMap;
+        this.sourcePhyTableNames = sourcePhyTableNames;
+        this.targetPhyTableNames = targetPhyTableNames;
+        this.stopDoubleWrite = stopDoubleWrite;
+        this.relatedTables = relatedTables;
+        this.dataSize = dataSize;
+        this.tableGroupName = tableGroupName;
+        this.physicalPartitionNames = physicalPartitionNames;
+        if (sourceStorageInsts != null && targetStorageInsts != null) {
+            setResourceAcquired(buildResourceRequired(sourceStorageInsts, targetStorageInsts, dataSize, tableGroupName,
+                physicalPartitionNames));
         }
         onExceptionTryRollback();
     }
 
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ROLLBACK_ON_CHECKER)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " force rollback on checker!");
+        }
         if (executionContext.getParamManager().getBoolean(ConnectionParams.SKIP_CHANGE_SET_CHECKER) ||
             !executionContext.getParamManager().getBoolean(ConnectionParams.TABLEGROUP_REORG_CHECK_AFTER_BACKFILL)) {
             if (stopDoubleWrite) {
@@ -124,15 +181,13 @@ public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask imp
         }
     }
 
-    @Override
-    public DdlEngineResources getDdlEngineResources() {
-        return this.resourceAcquired;
-    }
-
     DdlEngineResources buildResourceRequired(Set<String> sourceStorageInsts, Set<String> targetStorageInsts,
-                                             Long dataSize) {
+                                             Long dataSize, String tableGroupName,
+                                             List<String> physicalPartitionNames) {
         String owner = "CheckTask:" + logicalTableName;
         DdlEngineResources resourceRequired = new DdlEngineResources();
+//        String subJobOwner = DdlEngineResources.concatSubJobOwner(schemaName, tableGroupName, physicalPartitionNames);
+//        resourceRequired.requestPhaseLock(MOVE_PARTITION_BEFORE_CHECK, 100L, subJobOwner, ResourceContainer.PHASE_LOCK_END);
         for (String storageInst : sourceStorageInsts) {
             resourceRequired.request(storageInst + DN_IO, 25L, owner);
             resourceRequired.request(storageInst + DN_CPU, 25L, owner);
@@ -148,9 +203,10 @@ public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask imp
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         if (stopDoubleWrite) {
             // sync to restore the status of table meta
+            PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+                ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
             SyncManagerHelper.sync(
-                new TablesMetaChangePreemptiveSyncAction(schemaName, relatedTables, 1500L, 1500L,
-                    TimeUnit.MICROSECONDS), SyncScope.ALL);
+                new TablesMetaChangePreemptiveSyncAction(schemaName, relatedTables, preemptiveTime), SyncScope.ALL);
         }
     }
 
@@ -233,9 +289,19 @@ public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask imp
             "FastChecker for alter tablegroup, schema [{0}] logical table [{1}] start",
             schemaName, logicalTableName));
 
+        Map<Pair<String, String>, List<Pair<String, String>>> srcTarPhyTableMap = null;
+        if (GeneralUtil.isNotEmpty(ptbGroupMap)) {
+            // ptbGroupMap: table => (sourceGroup => targetGroups)
+            // srcTargetGroupMap: sourceGroup => targetGroup
+            srcTarPhyTableMap =
+                ScaleOutPlanUtil.generateSrcTarPhyTableMapForMovePartition(sourcePhyTableNames, targetPhyTableNames,
+                    ptbGroupMap);
+        }
         FastChecker fastChecker = AlterTableGroupFastChecker
             .create(schemaName, logicalTableName,
                 sourcePhyTableNames, targetPhyTableNames,
+                srcTarPhyTableMap,
+                true,
                 executionContext);
         boolean fastCheckResult = false;
 
@@ -370,5 +436,13 @@ public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask imp
         sb.append(DataSize.succinctBytes(dataSize));
         sb.append("]");
         return sb.toString();
+    }
+
+    @Override
+    public List<String> explainInfo() {
+        String backfillTask = "ALTERTABLEGROUP_MOVEPARTITIONS_CHECK_TASK(" + logicalTableName + ")";
+        List<String> command = new ArrayList<>(1);
+        command.add(backfillTask);
+        return command;
     }
 }

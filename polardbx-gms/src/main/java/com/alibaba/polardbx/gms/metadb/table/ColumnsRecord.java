@@ -18,6 +18,7 @@ package com.alibaba.polardbx.gms.metadb.table;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import lombok.Data;
 
@@ -139,5 +140,41 @@ public class ColumnsRecord extends ColumnsInfoSchemaRecord {
 
     public void clearDefaultExpr() {
         flag &= ~FLAG_DEFAULT_EXPR;
+    }
+
+    public static boolean equalsColumnRecord(ColumnsRecord left, ColumnsRecord right) {
+        if (null == left || null == right) {
+            return false;
+        }
+
+        return TStringUtil.equals(left.columnName, right.columnName)
+            && TStringUtil.equals(left.columnType, right.columnType)
+            && TStringUtil.equals(left.isNullable, right.isNullable)
+            && TStringUtil.equals(left.columnDefault, right.columnDefault)
+            && left.numericPrecision == right.numericPrecision
+            && left.numericScale == right.numericScale
+            && TStringUtil.equals(left.characterSetName, right.characterSetName)
+            && TStringUtil.equals(left.collationName, right.collationName)
+            && TStringUtil.equals(left.extra, right.extra)
+            && TStringUtil.equals(left.columnComment, right.columnComment)
+            // && left.ordinalPosition == right.ordinalPosition
+            && TStringUtil.equals(left.dataType, right.dataType)
+            && left.characterMaximumLength == right.characterMaximumLength
+            && left.characterOctetLength == right.characterOctetLength
+            && left.datetimePrecision == right.datetimePrecision
+            && TStringUtil.equals(left.columnKey, right.columnKey)
+            && TStringUtil.equals(left.privileges, right.privileges)
+            && TStringUtil.equals(left.generationExpression, right.generationExpression)
+            && left.jdbcType == right.jdbcType
+            && TStringUtil.equals(left.jdbcTypeName, right.jdbcTypeName)
+            /**
+             * 在8.0上，bigint不再区分显示长度，所以如果建表为bigint(11)，经过重建表后，
+             * 会变为bigint，fieldLength从11变成20，所以不再区分fieldLength的变化，
+             * 因为fieldLength只代表显示长度，实际长度的变化通过numericPrecision来判断即可
+             */
+//            && left.fieldLength == right.fieldLength
+//            && left.version == right.version
+            && left.status == right.status
+            && left.flag == right.flag;
     }
 }

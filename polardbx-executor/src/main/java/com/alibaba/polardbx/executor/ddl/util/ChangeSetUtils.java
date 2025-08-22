@@ -52,6 +52,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -59,8 +60,11 @@ import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
 import com.alibaba.polardbx.optimizer.core.datatype.FloatType;
+import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
+import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.TinyIntType;
 import com.alibaba.polardbx.optimizer.core.datatype.UTinyIntType;
 import com.alibaba.polardbx.optimizer.core.datatype.YearType;
@@ -123,6 +127,34 @@ public class ChangeSetUtils {
     public static boolean isChangeSetProcedure(ExecutionContext ec) {
         return ec.getParamManager().getBoolean(ConnectionParams.CN_ENABLE_CHANGESET)
             && ExecutorContext.getContext(ec.getSchemaName()).getStorageInfoManager().supportChangeSet();
+    }
+
+    /**
+     * 判断是否支持 changeset
+     */
+    public static boolean supportUseChangeSet(ComplexTaskMetaManager.ComplexTaskType taskType, TableMeta tableMeta) {
+        if (taskType == ComplexTaskMetaManager.ComplexTaskType.MERGE_PARTITION) {
+            return false;
+        }
+
+        if (!tableMeta.isHasPrimaryKey()) {
+            return false;
+        }
+
+        // 单精度浮点型暂不支持
+        if (tableMeta.getPrimaryKey().stream().anyMatch(columnMeta -> columnMeta.getDataType() instanceof FloatType)) {
+            return false;
+        }
+
+        // time、datetime、timestamp 等时间带小数位的暂不支持
+        if (tableMeta.getPrimaryKey().stream().anyMatch(columnMeta ->
+            (columnMeta.getDataType() instanceof DateTimeType || columnMeta.getDataType() instanceof TimestampType
+                || columnMeta.getDataType() instanceof TimeType)
+                && columnMeta.getDataType().getScale() > 0)) {
+            return false;
+        }
+
+        return true;
     }
 
     public static void execGroup(ExecutionContext ec, String schema, String groupName, String sql) {
@@ -401,6 +433,7 @@ public class ChangeSetUtils {
                                                                              String tableName, String indexName,
                                                                              Map<String, Set<String>> sourcePhyTableNames,
                                                                              Map<String, String> targetTableLocations,
+                                                                             List<String> modifyStringColumns,
                                                                              ComplexTaskMetaManager.ComplexTaskType taskType,
                                                                              Long changeSetId) {
         Map<String, ChangeSetCatchUpTask> catchUpTasks = new HashMap<>(6);
@@ -415,6 +448,7 @@ public class ChangeSetUtils {
                 ChangeSetManager.ChangeSetCatchUpStatus.ABSENT,
                 taskType,
                 changeSetId,
+                modifyStringColumns,
                 false
             ));
 
@@ -429,6 +463,7 @@ public class ChangeSetUtils {
                 ChangeSetManager.ChangeSetCatchUpStatus.DELETE_ONLY,
                 taskType,
                 changeSetId,
+                modifyStringColumns,
                 false
             ));
 
@@ -443,6 +478,7 @@ public class ChangeSetUtils {
                 ChangeSetManager.ChangeSetCatchUpStatus.WRITE_ONLY,
                 taskType,
                 changeSetId,
+                modifyStringColumns,
                 false
             ));
 
@@ -457,6 +493,7 @@ public class ChangeSetUtils {
                 ChangeSetManager.ChangeSetCatchUpStatus.ABSENT_FINAL,
                 taskType,
                 changeSetId,
+                modifyStringColumns,
                 true
             ));
 
@@ -471,6 +508,7 @@ public class ChangeSetUtils {
                 ChangeSetManager.ChangeSetCatchUpStatus.DELETE_ONLY_FINAL,
                 taskType,
                 changeSetId,
+                modifyStringColumns,
                 false
             ));
 
@@ -485,6 +523,7 @@ public class ChangeSetUtils {
                 ChangeSetManager.ChangeSetCatchUpStatus.WRITE_ONLY_FINAL,
                 taskType,
                 changeSetId,
+                modifyStringColumns,
                 false
             ));
         return catchUpTasks;
@@ -596,13 +635,12 @@ public class ChangeSetUtils {
                 null,
                 null);
 
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
         List<TableSyncTask> tableSyncTasks = new ArrayList<>();
         for (int i = 0; i < 7; ++i) {
-            tableSyncTasks.add(new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval,
-                TimeUnit.MILLISECONDS));
+            tableSyncTasks.add(new TableSyncTask(schemaName, relatedTables.get(0), true, preemptiveTime));
         }
 
         if (stayAtCreating) {
@@ -703,13 +741,13 @@ public class ChangeSetUtils {
                 "Update table status[ schema:%s, table:%s, before state:%s, after state:%s]",
                 schemaName,
                 logicalTableName,
-                ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG.name(),
-                ComplexTaskMetaManager.ComplexTaskStatus.DOING_CHECKER.name()));
+                oldStatus.name(),
+                newStatus.name()));
 
         try {
+            PreemptiveTime preemptiveTime = PreemptiveTime.newDefaultPreemptiveTime();
             SyncManagerHelper.sync(
-                new TablesMetaChangePreemptiveSyncAction(schemaName, relatedTables, 1500L, 1500L,
-                    TimeUnit.SECONDS),
+                new TablesMetaChangePreemptiveSyncAction(schemaName, relatedTables, preemptiveTime),
                 SyncScope.ALL);
         } catch (Throwable t) {
             LOGGER.error(String.format(
@@ -806,37 +844,6 @@ public class ChangeSetUtils {
             targetTableLocations.put(e.getKey(), e.getValue());
         });
         return targetTableLocations;
-    }
-
-    /**
-     * 判断是否支持 changeset
-     */
-    public static boolean supportUseChangeSet(ComplexTaskMetaManager.ComplexTaskType taskType, TableMeta tableMeta) {
-        if (taskType == ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE) {
-            return false;
-        }
-        if (taskType == ComplexTaskMetaManager.ComplexTaskType.MERGE_PARTITION) {
-            return false;
-        }
-
-        // Changeset does not support table with generated column for now
-        if (tableMeta.hasGeneratedColumn()) {
-            return false;
-        }
-
-        if (!tableMeta.isHasPrimaryKey()) {
-            return false;
-        }
-
-        final ExecutorContext executorContext = ExecutorContext.getContext(tableMeta.getSchemaName());
-        final TopologyHandler topologyHandler = executorContext.getTopologyHandler();
-        final boolean allDnUseXDataSource = isAllDnUseXDataSource(topologyHandler);
-        if (!allDnUseXDataSource && tableMeta.getPrimaryKey().stream()
-            .anyMatch(columnMeta -> columnMeta.getDataType() instanceof FloatType)) {
-            return false;
-        }
-
-        return true;
     }
 
     public static Pair<String, String> getTargetGroupNameAndPhyTableName(

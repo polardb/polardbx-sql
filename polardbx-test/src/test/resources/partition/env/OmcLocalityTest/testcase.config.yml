@@ -1,0 +1,3 @@
+test_omc_with_single_table
+test_omc_with_broadcast_table
+test_omc_with_partition_locality

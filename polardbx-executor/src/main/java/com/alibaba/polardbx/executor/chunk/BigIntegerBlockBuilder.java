@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.math.BigInteger;
 import java.util.Arrays;
@@ -27,14 +30,23 @@ import java.util.Arrays;
  *
  */
 public class BigIntegerBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(BigIntegerBlockBuilder.class).instanceSize();
 
-    final ByteArrayList data;
+    final MemoryCountableByteArrayList data;
 
     private static final byte[] EMPTY_PACKET = new byte[BigIntegerBlock.LENGTH];
 
     public BigIntegerBlockBuilder(int capacity) {
         super(capacity);
-        this.data = new ByteArrayList(capacity * BigIntegerBlock.LENGTH);
+        this.data = new MemoryCountableByteArrayList(capacity * BigIntegerBlock.LENGTH);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE
+            + data.getMemoryUsage()
+            + valueIsNull.getMemoryUsage()
+            + VMSupport.align((int) SizeOf.sizeOf(EMPTY_PACKET));
     }
 
     @Override

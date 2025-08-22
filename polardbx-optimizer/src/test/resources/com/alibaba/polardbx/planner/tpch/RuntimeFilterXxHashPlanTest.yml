@@ -25,68 +25,51 @@
     /*+TDDL:ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t, part where t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="inner")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` inner join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")    
 
 #测试生成bloomfilter，并且下推给mysql
 - sql: |
     /*+TDDL: ENABLE_PUSH_RUNTIME_FILTER_SCAN=true ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t, part where t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="inner")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` inner join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 #测试生成bloomfilter，透传给Join Probe，并且下继续推给mysql
 - sql: |
     /*+TDDL:ENABLE_OPTIMIZE_SCAN_WITH_RUNTIME_FILTER=true ENABLE_PUSH_RUNTIME_FILTER_SCAN=true ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t, part where t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="inner")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` inner join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 #测试生成bloomfilter，透传给Join Probe和Build，并且下继续推给mysql
 - sql: |
     /*+TDDL:ENABLE_RUNTIME_FILTER_INTO_BUILD_SIDE=true ENABLE_OPTIMIZE_SCAN_WITH_RUNTIME_FILTER=true ENABLE_PUSH_RUNTIME_FILTER_SCAN=true ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t, part where t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="inner")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` inner join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 #测试生成bloomfilter，三表join, join key都一样，测试filter-build merge
 - sql: |
@@ -95,16 +78,14 @@
   plan: |
     project(p_partkey="p_partkey", s_address="s_address", ps_partkey="ps_partkey", ps_suppkey="ps_suppkey", ps_availqty="ps_availqty", ps_supplycost="ps_supplycost", ps_comment="ps_comment")
       hashjoin(condition="p_partkey = ps_suppkey", type="inner")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
+        logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")
+        exchange(distribution=broadcast, collation=[])
+          project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
+            hashjoin(condition="p_partkey = s_nationkey", type="inner")
               logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
-        exchange(distribution=hash[1], collation=[])
-          logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")
-
+              exchange(distribution=broadcast, collation=[])
+                runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+                  logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 #测试生成bloomfilter，三表join, join key都一样，测试filter-build merge
 - sql: |
@@ -113,16 +94,15 @@
   plan: |
     project(p_partkey="p_partkey", s_address="s_address", s_nationkey="s_nationkey", ps_partkey="ps_partkey", ps_suppkey="ps_suppkey", ps_availqty="ps_availqty", ps_supplycost="ps_supplycost", ps_comment="ps_comment")
       hashjoin(condition="ps_suppkey = s_nationkey", type="inner")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
-        exchange(distribution=hash[1], collation=[])
-          logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")
-
+        logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp` where (bloomfilter(?, ?, ?, `ps_suppkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
+              hashjoin(condition="p_partkey = s_nationkey", type="inner")
+                logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
+                exchange(distribution=broadcast, collation=[])
+                  runtimefilterbuilder(condition="runtime_filter_builder_[1](s_nationkey)")
+                    logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 #测试生成bloomfilter，三表join, join key不一样，测试filter-build merge
 - sql: |
@@ -131,15 +111,15 @@
   plan: |
     project(p_partkey="p_partkey", s_address="s_address", p_size="p_size", ps_partkey="ps_partkey", ps_suppkey="ps_suppkey", ps_availqty="ps_availqty", ps_supplycost="ps_supplycost", ps_comment="ps_comment")
       hashjoin(condition="ps_suppkey = p_size", type="inner")
-        exchange(distribution=hash[3], collation=[])
-          project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey", p_size="p_size")
-            hashjoin(condition="p_partkey = s_nationkey", type="inner")
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_size` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-              exchange(distribution=broadcast, collation=[])
-                runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                  logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
-        exchange(distribution=hash[1], collation=[])
-          logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")
+        logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp` where (bloomfilter(?, ?, ?, `ps_suppkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](p_size)")
+            project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey", p_size="p_size")
+              hashjoin(condition="p_partkey = s_nationkey", type="inner")
+                logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_size` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
+                exchange(distribution=broadcast, collation=[])
+                  runtimefilterbuilder(condition="runtime_filter_builder_[1](s_nationkey)")
+                    logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 #测试生成bloomfilter(left join)
 - sql: |
@@ -156,68 +136,48 @@
     /*+TDDL:ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t left join part on t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="right", build="right")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` left join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 ##测试生成bloomfilter，并且下推给mysql(left join)
 - sql: |
     /*+TDDL: ENABLE_PUSH_RUNTIME_FILTER_SCAN=true ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t left join part on t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="right", build="right")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` left join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 ##测试生成bloomfilter，透传给Join Probe，并且下继续推给mysql(left join)
 - sql: |
     /*+TDDL:ENABLE_OPTIMIZE_SCAN_WITH_RUNTIME_FILTER=true ENABLE_PUSH_RUNTIME_FILTER_SCAN=true ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t left join part on t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="right", build="right")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` left join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 ##测试生成bloomfilter，透传给Join Probe和Build，并且下继续推给mysql(left join)
 - sql: |
     /*+TDDL:ENABLE_RUNTIME_FILTER_INTO_BUILD_SIDE=true ENABLE_OPTIMIZE_SCAN_WITH_RUNTIME_FILTER=true ENABLE_PUSH_RUNTIME_FILTER_SCAN=true ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t left join part on t.p_partkey=part.p_partkey
   plan: |
-    project(p_partkey="p_partkey0", s_address="s_address", p_partkey0="p_partkey", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
-      hashjoin(condition="p_partkey = p_partkey", type="right", build="right")
-        exchange(distribution=hash[0], collation=[])
-          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
-        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-          hashjoin(condition="p_partkey = s_nationkey", type="inner")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-            exchange(distribution=hash[1], collation=[])
-              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+    project(p_partkey="p_partkey", s_address="s_address", p_partkey0="p_partkey0", p_name="p_name", p_mfgr="p_mfgr", p_brand="p_brand", p_type="p_type", p_size="p_size", p_container="p_container", p_retailprice="p_retailprice", p_comment="p_comment")
+      hashjoin(condition="p_partkey = s_nationkey", type="inner")
+        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `part`.`p_partkey`, `part0`.`p_partkey` as `p_partkey0`, `part0`.`p_name`, `part0`.`p_mfgr`, `part0`.`p_brand`, `part0`.`p_type`, `part0`.`p_size`, `part0`.`p_container`, `part0`.`p_retailprice`, `part0`.`p_comment` from `part` as `part` left join `part` as `part0` on (`part`.`p_partkey` = `part0`.`p_partkey`) where (bloomfilter(?, ?, ?, `part`.`p_partkey`, 1))")
+        exchange(distribution=broadcast, collation=[])
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+            logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 ##测试生成bloomfilter，透传给Join Probe和Build，并且下继续推给mysql(right join)
 - sql: |
@@ -225,15 +185,14 @@
     select * from (select p_partkey, s_address from part, supplier where p_partkey=s_nationkey) as t right join part on t.p_partkey=part.p_partkey
   plan: |
     hashjoin(condition="p_partkey = p_partkey", type="right")
-      project(p_partkey="p_partkey", s_address="s_address")
-        hashjoin(condition="p_partkey = s_nationkey", type="inner")
-          exchange(distribution=hash[0], collation=[])
+      exchange(distribution=broadcast, collation=[])
+        project(p_partkey="p_partkey", s_address="s_address")
+          hashjoin(condition="p_partkey = s_nationkey", type="inner")
             logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-          exchange(distribution=hash[1], collation=[])
-            runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
-              logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
-      exchange(distribution=hash[0], collation=[])
-        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
+            exchange(distribution=broadcast, collation=[])
+              runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+                logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
+      logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name`, `p_mfgr`, `p_brand`, `p_type`, `p_size`, `p_container`, `p_retailprice`, `p_comment` from `part` as `part`")
 
 #测试生成bloomfilter，三表join, join key都一样，测试filter-build merge(left join)
 - sql: |
@@ -241,7 +200,7 @@
     select * from (select p_partkey, s_address, s_nationkey from part, supplier where p_partkey=s_nationkey) as t left join partsupp on t.s_nationkey=partsupp.ps_suppkey
   plan: |
     project(p_partkey="p_partkey", s_address="s_address", s_nationkey="s_nationkey", ps_partkey="ps_partkey", ps_suppkey="ps_suppkey", ps_availqty="ps_availqty", ps_supplycost="ps_supplycost", ps_comment="ps_comment")
-      hashjoin(condition="s_nationkey = ps_suppkey", type="right")
+      hashjoin(condition="s_nationkey = ps_suppkey", type="right", build="right")
         exchange(distribution=hash[1], collation=[])
           logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")
         project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
@@ -259,21 +218,20 @@
   plan: |
     project(p_partkey="p_partkey", s_address="s_address", s_nationkey="s_nationkey", l_suppkey="l_suppkey", ps_suppkey="ps_suppkey", l_linenumber="l_linenumber", l_quantity="l_quantity")
       hashjoin(condition="l_suppkey = ps_suppkey", type="inner")
-        filter(condition="bloomfilter(ps_suppkey)")
-          hashjoin(condition="ps_suppkey = s_nationkey", type="inner")
-            project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
-              hashjoin(condition="p_partkey = s_nationkey", type="inner")
-                exchange(distribution=hash[0], collation=[])
-                  logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
-                exchange(distribution=hash[1], collation=[])
-                  runtimefilterbuilder(condition="runtime_filter_builder_[1](s_nationkey)")
-                    logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
-            exchange(distribution=hash[0], collation=[])
-              logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_suppkey` from `partsupp` as `partsupp`")
         exchange(distribution=hash[0], collation=[])
-          runtimefilterbuilder(condition="runtime_filter_builder_[0](l_suppkey)")
-            logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_suppkey`, `l_linenumber`, `l_quantity` from `lineitem` as `lineitem`")
-
+          logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_suppkey`, `l_linenumber`, `l_quantity` from `lineitem` as `lineitem`")
+        project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey", ps_suppkey="ps_suppkey")
+          hashjoin(condition="ps_suppkey = s_nationkey", type="inner")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_suppkey` from `partsupp` as `partsupp` where (bloomfilter(?, ?, ?, `ps_suppkey`, 1))")
+            runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+              project(s_address="s_address", s_nationkey="s_nationkey", p_partkey="p_partkey")
+                hashjoin(condition="p_partkey = s_nationkey", type="inner")
+                  exchange(distribution=hash[0], collation=[])
+                    logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`, 1))")
+                  exchange(distribution=hash[1], collation=[])
+                    runtimefilterbuilder(condition="runtime_filter_builder_[1](s_nationkey)")
+                      logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_address`, `s_nationkey` from `supplier` as `supplier`")
 
 #测试生成bloomfilter，一部分下推到mysql, 一部分无法下推，保留在上面
 - sql: |

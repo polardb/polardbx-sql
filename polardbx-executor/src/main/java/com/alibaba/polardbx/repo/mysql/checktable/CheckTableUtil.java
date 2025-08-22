@@ -24,11 +24,14 @@ import com.mysql.jdbc.MysqlErrorNumbers;
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import com.mysql.jdbc.MysqlErrorNumbers;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -47,7 +50,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.alibaba.druid.util.JdbcUtils.executeQuery;
 import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildPhysicalDbNameFromGroupName;
+import static com.alibaba.polardbx.repo.mysql.checktable.IndexDescription.parseGppOption;
 
 /**
  * @author arnkore 2017-06-19 17:47
@@ -60,32 +65,82 @@ public class CheckTableUtil {
         return input.replace("'", "\\'");
     }
 
-    public static Map<String, List<String>> getTableIndexColumns(String schemaName, String groupName,
-                                                                 List<String> tableNames, String indexName,
-                                                                 String phyDbName) {
+    public static Boolean hasGppFeature(Connection connection) {
+        String sql = "show variables like \"%opt_index_format_gpp_enabled%\"";
+        Boolean flag = false;
+        try {
+            ResultSet resultSet = connection.createStatement().executeQuery(sql);
+            while (resultSet.next()) {
+                flag = true;
+            }
+        } catch (SQLException e) {
+            logger.warn("failed to check if dn support gpp feature", e);
+            flag = false;
+        }
+        return flag;
+    }
+
+    public static Map<String, Map<String, IndexDescription>> getTableIndexesOnGroup(String schemaName, String groupName,
+                                                                                    Boolean enableCheckGpp,
+                                                                                    List<String> tableNames,
+                                                                                    String phyDbName) {
+        Boolean is80Version = ExecUtils.isMysql80Version();
         TGroupDataSource tGroupDataSource =
             (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
                 .getGroupExecutor(groupName).getDataSource();
-        List<Pair<String, String>> tableColumns = new ArrayList<>();
         List<String> tableNameStrs =
             tableNames.stream().map(o -> String.format("'%s'", esapceStringInQuota(o))).collect(Collectors.toList());
         String tableNameStr = StringUtils.join(tableNameStrs, ",");
+        Map<String, Map<String, IndexDescription>> tableIndexes = new HashMap<>();
 
-        ResultSet rs = null;
         Throwable ex = null;
         String sql = String.format(
-            "select table_name, index_name, column_name from information_schema.statistics where table_name in (%s) and table_schema = '%s' and index_name = '%s'",
-            tableNameStr, esapceStringInQuota(phyDbName), esapceStringInQuota(indexName));
-        try (Connection conn = tGroupDataSource.getConnection()) {
-            rs = conn.createStatement().executeQuery(sql);
-            while (rs.next()) {
-                String columnName = rs.getString("COLUMN_NAME");
-                String tableName = rs.getString("TABLE_NAME");
-                if (columnName != null) {
+            "select table_name, index_name, column_name, seq_in_index from information_schema.statistics where table_name in (%s) and table_schema = '%s'",
+            tableNameStr, esapceStringInQuota(phyDbName));
+        String checkGppSql = String.format(
+            "select * from information_schema.INNODB_INDEX_STATUS where schema_name = '%s' and table_name in (%s)",
+            esapceStringInQuota(phyDbName), tableNameStr);
+        for (String tableName : tableNames) {
+            tableIndexes.put(tableName, new LinkedHashMap<>());
+        }
+        try (Connection conn = tGroupDataSource.getConnection();
+            ResultSet rs1 = conn.createStatement().executeQuery(sql)) {
+            Boolean checkGpp = (conn != null && is80Version && enableCheckGpp && hasGppFeature(conn));
+            while (rs1.next()) {
+                String columnName = rs1.getString("COLUMN_NAME");
+                String tableName = rs1.getString("TABLE_NAME");
+                String indexName = rs1.getString("INDEX_NAME");
+                Integer seqInIndex = rs1.getInt("SEQ_IN_INDEX");
+                if (!indexName.equalsIgnoreCase("PRIMARY")) {
                     //mysql 8.0 函数索引，列名为null
-                    tableColumns.add(Pair.of(tableName, columnName));
+                    if (!tableIndexes.get(tableName).containsKey(indexName)) {
+                        tableIndexes.get(tableName)
+                            .put(indexName, new IndexDescription(phyDbName, tableName, indexName));
+                    }
+
+                    tableIndexes.get(tableName).get(indexName).appendColumn(seqInIndex, columnName);
                 }
             }
+            if (checkGpp) {
+                try (ResultSet rs2 = conn.createStatement().executeQuery(checkGppSql)) {
+                    Boolean withGppEnabled = checkIfGppAdapted(rs2);
+                    while (rs2.next()) {
+                        String tableName = rs2.getString("TABLE_NAME");
+                        String indexName = rs2.getString("INDEX_NAME");
+                        String option =
+                            withGppEnabled ? rs2.getObject("GPP_ENABLED").toString() : rs2.getString("OPTIONS");
+                        if (!indexName.equalsIgnoreCase("PRIMARY")) {
+                            if (!tableIndexes.get(tableName).containsKey(indexName)) {
+                                continue;
+                            }
+                            Boolean gpp = parseGppOption(withGppEnabled, option);
+                            tableIndexes.get(tableName).get(indexName).setGpp(gpp);
+                        }
+                    }
+                }
+            }
+            logger.warn(
+                String.format("[%s] do check table for %s,  check gpp is %s", schemaName, tableNames, checkGpp));
         } catch (Exception e) {
             // 打好相关的日志
             if (e instanceof SQLException) {
@@ -104,9 +159,18 @@ public class CheckTableUtil {
             }
         }
 
-        Map<String, List<String>> columns = tableColumns.stream()
-            .collect(Collectors.groupingBy(Pair::getKey, Collectors.mapping(Pair::getValue, Collectors.toList())));
-        return columns;
+        return tableIndexes;
+    }
+
+    public static Boolean checkIfGppAdapted(ResultSet rs) throws SQLException {
+        int columnCount = rs.getMetaData().getColumnCount();
+        for (int i = 1; i <= columnCount; i++) {
+            String columnName = rs.getMetaData().getColumnName(i);
+            if (columnName.equalsIgnoreCase("GPP_ENABLED")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static Map<String, List<String>> getTableForeignKeyColumns(String schemaName, String groupName,

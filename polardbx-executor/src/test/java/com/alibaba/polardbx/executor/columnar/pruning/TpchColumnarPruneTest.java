@@ -70,6 +70,7 @@ public class TpchColumnarPruneTest extends ColumnarPruneTest {
             typeFactory = new JavaTypeFactoryImpl(RelDataTypeSystem.DEFAULT);
         }
         IndexPruner indexPruner = mockPrunerForLineitem();
+        Assert.assertTrue(indexPruner.getSizeInBytes() >= 0);
         List<Object[]> params = Lists.newArrayList();
 
         // Q1 l_shipdate <= date '1998-09-01'
@@ -130,8 +131,8 @@ public class TpchColumnarPruneTest extends ColumnarPruneTest {
 
         params.add(buildCase((rexBuilder, scan) -> rexBuilder.makeCall(SqlStdOperatorTable.BETWEEN,
                 rexBuilder.makeInputRef(scan, 11),
-                rexBuilder.makeDynamicParam(typeFactory.createSqlType(SqlTypeName.DATETIME), 1),
-                rexBuilder.makeDynamicParam(typeFactory.createSqlType(SqlTypeName.DATETIME), 2)),
+                rexBuilder.makeDynamicParam(typeFactory.createSqlType(SqlTypeName.DATETIME), 0),
+                rexBuilder.makeDynamicParam(typeFactory.createSqlType(SqlTypeName.DATETIME), 1)),
             indexPruner,
             91500L,
             "Q7 l_shipdate between '1995-01-01' and '1996-01-01'",

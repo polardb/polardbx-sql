@@ -1589,7 +1589,8 @@ public class WriterFactory {
             0,
             null,
             null,
-            insertTableInfo);
+            insertTableInfo,
+            ImmutableList.of());
 
         if (rebuild) {
             final TableColumnMeta tableColumnMeta = targetMeta.getTableColumnMeta();

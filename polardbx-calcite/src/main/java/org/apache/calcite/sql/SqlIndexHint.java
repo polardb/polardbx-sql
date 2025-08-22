@@ -78,6 +78,10 @@ public class SqlIndexHint extends SqlCall {
         return "FORCE INDEX".equalsIgnoreCase(this.indexKind.getNlsString().getValue());
     }
 
+    public boolean pagingForceIndex() {
+        return "PAGING_FORCE INDEX".equalsIgnoreCase(this.indexKind.getNlsString().getValue());
+    }
+
     public boolean ignoreIndex() {
         return "IGNORE INDEX".equalsIgnoreCase(this.indexKind.getNlsString().getValue());
     }

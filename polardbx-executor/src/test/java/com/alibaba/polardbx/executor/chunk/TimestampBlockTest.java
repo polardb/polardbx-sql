@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.common.utils.time.RandomTimeGenerator;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
@@ -59,7 +60,10 @@ public class TimestampBlockTest extends BaseBlockTest {
             .collect(Collectors.toList());
 
         values.forEach(timestampBlockBuilder::writeString);
+
+        MemoryCountable.checkDeviation(timestampBlockBuilder, .05d, true);
         Block block = timestampBlockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         // serialization & deserialization
         TimestampBlockEncoding encoding = new TimestampBlockEncoding();
@@ -68,6 +72,7 @@ public class TimestampBlockTest extends BaseBlockTest {
 
         Slice slice = sliceOutput.slice();
         Block block1 = encoding.readBlock(slice.getInput());
+        MemoryCountable.checkDeviation(block1, .05d, true);
 
         IntStream.range(0, TEST_SIZE)
             .forEach(
@@ -82,6 +87,8 @@ public class TimestampBlockTest extends BaseBlockTest {
         for (int i = 0; i < TEST_SIZE; i++) {
             timestampBlock.writePositionTo(i, builder);
         }
+
+        MemoryCountable.checkDeviation(builder, .05d, true);
         TimestampBlock newBlock = (TimestampBlock) builder.build();
         for (int i = 0; i < TEST_SIZE; i++) {
             Assert.assertEquals(timestampBlock.getTimestamp(i), newBlock.getTimestamp(i));
@@ -90,7 +97,7 @@ public class TimestampBlockTest extends BaseBlockTest {
             Assert.assertEquals(timestampBlock.hashCode(i), newBlock.hashCode(i));
             Assert.assertEquals(timestampBlock.hashCodeUseXxhash(i), newBlock.hashCodeUseXxhash(i));
         }
-
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
     }
 
     @Test
@@ -102,12 +109,16 @@ public class TimestampBlockTest extends BaseBlockTest {
             builder.writeString(RandomTimeGenerator.generateStandardTimestamp().substring(0, 19));
         }
         builder.appendNull();
+
+        MemoryCountable.checkDeviation(builder, .05d, true);
         TimestampBlock timestampBlock = (TimestampBlock) builder.build();
+        MemoryCountable.checkDeviation(timestampBlock, .05d, true);
 
         TimestampBlock newBlock2 = TimestampBlock.from(timestampBlock, TimeZone.getDefault());
         for (int i = 0; i < TEST_SIZE; i++) {
             Assert.assertEquals(timestampBlock.getTimestamp(i), newBlock2.getTimestamp(i));
         }
+        MemoryCountable.checkDeviation(newBlock2, .05d, true);
 
         final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         final String targetZone = "GMT+6";
@@ -126,6 +137,7 @@ public class TimestampBlockTest extends BaseBlockTest {
             String expectResult = targetZoneDateTime.format(formatter);
             Assert.assertEquals(expectResult, newBlock3.getTimestamp(i).toString());
         }
+        MemoryCountable.checkDeviation(newBlock3, .05d, true);
 
         final String targetZone2 = "GMT+10";
         final ZoneId targetZoneId2 = ZoneId.of("GMT+10");
@@ -143,5 +155,7 @@ public class TimestampBlockTest extends BaseBlockTest {
             String expectResult = targetZoneDateTime.format(formatter);
             Assert.assertEquals(expectResult, newBlock4.getTimestamp(i).toString());
         }
+        MemoryCountable.checkDeviation(builder, .05d, true);
+        MemoryCountable.checkDeviation(newBlock4, .05d, true);
     }
 }

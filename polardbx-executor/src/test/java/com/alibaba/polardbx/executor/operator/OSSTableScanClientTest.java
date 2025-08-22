@@ -1,6 +1,5 @@
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.gms.FileVersionStorage;
@@ -25,7 +24,9 @@ import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.alibaba.polardbx.executor.gms.FileVersionStorageTestBase.CSV_STATUSES;
@@ -34,7 +35,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 public class OSSTableScanClientTest extends CsvScanTestBase {
 
@@ -48,21 +48,24 @@ public class OSSTableScanClientTest extends CsvScanTestBase {
         ossTableScan = mock(OSSTableScan.class);
         ServiceProvider.getInstance().setServerExecutor(
             ExecutorUtil.create("ServerExecutor", 1, 500, 1));
-        when(columnarManager.csvData(anyLong(), anyString())).thenCallRealMethod();
-        doCallRealMethod().when(columnarManager).injectForTest(any(), any(), any(), any());
+        doCallRealMethod().when(columnarManager).csvData(anyLong(), anyString());
+        doCallRealMethod().when(columnarManager).injectForTest(any(), any(), any(), any(), any());
         columnarManager.injectForTest(new FileVersionStorage(columnarManager), null, new AtomicLong(0),
             CacheBuilder.newBuilder()
-                .build(new CacheLoader<Pair<Long, String>, List<ColumnarAppendedFilesRecord>>() {
+                .build(new CacheLoader<Long, Map<String, List<ColumnarAppendedFilesRecord>>>() {
                     @Override
-                    public List<ColumnarAppendedFilesRecord> load(@NotNull Pair<Long, String> tsoAndFileName) {
+                    public Map<String, List<ColumnarAppendedFilesRecord>> load(@NotNull Long tso) {
                         ColumnarAppendedFilesRecord caf = new ColumnarAppendedFilesRecord();
                         caf.appendLength = 1775L;
                         caf.appendOffset = 86549L;
                         caf.checkpointTso = TSO;
                         caf.fileName = DATA_FILE_NAME;
-                        return Collections.singletonList(caf);
+
+                        Map<String, List<ColumnarAppendedFilesRecord>> result = new HashMap<>();
+                        result.put(DATA_FILE_NAME, Collections.singletonList(caf));
+                        return result;
                     }
-                }));
+                }), null);
 
         mockCafCtor = Mockito.mockConstruction(ColumnarAppendedFilesAccessor.class, (mock, context) -> {
             Mockito.when(

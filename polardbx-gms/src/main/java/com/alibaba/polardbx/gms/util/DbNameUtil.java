@@ -77,7 +77,7 @@ public class DbNameUtil {
      * @return true if check ok
      */
     public static boolean isWord(char c) {
-        String regEx = "[\\w-]";
+        String regEx = "[\\w-$@]";
         Pattern p = Pattern.compile(regEx);
         Matcher m = p.matcher("" + c);
         return m.matches();

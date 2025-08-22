@@ -1,0 +1,58 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false;
+set FORBID_DDL_WITH_CCI=false;
+set time_zone='+08:00';
+
+create table my_ttl_t4(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+  
+  ## error_msg: $# not supported #$
+alter table my_ttl_t4 modify ttl set ttl_expr = `a` expire after 2 month timezone '+08:00';
+  
+  ## error_msg: $# not supported #$
+alter table my_ttl_t4 modify ttl set ttl_expr = `b` expire after 2 second timezone '+08:00';
+  
+  ## error_msg: $# not supported #$
+alter table my_ttl_t4 modify ttl set ttl_expr = `b` expire after 2 minute timezone '+08:00';
+  
+  ## error_msg: $# not supported #$
+alter table my_ttl_t4 modify ttl set ttl_expr = `b` expire after 2 hour timezone '+08:00';
+  
+  ## error_msg: $# not supported #$
+alter table my_ttl_t4 modify ttl set ttl_expr = `b` expire after 2 hour timezone '+08:00';
+  
+  ## error_msg: $# ttl_expr is not defined #$
+alter table my_ttl_t4 modify ttl set ttl_job = CRON '* * */2 * * * * ?' TIMEZONE '+08:00';
+  
+  ## error_msg: $# invalid #$
+alter table my_ttl_t4 modify ttl set ttl_job = CRON '* * */2 * * * * ?' TIMEZONE '+08:00';
+
+alter table my_ttl_t4 modify ttl set ttl_expr = `b` expire after 2 month timezone '+08:00';
+alter table my_ttl_t4 modify ttl set archive_table_pre_allocate = 3 archive_table_post_allocate = 3;
+create table my_arc_t4 like my_ttl_t4 engine='columnar' archive_mode='ttl';
+show create table my_ttl_t4;
+desc my_arc_t4;
+  
+  ## error_msg: $# not allowed #$
+drop view my_arc_t4;
+  
+  ## error_msg: $# not allowed #$
+alter table my_ttl_t4 drop index arctmp_my_arc_t4;
+
+alter table my_ttl_t4 add column c datetime default null;
+  
+  ## error_msg: $# change ttl column #$
+alter table my_ttl_t4 modify ttl set ttl_expr = `c` expire after 2 month timezone '+08:00';
+  
+  ## error_msg: $# archive table #$
+create table my_arc_t5 like my_ttl_t4 engine='columnar' archive_mode='ttl';
+
+drop table my_arc_t4;
+drop table my_ttl_t4;

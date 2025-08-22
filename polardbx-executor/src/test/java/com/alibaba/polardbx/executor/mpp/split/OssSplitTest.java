@@ -237,6 +237,7 @@ public class OssSplitTest {
             when(mock.queryColumnarDeltaFilesByTsoAndTableId(anyLong(), anyLong(), anyString(), anyString()))
                 .thenReturn(FILES_RECORDS);
         });
+        when(paramManager.getBoolean(ConnectionParams.ENABLE_COLUMNAR_CSV_CACHE)).thenReturn(true);
     }
 
     public void setUpForSharding() {

@@ -135,7 +135,8 @@ public class FileStorageReadLockTest extends BaseTestCase {
                 + "ENABLE_EXPIRE_FILE_STORAGE_PAUSE=true, ENABLE_EXPIRE_FILE_STORAGE_TEST_PAUSE=true)*/ "
                 + "alter table %s expire local partition";
             for (String tb : tbs) {
-                JdbcUtil.executeUpdateFailed(dbToConn.get(tbToDb.get(tb)), String.format(ttlSql, tb), "SHOW DDL");
+                JdbcUtil.executeUpdateFailed(dbToConn.get(tbToDb.get(tb)), String.format(ttlSql, tb),
+                    "The DDL job has been cancelled or interrupted");
             }
             // find jobId of each ddl
             for (String tb : tbs) {

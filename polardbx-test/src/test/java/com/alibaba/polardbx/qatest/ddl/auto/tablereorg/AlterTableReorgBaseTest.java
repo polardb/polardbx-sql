@@ -282,8 +282,7 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
         } else if (usePhysicalBackfill) {
             sqlHint = "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=true, PHYSICAL_BACKFILL_SPEED_TEST=false)*/";
         }
-        String ignoreErr =
-            "The DDL job has been paused or cancelled. Please use SHOW DDL";
+        String ignoreErr = "The DDL job has been cancelled or interrupted";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sqlHint + command,

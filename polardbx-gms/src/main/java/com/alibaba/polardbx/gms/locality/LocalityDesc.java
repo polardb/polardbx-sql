@@ -131,6 +131,7 @@ public class LocalityDesc {
             str = str.substring(1, str.length() - 1);
         }
         str = StringUtils.trim(str);
+        // all string would reduce to lower case.
         str = str.toLowerCase();
         if (str.startsWith("'") && str.endsWith("'") && str.length() >= 2) {
             str = str.substring(1, str.length() - 1);
@@ -193,12 +194,16 @@ public class LocalityDesc {
                 String[] storagePoolNames = storagePoolSpecParser.getStoragePoolNames();
                 String primaryStoragePool = storagePoolSpecParser.getPrimaryStoragePool();
                 if (storagePoolNames != null && storagePoolNames.length > 0) {
-                    result.setStoragePoolNames(Arrays.stream(storagePoolNames).collect(Collectors.toList()));
+                    result.setStoragePoolNames(Arrays.stream(storagePoolNames).map(o->o.toLowerCase()).collect(Collectors.toList()));
                     if (StringUtils.isEmpty(primaryStoragePool)) {
                         primaryStoragePool = storagePoolNames[0];
                     }
-                    result.setPrimaryStoragePoolName(primaryStoragePool);
+                    result.setPrimaryStoragePoolName(primaryStoragePool.toLowerCase());
                 }
+            } else if(option.startsWith(PRIMARY_STORAGE_POOL_PREFIX)){
+                String primaryStoragePoolStr = StringUtils.trim(StringUtils.removeStart(option, PRIMARY_STORAGE_POOL_PREFIX));
+                String primaryStoragePool = StringUtils.strip(primaryStoragePoolStr.toLowerCase(), "'\"");
+                result.setPrimaryStoragePoolName(primaryStoragePool.toLowerCase());
             } else {
                 throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
                     String.format("invalid locality: '%s', must start with '%s' or '%s' or '%s' or be empty string.",
@@ -353,13 +358,16 @@ public class LocalityDesc {
             options.add("hash_range_sequential_placement=on");
         }
         if (!storagePoolNames.isEmpty()) {
-            options.add("storage_pools=" + "\"" + StringUtils.join(this.storagePoolNames, ",") + "\"");
-            options.add("primary_storage_pool=" + "\"" + this.primaryStoragePoolName + "\"");
+            StringBuilder sb = new StringBuilder();
+            sb.append("storage_pools=" + "\"" + StringUtils.join(this.storagePoolNames, ",") + "\"");
+            sb.append(",");
+            sb.append("primary_storage_pool=" + "\"" + this.primaryStoragePoolName + "\"");
+            options.add(sb.toString());
         } else if (!this.holdEmptyDnList()) {
             options.add("dn=" + StringUtils.join(this.dnSet, ","));
         }
         if (!options.isEmpty()) {
-            result = StringUtils.join(options, ",");
+            result = StringUtils.join(options, ";");
         }
         return result;
     }

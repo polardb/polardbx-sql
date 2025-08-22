@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.oss.IDeltaReadOption;
+import com.alibaba.polardbx.common.partition.MurmurHashUtils;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -234,10 +235,11 @@ public class OssSplit implements ConnectorSplit {
         Map<String, List<FileMeta>> flatFileMetas = FileMeta.getFlatFileMetas(tableMeta);
 
         if (ossTableScan.isColumnarIndex()) {
-            DeltaReadOption deltaReadOption = null;
+            DeltaReadOption deltaReadOption;
 
             Map<Integer, ParameterContext> params = phyOperationBuilder.buildSplitParamMap(phyTableList);
             final ColumnarManager columnarManager = ColumnarManager.getInstance();
+            executionContext.setColumnarSnapshotCacheManager(columnarManager);
 
             // build delta read option
             deltaReadOption = new DeltaReadOption(tso);
@@ -247,13 +249,20 @@ public class OssSplit implements ConnectorSplit {
             Map<String, List<Long>> allCsvPositions = null;
             Map<String, List<Pair<String, Long>>> allDeletePositions = null;
             List<String> allOrcFiles = new ArrayList<>();
-            if (ossTableScan.isFlashbackQuery()) {
+            boolean forceDisableCsvCache =
+                !executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_CSV_CACHE);
+            if (ossTableScan.isFlashbackQuery() || forceDisableCsvCache) {
                 allCsvPositions = new HashMap<>();
                 FlashbackColumnarManager flashbackManager =
                     executionContext.getFlashbackColumnarManager(tso, logicalSchema, logicalTable);
                 Map<String, Pair<List<String>, List<Pair<String, Long>>>> columnarSnapshot =
                     flashbackManager.getSnapshotInfo();
                 allDeletePositions = flashbackManager.getDeletePositions();
+                Long deltaTso = flashbackManager.getColumnarDeltaCheckpointTso();
+
+                if (deltaTso != null) {
+                    deltaReadOption.setCheckpointTso(deltaTso);
+                }
 
                 for (String physicalTable : phyTableList) {
                     // Find part name from physical schema + physical table
@@ -380,8 +389,9 @@ public class OssSplit implements ConnectorSplit {
             boolean needPartition = partitionWise.isRemotePartition() || executionContext.getParamManager()
                 .getBoolean(ConnectionParams.SCHEDULE_BY_PARTITION);
 
-            int partition = needPartition ? calcPartition(logicalSchema, logicalTableName,
-                physicalSchema, phyTable) : NO_PARTITION_INFO;
+            int partition = needPartition ?
+                calcPartition(logicalSchema, logicalTableName, physicalSchema, phyTable, executionContext) :
+                NO_PARTITION_INFO;
             boolean localPairWise =
                 executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
                     && partitionWise.isLocalPartition();
@@ -449,12 +459,14 @@ public class OssSplit implements ConnectorSplit {
                                                                       long tso) {
         List<OssSplit> splits = new ArrayList<>();
         final PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+        executionContext.setColumnarSnapshotCacheManager(ColumnarManager.getInstance());
         FlashbackColumnarManager flashbackColumnarManager =
             executionContext.getFlashbackColumnarManager(tso, logicalSchema, logicalTableName);
 
         Map<String, Pair<List<String>, List<Pair<String, Long>>>> snapshotInfo =
             flashbackColumnarManager.getSnapshotInfo();
         Map<String, List<Pair<String, Long>>> deletePositionMap = flashbackColumnarManager.getDeletePositions();
+        Long deltaTso = flashbackColumnarManager.getColumnarDeltaCheckpointTso();
 
         for (int i = 0; i < phyTableNameList.size(); i++) {
             String phyTable = phyTableNameList.get(i);
@@ -473,7 +485,8 @@ public class OssSplit implements ConnectorSplit {
                 .getBoolean(ConnectionParams.SCHEDULE_BY_PARTITION);
 
             int partition = needPartition ?
-                calcPartition(logicalSchema, logicalTableName, physicalSchema, phyTable) : NO_PARTITION_INFO;
+                calcPartition(logicalSchema, logicalTableName, physicalSchema, phyTable, executionContext) :
+                NO_PARTITION_INFO;
             boolean localPairWise = partitionWise.isLocalPartition() && executionContext.getParamManager()
                 .getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN);
 
@@ -484,7 +497,7 @@ public class OssSplit implements ConnectorSplit {
                 Map<Integer, ParameterContext> params =
                     phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
 
-                DeltaReadOption deltaReadOption = new DeltaReadOption(tso);
+                DeltaReadOption deltaReadOption = new DeltaReadOption(deltaTso != null ? deltaTso : tso);
                 deltaReadOption.setAllDelPositions(deletePositionMap);
 
                 for (String orcFile : orcFiles) {
@@ -510,7 +523,7 @@ public class OssSplit implements ConnectorSplit {
                         phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
 
                     // Build delta read option. There is only one physical table and one csv file name.
-                    final DeltaReadOption deltaReadOption = new DeltaReadOption(tso);
+                    final DeltaReadOption deltaReadOption = new DeltaReadOption(deltaTso != null ? deltaTso : tso);
 
                     deltaReadOption.setAllCsvFiles(Collections.singletonMap(phyTable, ImmutableList.of(csvFile)));
                     deltaReadOption.setAllPositions(Collections.singletonMap(phyTable, ImmutableList.of(filePos)));
@@ -579,8 +592,10 @@ public class OssSplit implements ConnectorSplit {
 
         TableMeta tableMeta = executionContext.getSchemaManager(logicalSchema).getTable(logicalTableName);
 
+        boolean forceDisableCsvCache =
+            !executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_CSV_CACHE);
         if (ossTableScan.isColumnarIndex()) {
-            if (ossTableScan.isFlashbackQuery()) {
+            if (ossTableScan.isFlashbackQuery() || forceDisableCsvCache) {
                 return getFileConcurrencySplitForFlashback(executionContext, ossTableScan, tableMeta, logicalSchema,
                     physicalSchema, logicalTableName, phyTableNameList, phyOperationBuilder, tso);
             } else {
@@ -1270,7 +1285,7 @@ public class OssSplit implements ConnectorSplit {
         /**
          * checkpoint tso for columnar store.
          */
-        private final long checkpointTso;
+        private long checkpointTso;
 
         /**
          * map: {physical table} -> {list <csv>}
@@ -1327,6 +1342,10 @@ public class OssSplit implements ConnectorSplit {
         @JsonProperty
         public List<Integer> getProjectColumnIndexes() {
             return projectColumnIndexes;
+        }
+
+        public void setCheckpointTso(long checkpointTso) {
+            this.checkpointTso = checkpointTso;
         }
 
         public void setAllCsvFiles(Map<String, List<String>> allCsvFiles) {
@@ -1387,5 +1406,28 @@ public class OssSplit implements ConnectorSplit {
             })
             .map(FileMeta::getFileName)
             .collect(Collectors.toList());
+    }
+
+    @Nullable
+    public Long hashCodeByFileName() {
+        if (!CollectionUtils.isEmpty(getDesignatedFile())) {
+            return MurmurHashUtils.murmurHash128WithZeroSeed(getDesignatedFile().hashCode());
+        } else if (getDeltaReadOption() != null) {
+            return getDeltaReadOption().getAllCsvFiles().values().stream().findFirst().map(
+                csvFiles -> csvFiles.isEmpty() ? null : MurmurHashUtils.murmurHash128WithZeroSeed(csvFiles.hashCode())
+            ).orElse(null);
+        }
+        return null;
+    }
+
+    public boolean isSplitFilePresent() {
+        if (!CollectionUtils.isEmpty(getDesignatedFile())) {
+            return true;
+        } else if (getDeltaReadOption() != null) {
+            return getDeltaReadOption().getAllCsvFiles().values().stream().findFirst().map(
+                csvFiles -> !csvFiles.isEmpty()
+            ).orElse(false);
+        }
+        return false;
     }
 }

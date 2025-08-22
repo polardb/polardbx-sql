@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
+import com.alibaba.polardbx.common.memory.MemoryUsageReport;
 import com.alibaba.polardbx.optimizer.core.datatype.IntegerType;
 import org.junit.Assert;
 import org.junit.Test;
@@ -28,7 +31,8 @@ public class IntegerBlockTest extends BaseBlockTest {
     @Test
     public void testSizeInBytes() {
         IntegerBlock block = new IntegerBlock(new IntegerType(), 1024);
-        Assert.assertEquals(5120, block.getElementUsedBytes());
+        MemoryCountable.checkDeviation(block, .05d, true);
+        Assert.assertEquals(5216, block.getElementUsedBytes());
     }
 
     @Test
@@ -55,8 +59,14 @@ public class IntegerBlockTest extends BaseBlockTest {
                 assertTrue(blockBuilder.isNull(i));
             }
         }
-
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         Block block = blockBuilder.build();
+        MemoryUsageReport report = FastMemoryCounter.parseInstance(block, 16, true, true, true);
+        System.out.println("memory usage = " + report.getTotalSize());
+        System.out.println("memory verbose = " + report.getFieldSizeMap());
+        System.out.println("memory usage tree = \n" + report.getMemoryUsageTree());
+
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertEquals(values.length, block.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -82,5 +92,7 @@ public class IntegerBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+        MemoryCountable.checkDeviation(anotherBuilder, .05d, true);
+        MemoryCountable.checkDeviation(anotherBuilder.build(), .05d, true);
     }
 }

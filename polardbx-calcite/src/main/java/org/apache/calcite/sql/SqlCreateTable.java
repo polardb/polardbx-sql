@@ -2669,6 +2669,7 @@ public class SqlCreateTable extends SqlCreate {
 
             } else if (sqlTableElement instanceof MySqlTableIndex) {
                 if (!((MySqlTableIndex) sqlTableElement).isGlobal()
+                    && !((MySqlTableIndex) sqlTableElement).isColumnar()
                     && ((MySqlTableIndex) sqlTableElement).getColumns().size() > 0) {
                     List<String> indexingColumnsName = ((MySqlTableIndex) sqlTableElement).getColumns()
                         .stream().map(SqlCreateTable::getIndexColumnName).filter(Objects::nonNull)

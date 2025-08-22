@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
+import com.alibaba.polardbx.gms.partition.BackfillExtraFieldJSON;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
@@ -88,9 +89,9 @@ public class Reporter {
     }
 
     public void addPositionMarkBatch(ExecutionContext ec, List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
-                                   long successRowCount, List<ParameterContext> lastPk,
-                                   List<ParameterContext> beforeLastPk, boolean finished,
-                                   Map<Long, Long> primaryKeysIdMap) {
+                                     long successRowCount, List<ParameterContext> lastPk,
+                                     List<ParameterContext> beforeLastPk, boolean finished,
+                                     Map<Long, Long> primaryKeysIdMap) {
 
     }
 
@@ -122,14 +123,8 @@ public class Reporter {
 
         final Integer progress = total.get() / objectsCount;
 
-        // Update progress
-        final int totalProgress;
-        if (ec.getParamManager().getBoolean(ConnectionParams.GSI_CHECK_AFTER_CREATION)) {
-            totalProgress = progress / 2;
-        } else {
-            totalProgress = progress;
-        }
-        backfillManager.updateLogicalBackfillProcess(String.valueOf(totalProgress), ec.getBackfillId());
+        assert backfillBean.extra != null;
+        backfillManager.updateLogicalBackfillProcess(backfillBean.extra, String.valueOf(progress), ec.getBackfillId());
     }
 
 }

@@ -35,6 +35,7 @@ import com.alibaba.polardbx.executor.scaleout.corrector.MoveTableChecker;
 import com.alibaba.polardbx.executor.scaleout.corrector.MoveTableReporter;
 import com.alibaba.polardbx.executor.scaleout.fastchecker.MoveTableFastChecker;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
@@ -42,14 +43,13 @@ import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlSelect;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.calcite.util.Pair;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
 
@@ -104,6 +104,9 @@ public class MoveTableBackfillHandler extends HandlerCommon {
         final boolean check =
             executionContext.getParamManager().getBoolean(ConnectionParams.SCALEOUT_CHECK_AFTER_BACKFILL)
                 && !useChangeSet;
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ROLLBACK_ON_CHECKER)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " force rollback on checker!");
+        }
         if (check) {
             final boolean useFastChecker =
                 FastChecker.isSupported(schemaName) &&
@@ -142,10 +145,17 @@ public class MoveTableBackfillHandler extends HandlerCommon {
         SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
             "FastChecker for move table, schema [{0}] logical src table [{1}] logic dst table [{2}] start",
             schemaName, logicalTable, logicalTable));
+        Map<Pair<String, String>, List<Pair<String, String>>> srcTarPhyTableMap =
+            ScaleOutPlanUtil.generateSrcTarPhyTableMapForMoveTable(backfill.getSourcePhyTables(),
+                backfill.getTargetPhyTables(),
+                backfill.getSourceTargetGroup());
         FastChecker fastChecker = MoveTableFastChecker
             .create(schemaName, backfill.getLogicalTableName(),
                 backfill.getSourcePhyTables(),
-                backfill.getTargetPhyTables(), executionContext);
+                backfill.getTargetPhyTables(),
+                srcTarPhyTableMap,
+                true,
+                executionContext);
         boolean fastCheckResult = false;
 
         try {

@@ -813,7 +813,7 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
             .withReverseOrderCheck()
             .withActualKeyGenerator(a -> a.columnName)
             .withExpectedKeyGenerator(e -> e.getValue().columnName)
-            .withDefValidator((a, e) -> equalsColumnRecord(a, e.getValue()))
+            .withDefValidator((a, e) -> ColumnsRecord.equalsColumnRecord(a, e.getValue()))
             .withOrdValidator((a, e) -> a.ordinalPosition == e.getValue().ordinalPosition)
             .withOrphanReporter(msgs -> createReportRecord(
                 ReportErrorType.ORPHAN_COLUMNAR_COLUMN_EVOLUTION_META,
@@ -1070,7 +1070,7 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
             .stringKeyListChecker(indexColumns, primaryColumns, true)
             .withActualKeyGenerator(a -> a.columnName)
             .withExpectedKeyGenerator(e -> e.columnName)
-            .withDefValidator((a, e) -> equalsColumnRecord(e, a))
+            .withDefValidator((a, e) -> ColumnsRecord.equalsColumnRecord(e, a))
             .withOrdValidator((a, e) -> a.ordinalPosition == e.ordinalPosition)
             .withOrphanReporter(msgs -> createReportRecord(
                 ReportErrorType.ORPHAN_COLUMN,
@@ -1099,22 +1099,6 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
             .build()
             .check()
             .report();
-    }
-
-    public static boolean equalsColumnRecord(ColumnsRecord left, ColumnsRecord right) {
-        if (null == left || null == right) {
-            return false;
-        }
-
-        return TStringUtil.equals(left.columnName, right.columnName)
-            && TStringUtil.equals(left.columnType, right.columnType)
-            && TStringUtil.equals(left.isNullable, right.isNullable)
-            && TStringUtil.equals(left.columnDefault, right.columnDefault)
-            && left.numericPrecision == right.numericPrecision
-            && left.numericScale == right.numericScale
-            && TStringUtil.equals(left.characterSetName, right.characterSetName)
-            && TStringUtil.equals(left.collationName, right.collationName)
-            && TStringUtil.equals(left.extra, right.extra);
     }
 
     private boolean equalsPartitionRecord(TablePartitionRecord left, TablePartitionRecord right) {

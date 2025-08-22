@@ -104,6 +104,8 @@ public interface ColumnarSplit extends ConnectorSplit, Comparable<ColumnarSplit>
 
         ColumnarSplitBuilder isColumnarMode(boolean isColumnarMode);
 
+        ColumnarSplitBuilder isFlashback(boolean isFlashback);
+
         ColumnarSplitBuilder tso(Long tso);
 
         ColumnarSplitBuilder position(Long position);

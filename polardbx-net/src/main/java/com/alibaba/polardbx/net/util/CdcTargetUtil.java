@@ -16,27 +16,37 @@
 
 package com.alibaba.polardbx.net.util;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.common.cdc.CdcConstants;
+import com.alibaba.polardbx.common.cdc.ResultCode;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.utils.PooledHttpHelper;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.cdc.BinlogDumperAccessor;
 import com.alibaba.polardbx.gms.metadb.cdc.BinlogDumperRecord;
 import com.alibaba.polardbx.gms.metadb.cdc.BinlogNodeInfoAccessor;
 import com.alibaba.polardbx.gms.metadb.cdc.BinlogNodeInfoRecord;
 import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamAccessor;
 import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import lombok.extern.slf4j.Slf4j;
+import com.alibaba.polardbx.rpc.cdc.DumpRequest;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.http.entity.ContentType;
 
 import java.sql.Connection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * @author yudong
  * @since 2023/3/1 10:32
  **/
-@Slf4j
 public class CdcTargetUtil {
+    private static final Logger cdcLogger = LoggerFactory.getLogger("cdc_log");
     public static String getDumperMasterTarget() {
         BinlogDumperAccessor binlogDumperAccessor = new BinlogDumperAccessor();
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
@@ -47,6 +57,38 @@ public class CdcTargetUtil {
         } catch (Exception e) {
             throw new TddlNestableRuntimeException(e);
         }
+    }
+
+    public static String getDumperTarget(DumpRequest request) {
+        String result;
+        String address;
+        String daemonEndpoint = CdcTargetUtil.getDaemonMasterTarget();
+        String fileName = request.getFileName();
+        long pos = request.getPosition();
+        Map<String, String> params = new HashMap<>(3);
+        params.put("fileName", fileName);
+        params.put("pos", String.valueOf(pos));
+        params.put("instId", InstIdUtil.getInstId());
+        String url = "http://" + daemonEndpoint + "/dumper/getTarget";
+        try {
+            result =
+                PooledHttpHelper.doPost(url, ContentType.APPLICATION_JSON, JSON.toJSONString(params), 10000);
+            ResultCode<String> httpResult = JSON.parseObject(result, ResultCode.class);
+            if (httpResult.getCode() != CdcConstants.SUCCESS_CODE) {
+                cdcLogger.error(
+                    "can not find dumper target endpoint by get " + url + " with params:" + params
+                        + ", will try get dumper master directly");
+                return getDumperMasterTarget();
+            }
+            address = httpResult.getData();
+        } catch (Exception e) {
+            cdcLogger.error(
+                "can not find dumper target endpoint by get " + url + " with params:" + params
+                    + ", will try get dumper master directly", e);
+            return getDumperMasterTarget();
+        }
+
+        return address;
     }
 
     public static String getDumperTarget(String streamName) {

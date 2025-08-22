@@ -49,6 +49,7 @@ import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
@@ -342,7 +343,7 @@ class DecimalColumnProvider implements ColumnProvider<Decimal> {
         if (row.isNullAt(columnId)) {
             blockBuilder.appendNull();
         } else {
-            byte[] bytes = row.getBytes(columnId);
+            ByteBuffer bytes = row.getBytes(columnId);
             int precision = dataType.getPrecision();
             int scale = dataType.getScale();
             long longVal = DecimalConverter.getUnscaledDecimal(bytes, precision, scale);
@@ -354,7 +355,7 @@ class DecimalColumnProvider implements ColumnProvider<Decimal> {
         if (row.isNullAt(columnId)) {
             blockBuilder.appendNull();
         } else {
-            byte[] bytes = row.getBytes(columnId);
+            ByteBuffer bytes = row.getBytes(columnId);
             int precision = dataType.getPrecision();
             int scale = dataType.getScale();
             Decimal decimal = DecimalConverter.getDecimal(bytes, precision, scale);

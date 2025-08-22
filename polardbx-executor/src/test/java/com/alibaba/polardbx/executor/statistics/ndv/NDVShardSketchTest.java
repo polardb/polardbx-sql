@@ -2,10 +2,12 @@ package com.alibaba.polardbx.executor.statistics.ndv;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.executor.statistic.ndv.NDVShardSketch;
-import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -19,7 +21,6 @@ import com.clearspring.analytics.util.Lists;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.jetbrains.annotations.NotNull;
-import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -34,15 +35,20 @@ import java.util.Set;
 import static com.alibaba.polardbx.common.utils.Assert.assertNotNull;
 import static com.alibaba.polardbx.common.utils.Assert.assertTrue;
 import static com.alibaba.polardbx.common.utils.Assert.fail;
+import static com.alibaba.polardbx.executor.statistic.ndv.NDVShardSketch.HYPER_LOG_LOG_MUL_COLUMNS_SQL;
+import static com.alibaba.polardbx.executor.statistic.ndv.NDVShardSketch.HYPER_LOG_LOG_SQL;
 import static com.alibaba.polardbx.executor.statistic.ndv.NDVShardSketch.handleException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -105,7 +111,7 @@ public class NDVShardSketchTest {
         ColumnMeta col1 = mock(ColumnMeta.class);
         ColumnMeta col2 = mock(ColumnMeta.class);
         when(col1.getName()).thenReturn("col1");
-        when(col2.getName()).thenReturn("col2");
+        when(col2.getName()).thenReturn("cOl2");
         when(tableMeta.getIndexes()).thenReturn(Collections.emptyList());
         when(tableMeta.getGsiPublished()).thenReturn(gsiMeta);
         when(tableMetaGsi.getIndexes()).thenReturn(Collections.singletonList(indexMeta));
@@ -133,6 +139,58 @@ public class NDVShardSketchTest {
             assertEquals("physical_index", result.getKey());
             assertTrue(Arrays.asList(result.getValue())
                 .containsAll(ImmutableList.of("group1:testtable1", "group2:testtable1", "group2:testtable2")));
+        }
+    }
+
+    @Test
+    public void testBuildShardPartsEmptyInput() {
+        String schemaName = "test_schema";
+        String tableName = "test_table";
+        String columnNames = "col1,col2";
+        assertNull(NDVShardSketch.buildShardParts(null, tableName, columnNames));
+        assertNull(NDVShardSketch.buildShardParts(schemaName, null, columnNames));
+        assertNull(NDVShardSketch.buildShardParts(schemaName, tableName, null));
+    }
+
+    @Test
+    public void testBuildShardPartsGsiNotExists() {
+        String schemaName = "test_schema";
+        String tableName = "test_table";
+        String indexTableName = "index_test_table";
+        String columnNames = "col1,col2";
+        OptimizerContext opMock = mock(OptimizerContext.class);
+        when(opMock.getLatestSchemaManager()).thenReturn(mock(SchemaManager.class));
+
+        TableMeta tableMeta = mock(TableMeta.class);
+        TableMeta tableMetaGsi = mock(TableMeta.class);
+        IndexMeta indexMeta = mock(IndexMeta.class);
+        ColumnMeta col1 = mock(ColumnMeta.class);
+        ColumnMeta col2 = mock(ColumnMeta.class);
+        when(col1.getName()).thenReturn("col1");
+        when(col2.getName()).thenReturn("cOl2");
+        when(tableMeta.getIndexes()).thenReturn(Collections.emptyList());
+        when(tableMeta.getGsiPublished()).thenReturn(null);
+        when(tableMetaGsi.getIndexes()).thenReturn(Collections.singletonList(indexMeta));
+        when(indexMeta.getPhysicalIndexName()).thenReturn("physical_index");
+        when(indexMeta.getKeyColumns()).thenReturn(ImmutableList.of(col1, col2));
+        when(opMock.getLatestSchemaManager().getTable(tableName)).thenReturn(tableMeta);
+        when(opMock.getLatestSchemaManager().getTable(indexTableName)).thenReturn(tableMetaGsi);
+
+        Map<String, Set<String>> topology = new HashMap<>();
+        topology.put("group1", Collections.singleton("testTable1"));
+        topology.put("group2", ImmutableSet.of("testTable1", "testTable2"));
+
+        try (MockedStatic<OptimizerContext> optimizerContext = Mockito.mockStatic(OptimizerContext.class);
+            MockedStatic<NDVShardSketch> ndvShardSketch = Mockito.mockStatic(NDVShardSketch.class)) {
+            ndvShardSketch.when(() -> NDVShardSketch.getTopology(schemaName, indexTableName, opMock))
+                .thenReturn(topology);
+            ndvShardSketch.when(() -> NDVShardSketch.buildShardParts(schemaName, tableName, columnNames))
+                .thenCallRealMethod();
+            ndvShardSketch.when(() -> NDVShardSketch.topologyPartToShard(any())).thenCallRealMethod();
+            optimizerContext.when(() -> OptimizerContext.getContext(schemaName)).thenReturn(opMock);
+
+            Pair<String, String[]> result = NDVShardSketch.buildShardParts(schemaName, tableName, columnNames);
+            assertNull(result);
         }
     }
 
@@ -237,7 +295,7 @@ public class NDVShardSketchTest {
                 .thenReturn(mockedResult);
             ndvShardSketch.when(() -> NDVShardSketch.isValidShardPart(anyString(), any())).thenCallRealMethod();
             // 执行
-            boolean result = NDVShardSketch.isValidShardPart(shardKey, shardParts).booleanValue();
+            boolean result = NDVShardSketch.isValidShardPart(shardKey, shardParts);
 
             // 验证
             assertTrue(result);
@@ -245,7 +303,7 @@ public class NDVShardSketchTest {
             when(mockedResult.getValue()).thenReturn(shardParts1);
 
             // 执行
-            result = NDVShardSketch.isValidShardPart(shardKey, shardParts).booleanValue();
+            result = NDVShardSketch.isValidShardPart(shardKey, shardParts);
 
             // 验证
             assertTrue(result);
@@ -253,7 +311,7 @@ public class NDVShardSketchTest {
             when(mockedResult.getValue()).thenReturn(shardParts2);
 
             // 执行
-            result = NDVShardSketch.isValidShardPart(shardKey, shardParts).booleanValue();
+            result = NDVShardSketch.isValidShardPart(shardKey, shardParts);
 
             // 验证
             assertFalse(result);
@@ -276,7 +334,7 @@ public class NDVShardSketchTest {
         Boolean result = NDVShardSketch.isValidShardPart(shardKey, shardParts);
 
         // 验证
-        assertNull(result);
+        assertFalse(result);
     }
 
     /**
@@ -292,7 +350,7 @@ public class NDVShardSketchTest {
         String[] shardParts = {"part1", "part2"};
 
         // 执行并验证
-        Assert.assertTrue(NDVShardSketch.isValidShardPart(shardKey, shardParts) == null);
+        Assert.assertTrue(!NDVShardSketch.isValidShardPart(shardKey, shardParts));
     }
 
     /**
@@ -315,10 +373,143 @@ public class NDVShardSketchTest {
                 .thenReturn(mockedResult);
             ndvShardSketch.when(() -> NDVShardSketch.isValidShardPart(anyString(), any())).thenCallRealMethod();
             // 执行
-            boolean result = NDVShardSketch.isValidShardPart(shardKey, shardParts).booleanValue();
+            boolean result = NDVShardSketch.isValidShardPart(shardKey, shardParts);
 
             // 验证
             assertFalse(result);
+        }
+    }
+
+    /**
+     * 测试用例: 当没有提供索引时，SQL查询应该只包含表名和列名。
+     */
+    @Test
+    public void testBuildSqlWithoutIndex() {
+        String indexName = "";
+        String physicalTable = "my_table";
+        String columnsName = "column1";
+
+        String expectedSql = String.format(HYPER_LOG_LOG_SQL, "`" + columnsName + "`", physicalTable);
+
+        System.out.println(expectedSql);
+        assertEquals(expectedSql, NDVShardSketch.buildSql(indexName, physicalTable, columnsName));
+    }
+
+    /**
+     * 测试用例: 当只有单个列时，SQL查询应该使用HYPER_LOG_LOG_SQL模板。
+     */
+    @Test
+    public void testBuildSqlWithSingleColumn() {
+        String indexName = "";
+        String physicalTable = "my_table";
+        String columnsName = "column1";
+
+        String expectedSql = String.format(HYPER_LOG_LOG_SQL, "`" + columnsName + "`", physicalTable);
+
+        System.out.println(expectedSql);
+        assertEquals(expectedSql, NDVShardSketch.buildSql(indexName, physicalTable, columnsName));
+    }
+
+    /**
+     * 测试用例: 当有多个列时，SQL查询应该使用HYPER_LOG_LOG_MUL_COLUMNS_SQL模板。
+     */
+    @Test
+    public void testBuildSqlWithMultipleColumns() {
+        String indexName = "";
+        String physicalTable = "my_table";
+        String columnsName = "column1,column2";
+        String columnsNameExpected = "`column1`,`column2`";
+
+        String expectedSql = String.format(HYPER_LOG_LOG_MUL_COLUMNS_SQL, columnsNameExpected, physicalTable);
+
+        System.out.println(expectedSql);
+        assertEquals(expectedSql, NDVShardSketch.buildSql(indexName, physicalTable, columnsName));
+    }
+
+    /**
+     * 测试用例: 当提供了索引并且只有一个列时，SQL查询应该包含索引并使用HYPER_LOG_LOG_SQL模板。
+     */
+    @Test
+    public void testBuildSqlWithIndexAndSingleColumn() {
+        String indexName = "index1";
+        String physicalTable = "my_table";
+        String columnsName = "column1";
+        String columnsNameExpected = "`column1`";
+
+        String expectedPhysicalTable = physicalTable + " force index(`" + indexName + "`)";
+        String expectedSql = String.format(HYPER_LOG_LOG_SQL, columnsNameExpected, expectedPhysicalTable);
+
+        System.out.println(expectedSql);
+        assertEquals(expectedSql, NDVShardSketch.buildSql(indexName, physicalTable, columnsName));
+    }
+
+    /**
+     * 测试用例5: 当提供了索引并且有多个列时，SQL查询应该包含索引并使用HYPER_LOG_LOG_MUL_COLUMNS_SQL模板。
+     */
+    @Test
+    public void testBuildSqlWithIndexAndMultipleColumns() {
+        String indexName = "index1";
+        String physicalTable = "my_table";
+        String columnsName = "column1,column2";
+        String columnsNameExpected = "`column1`,`column2`";
+
+        String expectedPhysicalTable = physicalTable + " force index(`" + indexName + "`)";
+        String expectedSql = String.format(HYPER_LOG_LOG_MUL_COLUMNS_SQL, columnsNameExpected, expectedPhysicalTable);
+
+        assertEquals(expectedSql, NDVShardSketch.buildSql(indexName, physicalTable, columnsName));
+    }
+
+    @Test
+    public void testGetCurrentHll() throws Exception {
+        String schema = "test_schema";
+        String table = "test_table";
+        String columns = "test_col";
+
+        String shardKey = schema + ":" + table + ":" + columns;
+
+        // force[false] + timeoutFlag[true] = return null + module log "by timeout flag"
+        String checkString = "by timeout flag";
+        String[] check = new String[] {
+            "ndv sketch " + shardKey,
+            " by timeout flag"
+        };
+        PolarDbXSystemTableNDVSketchStatistic polarDbXSystemTableNDVSketchStatistic =
+            mock(PolarDbXSystemTableNDVSketchStatistic.class);
+        when(polarDbXSystemTableNDVSketchStatistic.isTimeoutMarked(anyString(), anyString(), anyString(),
+            any())).thenReturn(true);
+        ModuleLogInfo moduleLogInfo = mock(ModuleLogInfo.class);
+        MetaDbDataSource metaDbDataSource = mock(MetaDbDataSource.class);
+        try (MockedStatic<ModuleLogInfo> moduleLogInfoMockedStatic = mockStatic(ModuleLogInfo.class);
+            MockedStatic<MetaDbDataSource> metaDbDataSourceMockedStatic = mockStatic(MetaDbDataSource.class);
+            MockedStatic<PolarDbXSystemTableNDVSketchStatistic> polarDbXSystemTableNDVSketchStatisticMockedStatic = mockStatic(
+                PolarDbXSystemTableNDVSketchStatistic.class)) {
+            polarDbXSystemTableNDVSketchStatisticMockedStatic.when(PolarDbXSystemTableNDVSketchStatistic::getInstance)
+                .thenReturn(polarDbXSystemTableNDVSketchStatistic);
+            moduleLogInfoMockedStatic.when(ModuleLogInfo::getInstance).thenReturn(moduleLogInfo);
+            metaDbDataSourceMockedStatic.when(MetaDbDataSource::getInstance).thenReturn(metaDbDataSource);
+
+            byte[] rs = NDVShardSketch.getCurrentHll(shardKey, null, null, false, null);
+
+            assert rs == null;
+            verify(moduleLogInfo, times(1)).logRecord(any(), any(), eq(check), any());
+        }
+    }
+
+    @Test
+    public void testMarkTimeout() {
+        String schema = "test_schema";
+        String table = "test_table";
+        String columns = "test_col";
+
+        String shardKey = schema + ":" + table + ":" + columns;
+        PolarDbXSystemTableNDVSketchStatistic mocked = mock(PolarDbXSystemTableNDVSketchStatistic.class);
+        try (MockedStatic<PolarDbXSystemTableNDVSketchStatistic> mockedStatic = mockStatic(
+            PolarDbXSystemTableNDVSketchStatistic.class)) {
+            mockedStatic.when(PolarDbXSystemTableNDVSketchStatistic::getInstance).thenReturn(mocked);
+
+            NDVShardSketch.markTimeout(shardKey);
+
+            verify(mocked, times(1)).markTimeout(any(), any(), any());
         }
     }
 
@@ -343,7 +534,7 @@ public class NDVShardSketchTest {
             0,
             false,
             false,
-            IndexVisibility.VISIBLE);
+            IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
 
         final GsiMetaManager.GsiIndexMetaBean gsiMeta2 = getGsiIndexMetaBean();
         gsiMeta.put("1", gsiMeta1);
@@ -375,7 +566,7 @@ public class NDVShardSketchTest {
             0,
             false,
             false,
-            IndexVisibility.VISIBLE);
+            IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
         return gsiMeta2;
     }
 }

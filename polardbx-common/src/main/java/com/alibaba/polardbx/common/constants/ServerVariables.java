@@ -72,6 +72,11 @@ public class ServerVariables {
         ConnectionProperties.ENABLE_SYNC_POINT,
         ConnectionProperties.SYNC_POINT_TASK_INTERVAL);
 
+    public static final Set<String> MODIFIABLE_XA_RECOVER_PARAM = ImmutableSet.of(
+        ConnectionProperties.ENABLE_TRANSACTION_RECOVER_TASK,
+        ConnectionProperties.XA_RECOVER_INTERVAL
+    );
+
     public static final Set<String> MODIFIABLE_TIMER_TASK_PARAM;
 
     public static final String ENABLE_POLARX_SYNC_POINT = "enable_polarx_sync_point";
@@ -215,6 +220,10 @@ public class ServerVariables {
         variables.add("consensus_safe_for_reset_master");
         variables.add("consensus_send_timeout");
         variables.add("consensus_sync_follower_meta_interva");
+        variables.add("consensus_wait_milliseconds_before_change_leader");
+        variables.add("consensus_wait_unfinished_trx_timeout");
+        variables.add("consensus_wait_unfinished_xa_timeout");
+        variables.add("consensus_wait_unfinished_bgc_timeout");
         variables.add("consensus_worker_thread_cnt");
         variables.add("consensuslog_revise");
         variables.add("core_file");
@@ -1833,6 +1842,10 @@ public class ServerVariables {
         mysqlGlobalVariables.add("consensus_safe_for_reset_master");
         mysqlGlobalVariables.add("consensus_send_timeout");
         mysqlGlobalVariables.add("consensus_sync_follower_meta_interva");
+        mysqlGlobalVariables.add("consensus_wait_milliseconds_before_change_leader");
+        mysqlGlobalVariables.add("consensus_wait_unfinished_trx_timeout");
+        mysqlGlobalVariables.add("consensus_wait_unfinished_xa_timeout");
+        mysqlGlobalVariables.add("consensus_wait_unfinished_bgc_timeout");
         mysqlGlobalVariables.add("consensus_worker_thread_cnt");
         mysqlGlobalVariables.add("consensuslog_revise");
         mysqlGlobalVariables.add("core_file");
@@ -2874,6 +2887,10 @@ public class ServerVariables {
         mysqlDynamicVariables.add("consensus_safe_for_reset_master");
         mysqlDynamicVariables.add("consensus_send_timeout");
         mysqlDynamicVariables.add("consensus_sync_follower_meta_interva");
+        mysqlDynamicVariables.add("consensus_wait_milliseconds_before_change_leader");
+        mysqlDynamicVariables.add("consensus_wait_unfinished_trx_timeout");
+        mysqlDynamicVariables.add("consensus_wait_unfinished_xa_timeout");
+        mysqlDynamicVariables.add("consensus_wait_unfinished_bgc_timeout");
         mysqlDynamicVariables.add("consensus_worker_thread_cnt");
         mysqlDynamicVariables.add("consensuslog_revise");
         mysqlDynamicVariables.add("cte_max_recursion_depth");
@@ -3619,28 +3636,14 @@ public class ServerVariables {
         // 禁止全局设置：
         globalBannedVariables.add("file_list");
 
-        ImmutableSet.Builder<String> modifiableTimerTaskVarBuilder = new ImmutableSet.Builder<>();
-
-        for (String modifiableTimerTaskParam : MODIFIABLE_PURGE_TRANS_PARAM) {
-            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
-        }
-
-        for (String modifiableTimerTaskParam : MODIFIABLE_DEADLOCK_DETECTION_PARAM) {
-            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
-        }
-
-        for (String modifiableTimerTaskParam : MODIFIABLE_TRANSACTION_STATISTICS_PARAM) {
-            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
-        }
-
-        for (String modifiableTimerTaskParam : MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM) {
-            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
-        }
-
-        for (String modifiableTimerTaskParam : MODIFIABLE_SYNC_POINT_PARAM) {
-            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
-        }
-        MODIFIABLE_TIMER_TASK_PARAM = modifiableTimerTaskVarBuilder.build();
+        MODIFIABLE_TIMER_TASK_PARAM = new ImmutableSet.Builder<String>()
+            .addAll(MODIFIABLE_PURGE_TRANS_PARAM)
+            .addAll(MODIFIABLE_DEADLOCK_DETECTION_PARAM)
+            .addAll(MODIFIABLE_TRANSACTION_STATISTICS_PARAM)
+            .addAll(MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM)
+            .addAll(MODIFIABLE_SYNC_POINT_PARAM)
+            .addAll(MODIFIABLE_XA_RECOVER_PARAM)
+            .build();
     }
 
     public static boolean contains(String variable) {

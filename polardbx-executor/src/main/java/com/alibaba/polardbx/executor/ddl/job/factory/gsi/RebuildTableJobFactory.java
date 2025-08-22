@@ -82,9 +82,11 @@ public class RebuildTableJobFactory extends DdlJobFactory {
     private final Map<String, String> tableNameMap;
     private final Map<String, String> tableNameMapReverse;
     private final List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareData;
+    private final List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareDataForLocalIndex;
     private final ExecutionContext executionContext;
     private List<String> alterDefaultColumns;
     private List<String> changedColumns;
+    private final List<String> modifyColumns;
 
     private boolean needDropImplicitKey;
 
@@ -98,11 +100,13 @@ public class RebuildTableJobFactory extends DdlJobFactory {
     private final Map<String, Boolean> needRehash;
     private final List<String> modifyStringColumns;
     private final List<String> addNewColumns;
+    private final List<String> dropColumns;
 
     private long versionId;
 
     public RebuildTableJobFactory(String schemaName, String primaryTableName, String backfillSourceTableName,
                                   List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareData,
+                                  List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareDataForLocalIndex,
                                   RebuildTablePrepareData rebuildTablePrepareData,
                                   PhysicalPlanData oldPhysicalPlanData,
                                   ExecutionContext executionContext) {
@@ -110,6 +114,7 @@ public class RebuildTableJobFactory extends DdlJobFactory {
         this.primaryTableName = primaryTableName;
         this.backfillSourceTableName = backfillSourceTableName;
         this.globalIndexPrepareData = globalIndexPrepareData;
+        this.globalIndexPrepareDataForLocalIndex = globalIndexPrepareDataForLocalIndex;
         this.executionContext = executionContext;
         this.needDropImplicitKey = false;
         this.alterDefaultColumns = null;
@@ -123,6 +128,8 @@ public class RebuildTableJobFactory extends DdlJobFactory {
         this.needRehash = rebuildTablePrepareData.getNeedReHash();
         this.modifyStringColumns = rebuildTablePrepareData.getModifyStringColumns();
         this.addNewColumns = rebuildTablePrepareData.getAddNewColumns();
+        this.modifyColumns = rebuildTablePrepareData.getModifyColumns();
+        this.dropColumns = rebuildTablePrepareData.getDropColumns();
         this.oldPhysicalPlanData = oldPhysicalPlanData;
         this.versionId = rebuildTablePrepareData.getVersionId();
     }
@@ -187,37 +194,42 @@ public class RebuildTableJobFactory extends DdlJobFactory {
         List<ExecutableDdlJob> createGsiJobs = new ArrayList<>();
         AtomicBoolean hasSubJob = new AtomicBoolean(false);
 
-        globalIndexPrepareData.sort(new Comparator<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>>() {
-            @Override
-            public int compare(Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o1,
-                               Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o2) {
-                CreateGlobalIndexPreparedData data1 = o1.getKey();
-                CreateGlobalIndexPreparedData data2 = o2.getKey();
+        Comparator<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> comparator =
+            new Comparator<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>>() {
+                @Override
+                public int compare(Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o1,
+                                   Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o2) {
+                    CreateGlobalIndexPreparedData data1 = o1.getKey();
+                    CreateGlobalIndexPreparedData data2 = o2.getKey();
 
-                // 检查fieldA是否为空（这里假设fieldA是String类型）
-                boolean isData1TableGroupAlignWithTargetTableEmpty =
-                    StringUtils.isEmpty(data1.getTableGroupAlignWithTargetTable());
-                boolean isData2TableGroupAlignWithTargetTableEmpty =
-                    StringUtils.isEmpty(data2.getTableGroupAlignWithTargetTable());
+                    // 检查fieldA是否为空（这里假设fieldA是String类型）
+                    boolean isData1TableGroupAlignWithTargetTableEmpty =
+                        StringUtils.isEmpty(data1.getTableGroupAlignWithTargetTable());
+                    boolean isData2TableGroupAlignWithTargetTableEmpty =
+                        StringUtils.isEmpty(data2.getTableGroupAlignWithTargetTable());
 
-                // 主表对应的目标表永远放在第一位
-                if (data1.isOmcRebuildPrimaryTable()) {
-                    return -1;
+                    // 主表对应的目标表永远放在第一位
+                    if (data1.isOmcRebuildPrimaryTable()) {
+                        return -1;
+                    }
+
+                    if (isData1TableGroupAlignWithTargetTableEmpty && !isData2TableGroupAlignWithTargetTableEmpty) {
+                        return -1; // data1中的TableGroupAlignWithTargetTable为空，应该排在前面
+                    } else if (!isData1TableGroupAlignWithTargetTableEmpty
+                        && isData2TableGroupAlignWithTargetTableEmpty) {
+                        return 1; // data2中的TableGroupAlignWithTargetTable为空，data1应该排在后面
+                    } else {
+                        return 0; // 两者都为空或都不为空，视为相等
+                    }
                 }
-
-                if (isData1TableGroupAlignWithTargetTableEmpty && !isData2TableGroupAlignWithTargetTableEmpty) {
-                    return -1; // data1中的TableGroupAlignWithTargetTable为空，应该排在前面
-                } else if (!isData1TableGroupAlignWithTargetTableEmpty
-                    && isData2TableGroupAlignWithTargetTableEmpty) {
-                    return 1; // data2中的TableGroupAlignWithTargetTable为空，data1应该排在后面
-                } else {
-                    return 0; // 两者都为空或都不为空，视为相等
-                }
-            }
-        });
-        for (Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> pair : globalIndexPrepareData) {
+            };
+        globalIndexPrepareData.sort(comparator);
+        globalIndexPrepareDataForLocalIndex.sort(comparator);
+        for (int i = 0; i < globalIndexPrepareData.size(); i++) {
+            Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> pair = globalIndexPrepareData.get(i);
             PhysicalPlanData physicalPlanData = pair.getValue();
             CreateGlobalIndexPreparedData createGlobalIndexPreparedData = pair.getKey();
+            PhysicalPlanData physicalPlanDataForLocalIndex = globalIndexPrepareDataForLocalIndex.get(i).getValue();
             if (!hasSubJob.get()) {
                 if (physicalPlanData.getTableGroupConfig() != null) {
                     TableGroupRecord tableGroupRecord = physicalPlanData.getTableGroupConfig().getTableGroupRecord();
@@ -235,7 +247,8 @@ public class RebuildTableJobFactory extends DdlJobFactory {
                 }
 
                 CreateGsiJobFactory createGsiJobFactory =
-                    CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, null, executionContext);
+                    CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData,
+                        physicalPlanDataForLocalIndex, executionContext);
                 createGsiJobFactory.setStayAtBackFill(true);
                 createGsiJobFactory.setModifyStringColumns(modifyStringColumns);
                 createGsiJobFactory.setOmcColumnMap(backfillColumnMap);
@@ -293,6 +306,10 @@ public class RebuildTableJobFactory extends DdlJobFactory {
                 tableMeta.isAutoPartition(),
                 tddlRuleManager.isTableInSingleDb(primaryTableName),
                 tddlRuleManager.isBroadCast(primaryTableName),
+                addNewColumns,
+                dropColumns,
+                backfillColumnMap,
+                modifyColumns,
                 versionId
             );
         ModifyPartitionKeySyncTask

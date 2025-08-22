@@ -122,6 +122,8 @@ public class TablesAccessor extends AbstractAccessor {
     private static final String UPDATE_TABLES_RENAME =
         UPDATE_TABLES + "`table_name` = ?, `new_table_name` = ''" + WHERE_SCHEMA_TABLE;
 
+    private static final String UPDATE_TABLES_CREATE_OPTIONS = UPDATE_TABLES + "`create_options` = ?" + WHERE_SCHEMA_TABLE;
+
     private static final String DELETE_TABLES = "delete from " + TABLES_TABLE + WHERE_SCHEMA_TABLE;
 
     private static final String DELETE_TABLES_ALL = "delete from " + TABLES_TABLE + WHERE_SCHEMA;
@@ -308,6 +310,20 @@ public class TablesAccessor extends AbstractAccessor {
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update flag", TABLES_TABLE,
                 e.getMessage());
+        }
+    }
+
+    public int updateCreateOptions(String createOptions, String tableSchema, String tableName) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, createOptions);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableSchema);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableName);
+            DdlMetaLogUtil.logSql(UPDATE_TABLES_CREATE_OPTIONS, params);
+            return MetaDbUtil.update(UPDATE_TABLES_CREATE_OPTIONS, params, connection);
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update create_options", TABLES_TABLE,
+                    e.getMessage());
         }
     }
 

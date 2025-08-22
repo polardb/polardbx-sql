@@ -18,10 +18,14 @@ package com.alibaba.polardbx.executor.vectorized;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -45,17 +49,70 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
     private boolean allNull;
 
     public InValuesVectorizedExpression(DataType colDataType, DataType<?> inDataType,
-                                        List<RexNode> rexLiteralList, int outputIndex, boolean autoTypeConvert) {
+                                        List<RexNode> rexLiteralList, int outputIndex, boolean isLeftIntermediate) {
         super(inDataType, outputIndex, new VectorizedExpression[0]);
         this.operandCount = rexLiteralList.size() - 1;
         InValueSet inValueSet = null;
         this.hasNull = false;
         this.allNull = true;
 
-        if (autoTypeConvert && shouldBeConverted(inDataType, colDataType)) {
-            try {
-                // try converting string into number for better performance
-                inValueSet = new InValueSet(colDataType, operandCount);
+        if (shouldBeConverted(inDataType, colDataType)) {
+            buildSet(colDataType, inDataType, rexLiteralList, isLeftIntermediate);
+        } else {
+            // we get an unknown type-conversion.
+            buildSetFallback(inDataType, rexLiteralList);
+        }
+    }
+
+    private void buildSet(DataType colDataType, DataType<?> inDataType, List<RexNode> rexLiteralList,
+                          boolean isLeftIntermediate) {
+        InValueSet inValueSet;
+        try {
+            // try converting string into number for better performance
+            inValueSet = new InValueSet(colDataType, operandCount);
+
+            switch (colDataType.fieldType()) {
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP: {
+                if (!isLeftIntermediate) {
+                    for (int operandIndex = 1; operandIndex <= operandCount; operandIndex++) {
+                        Object value = ((RexLiteral) rexLiteralList.get(operandIndex)).getValue3();
+                        OriginalTimestamp datetime =
+                            (OriginalTimestamp) DateTimeType.DATE_TIME_TYPE_2.convertFrom(value);
+
+                        if (datetime == null) {
+                            this.hasNull = true;
+                        } else {
+                            long inConst = TimeStorage.writeTimestamp(datetime.getMysqlDateTime());
+                            this.allNull = false;
+                            inValueSet.add(inConst); // long-set.
+                        }
+                    }
+                    break;
+                }
+                // to default.
+            }
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE: {
+                if (!isLeftIntermediate) {
+                    for (int operandIndex = 1; operandIndex <= operandCount; operandIndex++) {
+                        Object value = ((RexLiteral) rexLiteralList.get(operandIndex)).getValue3();
+                        OriginalDate date = (OriginalDate) DataTypes.DateType.convertFrom(value);
+
+                        if (date == null) {
+                            this.hasNull = true;
+                        } else {
+                            long inConst = TimeStorage.writeDate(date.getMysqlDateTime());
+                            this.allNull = false;
+                            inValueSet.add(inConst); // long-set.
+                        }
+                    }
+                    break;
+                }
+                // to default.
+            }
+            default: {
                 for (int operandIndex = 1; operandIndex <= operandCount; operandIndex++) {
                     Object value = ((RexLiteral) rexLiteralList.get(operandIndex)).getValue3();
                     Object convertedValue = colDataType.convertFrom(value);
@@ -66,13 +123,21 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
                         inValueSet.add(convertedValue);
                     }
                 }
-                this.inValueSet = inValueSet;
-                return;
-            } catch (Exception e) {
-                logger.warn(e.getMessage());
             }
-        }
+            }
 
+            this.inValueSet = inValueSet;
+        } catch (Throwable e) {
+            logger.warn(e.getMessage());
+
+            // if type-conversion throws an unknown error.
+            // just fallback.
+            buildSetFallback(inDataType, rexLiteralList);
+        }
+    }
+
+    private void buildSetFallback(DataType<?> inDataType, List<RexNode> rexLiteralList) {
+        InValueSet inValueSet;
         inValueSet = new InValueSet(inDataType, operandCount);
         for (int operandIndex = 1; operandIndex <= operandCount; operandIndex++) {
             Object value = ((RexLiteral) rexLiteralList.get(operandIndex)).getValue3();
@@ -90,7 +155,8 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
 
     private boolean shouldBeConverted(DataType<?> inDataType, DataType colDataType) {
         return DataTypeUtil.anyMatchSemantically(inDataType, DataTypes.CharType, DataTypes.VarcharType) &&
-            DataTypeUtil.anyMatchSemantically(colDataType, DataTypes.IntegerType, DataTypes.LongType);
+            (DataTypeUtil.anyMatchSemantically(colDataType, DataTypes.IntegerType, DataTypes.LongType)
+                || DataTypeUtil.isMysqlTimeType(colDataType));
     }
 
     public static InValuesVectorizedExpression from(List<RexNode> rexLiteralList, int outputIndex) {
@@ -100,13 +166,15 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
     /**
      * @param rexLiteralList start from index:1
      */
-    public static InValuesVectorizedExpression from(List<RexNode> rexLiteralList, int outputIndex, boolean autoTypeConvert) {
+    public static InValuesVectorizedExpression from(List<RexNode> rexLiteralList, int outputIndex,
+                                                    boolean isLeftInterMediate) {
         Preconditions.checkArgument(rexLiteralList.size() > 1,
             "Illegal in values, list size: " + rexLiteralList.size());
         DataType colDataType = new Field(rexLiteralList.get(0).getType()).getDataType();
         RexLiteral rexLiteral = (RexLiteral) rexLiteralList.get(1);
         Field field = new Field(rexLiteral.getType());
-        return new InValuesVectorizedExpression(colDataType, field.getDataType(), rexLiteralList, outputIndex, autoTypeConvert);
+        return new InValuesVectorizedExpression(colDataType, field.getDataType(), rexLiteralList, outputIndex,
+            isLeftInterMediate);
     }
 
     public int getOperandCount() {
@@ -159,7 +227,7 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
             if (dataType == DataTypes.IntegerType) {
                 return SetType.INT;
             }
-            if (dataType == DataTypes.LongType) {
+            if (dataType == DataTypes.LongType || DataTypeUtil.isMysqlTimeType(dataType)) {
                 return SetType.LONG;
             }
             return SetType.OTHERS;

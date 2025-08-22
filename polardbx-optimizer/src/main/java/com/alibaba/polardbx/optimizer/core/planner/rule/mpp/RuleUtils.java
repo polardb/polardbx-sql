@@ -36,6 +36,7 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 
@@ -107,7 +108,8 @@ public abstract class RuleUtils {
             RelDataTypeField t2Field = input.getRowType().getFieldList().get(keys.get(i));
             RelDataType t2 = t2Field.getType();
             // only compare sql type name
-            if (!t1.getSqlTypeName().equals(t2.getSqlTypeName())) {
+            if (!(t1.getSqlTypeName().equals(t2.getSqlTypeName()) && checkCollationEquals(t1.getCollation(),
+                t2.getCollation()))) {
                 needProject = true;
                 outputKeys.add(shuffleProjectChildExps.size());
                 RexNode expr = shuffleProjectChildExps.get(keys.get(i));
@@ -134,6 +136,16 @@ public abstract class RuleUtils {
         } else {
             return RelOptRule.convert(input, input.getTraitSet().replace(distribution));
         }
+    }
+
+    public static boolean checkCollationEquals(SqlCollation collation1, SqlCollation collation2) {
+        if (collation1 == null && collation2 == null) {
+            return true;
+        }
+        if (collation1 == null) {
+            return false;
+        }
+        return collation1.equals(collation2);
     }
 
     public static RexNode getPartialFetch(Sort sort) {

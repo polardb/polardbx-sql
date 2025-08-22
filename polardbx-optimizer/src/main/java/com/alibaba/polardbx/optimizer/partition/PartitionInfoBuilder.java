@@ -77,6 +77,7 @@ import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumHasher;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.utils.SqlIdentifierUtil;
+import com.amazonaws.services.dynamodbv2.xspec.L;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
@@ -1359,7 +1360,9 @@ public class PartitionInfoBuilder {
              * of the col in fun(col), it always is  an integer after finishing calc expr of func(col),
              * so the relDataType of boundVal SqlLiteral stored in metaDb should use BIGINT.
              *
-             * But if the partCol data type is defined as bigint unsigned, then the
+             * But if the partCol data type is defined as bigint unsigned, then the datatype of expr
+             * of func(col) maybe just int
+             *
              * </pre>
              *
              */
@@ -1417,6 +1420,9 @@ public class PartitionInfoBuilder {
                 List<RelDataType> opDtList = new ArrayList<>();
                 opDtList.add(partColType);
                 RelDataType exprDataType = partExprCall.getOperator().inferReturnType(typeFactory, opDtList);
+                if (partExprCall.getOperator() == TddlOperatorTable.UNIX_TIMESTAMP) {
+                    exprDataType = PartitionPrunerUtils.getTypeFactory().createSqlType(SqlTypeName.BIGINT);
+                }
                 partExprTypeList.add(exprDataType);
             } else {
                 partExprTypeList.add(partColType);
@@ -1497,7 +1503,6 @@ public class PartitionInfoBuilder {
                     SqlPartitionValueItem oneValItem = bndSpecVal.get(i);
                     partitionVal.getItems().add(oneValItem);
                     // oneListValItem must be a SqlLiteral because it is loaded from metadb
-                    assert oneValItem.getValue() instanceof SqlLiteral;
                     PartitionBoundVal boundVal;
                     if (oneValItem.getValue().getKind() != SqlKind.DEFAULT) {
                         SqlLiteral literal = (SqlLiteral) oneValItem.getValue();
@@ -1541,7 +1546,6 @@ public class PartitionInfoBuilder {
         }
         PartitionBoundSpec boundSpec = createPartitionBoundSpec(strategy, partitionVal, boundValues);
         return boundSpec;
-
     }
 
     private static PartitionBoundVal buildBoundValFromSqlLiteral(RelDataTypeFactory typeFactory, RexBuilder rexBuilder,
@@ -3912,5 +3916,4 @@ public class PartitionInfoBuilder {
             });
         }
     }
-
 }

@@ -47,6 +47,7 @@ public class TransactionWithBroadCastTest extends AutoCrudBasedLockTestCase {
 
     @Before
     public void initData() throws Exception {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global ENABLE_CLOSE_CONNECTION_WHEN_TRX_FATAL = false");
         truncateTable(baseOneTableName);
         if (baseTwoTableName != null) {
             truncateTable(baseTwoTableName);

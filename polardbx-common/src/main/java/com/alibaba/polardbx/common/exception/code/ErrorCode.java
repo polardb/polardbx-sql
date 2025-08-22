@@ -1101,6 +1101,8 @@ public enum ErrorCode {
 
     ERR_BACKFILL_GET_TABLE_ROWS(ErrorType.Executor, 5327),
 
+    ERR_BACKFILL_GET_TABLE_AVG_ROW_LENGTH(ErrorType.Executor, 5328),
+
     // ================拆分键推荐相关异常==================
 
     ERR_KEY_NEGATIVE(ErrorType.Other, 5401),
@@ -1124,6 +1126,8 @@ public enum ErrorCode {
     ERR_UNEXPECTED_SQL(ErrorType.Other, 5410),
 
     ERR_CANT_FIND_COLUMN(ErrorType.Other, 5411),
+
+    ERR_ONLINE_MODIFY_COLUMN(ErrorType.Executor, 5412),
 
     // ================存储过程相关异常================
     ERR_UNEXPECTED_STATEMENT_TYPE(ErrorType.Procedure, 5500),

@@ -260,6 +260,9 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
         protected AtomicLong totalAddPartSqlCount = new AtomicLong(0L);
         protected AtomicLong totalAddPartSqlTimeCost = new AtomicLong(0L);
 
+        protected AtomicLong totalDropPartSqlCount = new AtomicLong(0L);
+        protected AtomicLong totalDropPartSqlTimeCost = new AtomicLong(0L);
+
         protected AtomicLong totalTtlSuccessJobCount = new AtomicLong(0L);
         protected AtomicLong totalTtlPausedJobCount = new AtomicLong(0L);
 
@@ -372,6 +375,12 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
             return totalAddPartSqlAvgRt;
         }
 
+        public long calcTotalDropPartsSqlAvgRt() {
+            long totalDropPartSqlAvgRt =
+                divIgnoreZero(totalDropPartSqlTimeCost.get(), totalDropPartSqlCount.get());//unit: ms/r
+            return totalDropPartSqlAvgRt;
+        }
+
         public List<Pair<String, String>> toMetricInfo() {
             List<Pair<String, String>> keyValPairList = new ArrayList<Pair<String, String>>();
 
@@ -391,6 +400,9 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
             long totalAddPartSqlCountVal = totalAddPartSqlCount.get();
             long totalAddPartSqlTimeCostVal = totalAddPartSqlTimeCost.get();// unit: ms
 
+            long totalDropPartSqlCountVal = totalDropPartSqlCount.get();
+            long totalDropPartSqlTimeCostVal = totalDropPartSqlTimeCost.get();// unit: ms
+
             long totalTtlSuccessJobCountVal = totalTtlSuccessJobCount.get();
             long totalTtlPausedJobCountVal = totalTtlPausedJobCount.get();
 
@@ -402,6 +414,7 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
 
             long totalOptimizeSqlAvgRt = calcTotalOptimizeSqlAvgRt();//unit: ms/r
             long totalAddPartSqlAvgRt = calcTotalAddPartsSqlAvgRt();//unit: ms/r
+            long totalDropPartSqlAvgRt = calcTotalDropPartsSqlAvgRt();//unit: ms/r
 
             long totalCleanupRowsSpeed = calcTotalCleanupRowsSpeed();
             long totalCleanupSpeed = calcTotalCleanupSpeed();
@@ -434,6 +447,7 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
             keyValPairList.add(new Pair<>("TTL_TOTAL_DELETE_SQL_AVG_RT", String.valueOf(totalDeleteSqlAvgRt)));
             keyValPairList.add(new Pair<>("TTL_TOTAL_OPTIMIZE_SQL_AVG_RT", String.valueOf(totalOptimizeSqlAvgRt)));
             keyValPairList.add(new Pair<>("TTL_TOTAL_ADD_PART_AVG_RT", String.valueOf(totalAddPartSqlAvgRt)));
+            keyValPairList.add(new Pair<>("TTL_TOTAL_DROP_PART_AVG_RT", String.valueOf(totalDropPartSqlAvgRt)));
 
             return keyValPairList;
         }
@@ -502,6 +516,9 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
 
         protected AtomicLong addPartSqlCount = new AtomicLong(0L);
         protected AtomicLong addPartSqlTimeCost = new AtomicLong(0L);// ns
+
+        protected AtomicLong dropPartSqlCount = new AtomicLong(0L);
+        protected AtomicLong dropPartSqlTimeCost = new AtomicLong(0L);// ns
 
         protected AtomicLong cleanedPhyPartCnt = new AtomicLong(0L);
         protected AtomicLong totalPhyPartCnt = new AtomicLong(0L);
@@ -574,6 +591,9 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
             addPartSqlCount = new AtomicLong(0L);
             addPartSqlTimeCost = new AtomicLong(0L);
 
+            dropPartSqlCount = new AtomicLong(0L);
+            dropPartSqlTimeCost = new AtomicLong(0L);
+
             cleanedPhyPartCnt = new AtomicLong(0L);
             totalPhyPartCnt = new AtomicLong(0L);
 
@@ -613,6 +633,7 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
             long deleteSqlAvgRt = calcDeleteSqlAvgRt();//unit: ms
             long optimizeSqlAvgRt = calcOptimizeSqlAvgRt();//unit: ms
             long addPartSqlAvgRt = calcAddPartSqlAvgRt();//unit: ms
+            long dropPartSqlAvgRt = calcDropPartSqlAvgRt();//unit: ms
             long currJobPercent = calcCurrJobPercent();
             long acquirePermitsAvgRtNano = calcAcquirePermitsAvgRtNano();//unit: nano
 
@@ -645,6 +666,7 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
             keyValPairList.add(new Pair<>("TTL_CURR_DELETE_SQL_AVG_RT", String.valueOf(deleteSqlAvgRt)));
             keyValPairList.add(new Pair<>("TTL_CURR_OPTIMIZE_SQL_AVG_RT", String.valueOf(optimizeSqlAvgRt)));
             keyValPairList.add(new Pair<>("TTL_CURR_ADD_PART_AVG_RT", String.valueOf(addPartSqlAvgRt)));
+            keyValPairList.add(new Pair<>("TTL_CURR_DROP_PART_AVG_RT", String.valueOf(dropPartSqlAvgRt)));
             keyValPairList.add(
                 new Pair<>("TTL_CURR_DATA_FREE_PERCENT_LIMIT", String.valueOf(ttlTblDataFreePercentLimit)));
             keyValPairList.add(new Pair<>("TTL_CURR_TTL_TBL_DATA_FREE_PERCENT", String.valueOf(ttlTblDataFreePercent)));
@@ -674,6 +696,11 @@ public class TtlScheduledJobStatManager extends AbstractLifecycle {
         public long calcAddPartSqlAvgRt() {
             long addPartSqlAvgRtVal = divIgnoreZero(addPartSqlTimeCost.get(), addPartSqlCount.get());
             return addPartSqlAvgRtVal;
+        }
+
+        public long calcDropPartSqlAvgRt() {
+            long dropPartSqlAvgRtVal = divIgnoreZero(dropPartSqlTimeCost.get(), dropPartSqlCount.get());
+            return dropPartSqlAvgRtVal;
         }
 
         public long calcOptimizeSqlAvgRt() {

@@ -17,8 +17,8 @@
  */
 package com.alibaba.polardbx.qatest.ddl.auto.columnar;
 
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestBase;
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestCaseTask;
+import com.alibaba.polardbx.qatest.ddl.datamigration.locality.LocalityTestBase;
+import com.alibaba.polardbx.qatest.ddl.datamigration.locality.LocalityTestCaseUtils.LocalityTestCaseTask;
 import org.junit.Test;
 
 import javax.annotation.concurrent.NotThreadSafe;

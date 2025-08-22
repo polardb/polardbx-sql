@@ -1,0 +1,66 @@
+## DISABLE_FAST_SQL_PARSER
+create partition table t1(a int, b bigint, c int, index i1(b))
+create partition table t2(a int, b bigint, c int, index i1(a))
+create partition table t3(a int, b bigint, c int, index i1(a), primary key(a))
+alter table t1 partitions 2 with tablegroup=tgi1 implicit, index i1 with tablegroup=tgi2 implicit
+alter table t2 partitions 2 with tablegroup=tgi1 implicit, index i1 with tablegroup=tgi3 implicit
+alter table t3 partitions 2 with tablegroup=tgi3 implicit, index i1 with tablegroup=tgi3 implicit
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* i1_$ */ `i1` (`b`)
+		PARTITION BY KEY(`b`,`_drds_implicit_id_`)
+		PARTITIONS 2
+		(PARTITION p1 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+		 PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB),
+	LOCAL KEY `_local_i1` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 2
+(PARTITION p1 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+/* tablegroup = `tgi1` */
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* i1_$ */ `i1` (`a`)
+		PARTITION BY KEY(`a`,`_drds_implicit_id_`)
+		PARTITIONS 2
+		(PARTITION p1 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+		 PARTITION p2 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB),
+	LOCAL KEY `_local_i1` (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 2
+(PARTITION p1 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+/* tablegroup = `tgi1` */
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3
+Table,Create Table
+t3,CREATE PARTITION TABLE `t3` (
+	`a` int(11) NOT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* i1_$ */ `i1` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 2
+		(PARTITION p1 VALUES LESS THAN (1) ENGINE = InnoDB,
+		 PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB),
+	LOCAL KEY `_local_i1` (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+(PARTITION p1 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+/* tablegroup = `tgi3` */

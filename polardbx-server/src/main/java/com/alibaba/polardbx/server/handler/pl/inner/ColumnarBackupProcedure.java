@@ -6,7 +6,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.server.ServerConnection;
 import org.apache.calcite.sql.SqlKind;
 
-import static com.alibaba.polardbx.common.columnar.ColumnarUtils.AddCDCMarkEvent;
+import static com.alibaba.polardbx.common.columnar.ColumnarUtils.AddCDCMarkEventForColumnar;
 import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.COLUMNAR_BACKUP;
 import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.POLARDBX_INNER_PROCEDURE;
 
@@ -19,7 +19,7 @@ public class ColumnarBackupProcedure extends BaseInnerProcedure {
     public void execute(ServerConnection c, SQLCallStatement statement, ArrayResultCursor cursor) {
         String sql = "call " + POLARDBX_INNER_PROCEDURE + "." + COLUMNAR_BACKUP + "()";
 
-        Long tso = AddCDCMarkEvent(sql, SqlKind.PROCEDURE_CALL.name());
+        Long tso = AddCDCMarkEventForColumnar(sql, SqlKind.PROCEDURE_CALL.name());
 
         if (tso == null || tso <= 0) {
             throw new RuntimeException(sql + " is failed, because tso: " + tso);

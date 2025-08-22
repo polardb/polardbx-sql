@@ -373,7 +373,8 @@ public class NewSequenceDao extends FunctionalSequenceDao {
                 errMsg.contains("timeout") ||
                 errMsg.contains("Client removed") ||
                 errMsg.contains("closed") ||
-                errMsg.contains("EOF"));
+                errMsg.contains("EOF") ||
+                errMsg.contains("Query execution was interrupted"));
 
         return errorsIgnorable && (System.currentTimeMillis() - startRequestTime < TOTAL_REQUEST_TIMEOUT);
     }

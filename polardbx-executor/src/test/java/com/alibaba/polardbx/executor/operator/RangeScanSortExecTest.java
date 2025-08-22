@@ -49,7 +49,7 @@ public class RangeScanSortExecTest {
         when(consumeResultSet.current()).thenReturn(new ArrayRow(new Integer[] {1}));
         when(consumeResultSet.fillChunk(any(), any(), anyInt())).thenReturn(1);
 
-        Chunk resultChunk = rangeScanSortExec.fetchSortedChunk();
+        Chunk resultChunk = rangeScanSortExec.doNextChunk();
 
         assertNotNull(resultChunk);
         assertEquals(1, resultChunk.getPositionCount());
@@ -66,7 +66,7 @@ public class RangeScanSortExecTest {
         when(consumeResultSet.current()).thenReturn(new ArrayRow(new Integer[] {1}));
         when(consumeResultSet.fillChunk(any(), any(), anyInt())).thenReturn(1);
         when(consumeResultSet.isPureAsyncMode()).thenReturn(true);
-        Chunk resultChunk = rangeScanSortExec.fetchSortedChunk();
+        Chunk resultChunk = rangeScanSortExec.doNextChunk();
 
         assertNotNull(resultChunk);
         verify(consumeResultSet, times(1)).fillChunk(any(), any(), anyInt());

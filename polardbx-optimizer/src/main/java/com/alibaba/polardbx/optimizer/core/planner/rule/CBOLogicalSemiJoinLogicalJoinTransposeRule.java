@@ -265,12 +265,19 @@ public class CBOLogicalSemiJoinLogicalJoinTransposeRule extends AbstractCBOLogic
 
         RelNode leftJoinRel;
         RelNode rightJoinRel;
+        JoinRelType joinType = bottomJoin.getJoinType();
         if (nKeysFromX > 0) {
             leftJoinRel = newSemiJoin;
             rightJoinRel = bottomJoin.getRight();
+            if (joinType == JoinRelType.RIGHT) {
+                joinType = JoinRelType.INNER;
+            }
         } else {
             leftJoinRel = bottomJoin.getLeft();
             rightJoinRel = newSemiJoin;
+            if (joinType == JoinRelType.LEFT) {
+                joinType = JoinRelType.INNER;
+            }
         }
 
         LogicalJoin newJoinRel =
@@ -279,7 +286,7 @@ public class CBOLogicalSemiJoinLogicalJoinTransposeRule extends AbstractCBOLogic
                 bottomJoin.getCondition(),
                 leftJoinRel,
                 rightJoinRel,
-                bottomJoin.getJoinType(),
+                joinType,
                 bottomJoin.isSemiJoinDone());
 
         return newJoinRel;

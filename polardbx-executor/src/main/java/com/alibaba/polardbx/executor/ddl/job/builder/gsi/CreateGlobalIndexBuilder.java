@@ -28,8 +28,10 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCurrentTimeExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndex;
+import com.alibaba.polardbx.druid.sql.ast.SQLIndexOptions;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
@@ -44,13 +46,13 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.CreateTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
@@ -272,6 +274,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
     protected void buildPhysicalPlans() {
         buildSqlTemplate();
         buildPhysicalPlans(gsiPreparedData.getIndexTableName());
+        buildPhysicalPlansForLocalIndex(gsiPreparedData.getIndexTableName());
     }
 
     /**
@@ -575,18 +578,35 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
 
     protected List<SQLTableElement> popIndexForGSI(MySqlCreateTableStatement indexTableStmt) {
         List<SQLTableElement> tableIndexList = new ArrayList<>();
-        tableIndexList.addAll(indexTableStmt.getMysqlIndexes());
+        List<SQLTableElement> mysqlIndexes = new ArrayList<>();
+        mysqlIndexes.addAll(indexTableStmt.getMysqlIndexes());
         List<SQLTableElement> tableElements = indexTableStmt.getTableElementList();
-        tableElements.removeAll(tableIndexList);
+        tableElements.removeAll(mysqlIndexes);
         List<MySqlKey> tableKeyList = indexTableStmt.getMysqlKeys();
         for (MySqlKey mySqlKey : tableKeyList) {
-            if (!(mySqlKey instanceof MySqlPrimaryKey)) {
+            if (popMySqlKey(mySqlKey)) {
                 tableElements.remove(mySqlKey);
                 tableIndexList.add(mySqlKey);
             }
         }
         indexTableStmt.setTableElementList(tableElements);
+        tableIndexList.addAll(mysqlIndexes);
         return tableIndexList;
+    }
+
+    protected Boolean popMySqlKey(MySqlKey mySqlKey) {
+        Boolean pop = true;
+        if (mySqlKey instanceof MySqlPrimaryKey) {
+            pop = false;
+
+        } else if (mySqlKey.getIndexDefinition().hasOptions()) {
+            SQLIndexOptions options = mySqlKey.getIndexDefinition().getOptions();
+            if (options != null && options.getIndexType() != null && options.getIndexType()
+                .equalsIgnoreCase("FULLTEXT")) {
+                pop = false;
+            }
+        }
+        return pop;
     }
 
     private boolean ukContainsPartKey(List<String> uk, List<String> partKey) {
@@ -606,13 +626,23 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             return;
         }
 
-        for (Map.Entry<String, Pair<List<String>, Boolean>> entry : repartitionPrepareData.getGsiInfo().entrySet()) {
+        for (Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> entry : repartitionPrepareData.getGsiInfo()
+            .entrySet()) {
             final Iterator<SQLTableElement> it = indexTableStmt.getTableElementList().iterator();
             List<SQLSelectOrderByItem> indexColumns = new ArrayList<>();
-            List<String> idxCol = entry.getValue().getKey();
-            Boolean nonUnique = entry.getValue().getValue();
-            for (String colName : idxCol) {
-                indexColumns.add(new SQLSelectOrderByItem(new SQLIdentifierExpr(colName)));
+            boolean nonUnique = entry.getValue().nonUnique;
+            List<String> idxCol = new ArrayList<>();
+            for (GsiMetaManager.GsiIndexColumnMetaBean columnMetaBean : entry.getValue().getIndexColumns()) {
+                String columnName = surroundWithBacktick(columnMetaBean.columnName);
+                idxCol.add(columnName);
+                if (columnMetaBean.subPart == null) {
+                    indexColumns.add(new SQLSelectOrderByItem(
+                        new SQLIdentifierExpr(columnName)));
+                } else {
+                    indexColumns.add(new SQLSelectOrderByItem(
+                        new SQLMethodInvokeExpr(columnName, null,
+                            new SQLIntegerExpr(columnMetaBean.subPart.intValue()))));
+                }
             }
 
             while (it.hasNext()) {
@@ -697,8 +727,10 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         String duplicatedIndexName = null;
         List<SQLSelectOrderByItem> pkList = new ArrayList<>();
         TableMeta primaryTableMeta = ec.getSchemaManager(schemaName).getTableWithNull(primaryTableName);
+
         Boolean buildLocalIndexLater =
-            unique ? false : ec.getParamManager().getBoolean(ConnectionParams.GSI_BUILD_LOCAL_INDEX_LATER);
+            (unique || ec.getForbidBuildLocalIndexLater()) ? false :
+                ec.getParamManager().getBoolean(ConnectionParams.GSI_BUILD_LOCAL_INDEX_LATER);
 
         boolean isColumnar = GsiUtils.isAddCci(relDdl.getSqlNode(), sqlAlterTable);
 
@@ -1086,7 +1118,8 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
 
         boolean isColumnar = GsiUtils.isAddCci(relDdl.getSqlNode(), sqlAlterTable);
         Boolean buildLocalIndexLater =
-            unique ? false : ec.getParamManager().getBoolean(ConnectionParams.GSI_BUILD_LOCAL_INDEX_LATER);
+            (unique || ec.getForbidBuildLocalIndexLater()) ? false :
+                ec.getParamManager().getBoolean(ConnectionParams.GSI_BUILD_LOCAL_INDEX_LATER);
 
         // Generated column can not be sharding key
         if (primaryTableMeta != null) {
@@ -1164,11 +1197,11 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                 // to convert default value
                 if (primaryTableMeta != null) {
                     ColumnMeta columnMeta = primaryTableMeta.getColumnIgnoreCase(columnName);
-                    if (columnMeta.isBinaryDefault()) {
+                    if (columnMeta != null && columnMeta.isBinaryDefault()) {
                         SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
                         columnDefinition.setDefaultExpr(newDefaultVal);
                     }
-                    if (columnMeta.isLogicalGeneratedColumn()) {
+                    if (columnMeta != null && columnMeta.isLogicalGeneratedColumn()) {
                         columnDefinition.setDefaultExpr(null);
                     }
                 }
@@ -1244,11 +1277,13 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             gsiPreparedData.setSqlCreateIndex((SqlCreateIndex) relDdl.sqlNode);
         } else if (sqlNode instanceof SqlAlterTable) {
             final SqlAlterTable alterTable = (SqlAlterTable) sqlNode;
-            final SqlAddIndex oldAddIndex = (SqlAddIndex) alterTable.getAlters().get(0);
-            final SqlIndexDefinition oldIndexDef = oldAddIndex.getIndexDef();
-            final SqlIndexDefinition newIndexDef = oldIndexDef.replaceCovering(sortedCovering);
+            if (alterTable.getAlters().size() == 1 && alterTable.getAlters().get(0) instanceof SqlAddIndex) {
+                final SqlAddIndex oldAddIndex = (SqlAddIndex) alterTable.getAlters().get(0);
+                final SqlIndexDefinition oldIndexDef = oldAddIndex.getIndexDef();
+                final SqlIndexDefinition newIndexDef = oldIndexDef.replaceCovering(sortedCovering);
 
-            updateAddIndex(alterTable, 0, oldAddIndex, newIndexDef);
+                updateAddIndex(alterTable, 0, oldAddIndex, newIndexDef);
+            }
         } else if (sqlNode instanceof SqlCreateTable) {
             final SqlAddIndex addIndex = (SqlAddIndex) sqlAlterTable.getAlters().get(0);
             final SqlIndexDefinition oldIndexDef = addIndex.getIndexDef();

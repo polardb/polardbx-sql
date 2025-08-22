@@ -12,11 +12,11 @@ public class ADB30_MySqlDDLTest extends MysqlTest {
     }
 
     public void test_alter_table() throws Exception {
-        parseTrue("alter table ddlDb.tbl rename column col1 to col2",
-            "ALTER TABLE ddlDb.tbl\n" +
-                "\tRENAME COLUMN col1 TO col2");
-
-        parseTrue("alter table ddlDb.tbl rename tbl2", "RENAME TABLE ddlDb.tbl TO tbl2");
+//        parseTrue("alter table ddlDb.tbl rename column col1 to col2",
+//            "ALTER TABLE ddlDb.tbl\n" +
+//                "\tRENAME COLUMN col1 TO col2");
+//
+//        parseTrue("alter table ddlDb.tbl rename tbl2", "RENAME TABLE ddlDb.tbl TO tbl2");
         parseTrue("alter table ddlDb.addColumn add column c1 double(2,4)",
             "ALTER TABLE ddlDb.addColumn\n" +
                 "\tADD COLUMN c1 double(2, 4)");

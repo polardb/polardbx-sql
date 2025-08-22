@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlSelect;
@@ -218,6 +219,8 @@ public class GsiPkRangeExtractor extends Extractor {
 
         // set KILL_CLOSE_STREAM = true
         ec.getExtraCmds().put(ConnectionParams.KILL_CLOSE_STREAM.toString(), true);
+        // set RC
+        ec.setTxIsolation(Connection.TRANSACTION_READ_COMMITTED);
 
         // interrupted
         AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
@@ -367,9 +370,10 @@ public class GsiPkRangeExtractor extends Extractor {
                 }
 
                 // For next batch, build select plan and parameters
-                final PhyTableOperation selectPlan = buildLogicalSelectWithParam(
+                final PhyTableOperation selectPlan = buildSelectWithParam(
                     schemaName,
                     sourceTableName,
+                    true,
                     actualBatchSize,
                     Stream.concat(lastPk.stream(), upperBoundParam.stream()).collect(Collectors.toList()),
                     GeneralUtil.isNotEmpty(lastPk),
@@ -548,19 +552,24 @@ public class GsiPkRangeExtractor extends Extractor {
      * @param params pk column value of last batch
      * @return built plan
      */
-    public static PhyTableOperation buildLogicalSelectWithParam(String tableSchema, String logicalTableName,
-                                                                long batchSize,
-                                                                List<ParameterContext> params, boolean withLowerBound,
-                                                                boolean withUpperBound,
-                                                                PhyTableOperation planSelectWithoutMinAndMax,
-                                                                PhyTableOperation planSelectWithMax,
-                                                                PhyTableOperation planSelectWithMin,
-                                                                PhyTableOperation planSelectWithMinAndMax) {
+    public static PhyTableOperation buildSelectWithParam(String tableSchema, String tableName,
+                                                         Boolean isLogical,
+                                                         long batchSize,
+                                                         List<ParameterContext> params, boolean withLowerBound,
+                                                         boolean withUpperBound,
+                                                         PhyTableOperation planSelectWithoutMinAndMax,
+                                                         PhyTableOperation planSelectWithMax,
+                                                         PhyTableOperation planSelectWithMin,
+                                                         PhyTableOperation planSelectWithMinAndMax) {
         Map<Integer, ParameterContext> planParams = new HashMap<>();
         // Physical table is 1st parameter
-//        planParams.put(1, PlannerUtils.buildParameterContextForTableName(logicalTableName, 1));
-
         int nextParamIndex = 1;
+        if (isLogical) {
+            // this is for logical table, we would fill this later
+        } else {
+            planParams.put(nextParamIndex, PlannerUtils.buildParameterContextForTableName(tableName, 1));
+            nextParamIndex++;
+        }
 
         // Parameters for where(DNF)
         int pkNumber = 0;
@@ -598,7 +607,7 @@ public class GsiPkRangeExtractor extends Extractor {
 
         PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
         buildParams.setGroupName(tableSchema);
-        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(logicalTableName)));
+        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(tableName)));
         buildParams.setDynamicParams(planParams);
 //        select * from t1 where a < 1 and a > 0 order by a for update;
 

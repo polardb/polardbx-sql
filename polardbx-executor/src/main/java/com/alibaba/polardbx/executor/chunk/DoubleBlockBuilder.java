@@ -18,23 +18,29 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
-import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 public class DoubleBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(DoubleBlockBuilder.class).instanceSize();
 
-    private final DoubleArrayList values;
+    private final MemoryCountableDoubleArrayList values;
     private final int scale;
 
     public DoubleBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new DoubleArrayList(capacity);
+        this.values = new MemoryCountableDoubleArrayList(capacity);
         this.scale = XResultUtil.DECIMAL_NOT_SPECIFIED;
     }
 
     public DoubleBlockBuilder(int capacity, int scale) {
         super(capacity);
-        this.values = new DoubleArrayList(capacity);
+        this.values = new MemoryCountableDoubleArrayList(capacity);
         this.scale = scale;
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + values.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

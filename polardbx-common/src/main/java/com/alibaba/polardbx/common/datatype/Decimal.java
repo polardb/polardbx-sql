@@ -20,8 +20,6 @@ import io.airlift.slice.Slice;
 
 import java.math.BigDecimal;
 
-import static com.alibaba.polardbx.common.datatype.DecimalRoundMod.HALF_UP;
-
 /**
  * Wrap a decimal structure.
  */

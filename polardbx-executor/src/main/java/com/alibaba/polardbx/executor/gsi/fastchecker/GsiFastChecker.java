@@ -52,7 +52,7 @@ public class GsiFastChecker extends FastChecker {
             planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
             planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
             planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
-            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
+            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst, null, false);
     }
 
     public static FastChecker create(String schemaName, String tableName, String indexName, ExecutionContext ec) {

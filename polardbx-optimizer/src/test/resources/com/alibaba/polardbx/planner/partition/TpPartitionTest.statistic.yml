@@ -65,7 +65,7 @@ nation.n_regionkey.cardinality:
 nation.n_name.cardinality:
   25
 part.p_partkey.cardinality:
-  9795510
+  19831640
 part.p_container.cardinality:
   40
 part.p_comment.cardinality:

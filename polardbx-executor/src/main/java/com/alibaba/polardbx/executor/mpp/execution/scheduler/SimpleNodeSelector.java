@@ -19,9 +19,9 @@ package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.partition.MurmurHashUtils;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.NodeTaskMap;
 import com.alibaba.polardbx.executor.mpp.execution.RemoteTask;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
@@ -34,10 +34,8 @@ import com.google.common.collect.Multimap;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +63,7 @@ public class SimpleNodeSelector implements NodeSelector {
 
     public SimpleNodeSelector(InternalNodeManager nodeManager, NodeTaskMap nodeTaskMap, Set<InternalNode> nodes,
                               int limitCandidates, int maxSplitsPerNode, boolean enableOssRoundRobin,
-                              boolean randomNode, boolean preferLocal) {
+                              RandomNodeMode randomNode, boolean preferLocal) {
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
         this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
         this.limitCandidates = limitCandidates;
@@ -76,7 +74,7 @@ public class SimpleNodeSelector implements NodeSelector {
     }
 
     private <T extends Node> List<Node> selectSuitableNodes(int limit, Collection<T> internalNodes,
-                                                            boolean randomNode) {
+                                                            RandomNodeMode randomNodeMode) {
         checkArgument(limit > 0, "limit must be at least 1");
         List<Node> selected = new ArrayList<>(limit);
 
@@ -88,19 +86,76 @@ public class SimpleNodeSelector implements NodeSelector {
             }
         }
 
-        Iterator<T> candidates = randomNode ? new ResettableRandomizedIterator<T>(internalNodes) :
-            internalNodes.stream().sorted(NODE_COMPARATOR).iterator();
-        while (selected.size() < limit && candidates.hasNext()) {
-            Node node = candidates.next();
-            if (node.isWorker()) {
-                selected.add(node);
+        switch (randomNodeMode) {
+        case RANDOM:
+            Iterator<T> randomIter = new ResettableRandomizedIterator<T>(internalNodes);
+            while (selected.size() < limit && randomIter.hasNext()) {
+                Node node = randomIter.next();
+                if (node.isWorker()) {
+                    selected.add(node);
+                }
+            }
+            break;
+        case NONE:
+            Iterator<T> sortedIter = internalNodes.stream().sorted(NODE_COMPARATOR).iterator();
+            while (selected.size() < limit && sortedIter.hasNext()) {
+                Node node = sortedIter.next();
+                if (node.isWorker()) {
+                    selected.add(node);
+                }
+            }
+            break;
+        case GROUP:
+            addCurrentNodeGroup(selected, internalNodes, limit);
+            break;
+        default:
+            throw new IllegalStateException("Unsupported random node mode: " + randomNodeMode);
+        }
+
+        if (randomNodeMode != RandomNodeMode.RANDOM) {
+            if (log.isDebugEnabled()) {
+                log.debug("selected nodes under non random mode: " + selected.stream().map(Node::getHostPort).collect(
+                    Collectors.joining(",")));
             }
         }
-        if (!randomNode) {
-            log.debug("selected nodes under non random mode: " + selected.stream().map(Node::getHostPort).collect(
-                Collectors.joining(",")) + "\n");
-        }
         return selected;
+    }
+
+    /**
+     * example1. allNodes: [node0, node1, node2, node3], limit: 2
+     *      currentNode: node0 ->  selectedNodes: node0, node1
+     *      currentNode: node1 ->  selectedNodes: node0, node1
+     *      currentNode: node2 ->  selectedNodes: node2, node3
+     *      currentNode: node3 ->  selectedNodes: node2, node3
+     * <p>
+     * example2. allNodes: [node0, node1, node2, node3], limit: 3
+     *      currentNode: node0 ->  selectedNodes: node0, node1, node2
+     *      currentNode: node1 ->  selectedNodes: node0, node1, node2
+     *      currentNode: node2 ->  selectedNodes: node0, node1, node2
+     *      currentNode: node3 ->  selectedNodes: node3, node0, node1
+     */
+    private <T extends Node> void addCurrentNodeGroup(List<Node> selected, Collection<T> internalNodes,
+                                                      int limit) {
+        List<T> sortedNodes = internalNodes.stream().sorted(NODE_COMPARATOR)
+            .collect(Collectors.toList());
+        InternalNode currentNode = ServiceProvider.getInstance().getServer().getLocalNode();
+
+        int currentIndex = sortedNodes.indexOf(currentNode);
+        if (currentIndex < 0 || limit >= sortedNodes.size()) {
+            // cannot find current node, or limit nodes is more than all nodes
+            // fallback to NONE
+            for (int i = 0; i < limit; i++) {
+                if (i < sortedNodes.size()) {
+                    selected.add(sortedNodes.get(i));
+                }
+            }
+            return;
+        }
+        int groupNum = currentIndex / limit;
+        for (int i = 0; i < limit; i++) {
+            int idx = groupNum * limit + i;
+            selected.add(sortedNodes.get(idx % sortedNodes.size()));
+        }
     }
 
     @Override
@@ -110,7 +165,7 @@ public class SimpleNodeSelector implements NodeSelector {
 
     @Override
     public List<Node> selectRandomNodes(int limit) {
-        return selectSuitableNodes(limit, workerNodes, true);
+        return selectSuitableNodes(limit, workerNodes, RandomNodeMode.RANDOM);
     }
 
     private List<Node> selectNodes(int limit, Iterator<Node> candidates, NodeAssignmentStats assignmentStats) {

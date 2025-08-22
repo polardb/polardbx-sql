@@ -29,6 +29,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.sql.ResultSet;
 import java.util.Formatter;
 import java.util.List;
 import java.util.Random;
@@ -100,6 +101,9 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
                 .that(tablePartitions)
                 .isEmpty();
 
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(realCciName);
+
         } catch (Exception e) {
             throw new RuntimeException("CREATE TABLE statement execution failed!", e);
         }
@@ -142,6 +146,10 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
                 String.format("drop index %s on %s", cciTestIndexName1, cciTestTableName1));
 
             checkTableGroup(realCciName, tgList.get(0).tg_name);
+
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(realCciName);
+
         } catch (Exception e) {
             throw new RuntimeException("CREATE TABLE statement execution failed!", e);
         }
@@ -185,6 +193,9 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
 
             // Check partition group cleared
             checkTableGroup(realCciName, tgList.get(0).tg_name);
+
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(realCciName);
 
         } catch (Exception e) {
             throw new RuntimeException("CREATE TABLE statement execution failed!", e);
@@ -230,6 +241,9 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
             // Check partition group cleared
             checkTableGroup(realCciName, tgList.get(0).tg_name);
 
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(realCciName);
+
         } catch (Exception e) {
             throw new RuntimeException("CREATE TABLE statement execution failed!", e);
         }
@@ -274,6 +288,9 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
             // Check partition group cleared
             checkTableGroup(realCciName, tgList.get(0).tg_name);
 
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(realCciName);
+
         } catch (Exception e) {
             throw new RuntimeException("CREATE TABLE statement execution failed!", e);
         }
@@ -314,6 +331,9 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
                 DdlType.DROP_INDEX,
                 ColumnarTableStatus.DROP);
 
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(cciTestIndexName1);
+
             // Cleanup
             dropTableIfExists(cciTestTableName1);
 
@@ -340,10 +360,63 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
                 DdlType.DROP_INDEX,
                 ColumnarTableStatus.DROP);
 
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(cciTestIndexName2);
+
             // Cleanup
             dropTableIfExists(cciTestTableName1);
         } catch (Exception e) {
             throw new RuntimeException("sql statement execution failed!", e);
+        }
+    }
+
+    @Test
+    public void testDrop7_alter_table_drop_cci_on_range_partition_table() {
+        final String cciTestTableName1 = PRIMARY_TABLE_NAME3;
+        final String cciTestIndexName1 = INDEX_NAME3;
+        try {
+            final String creatTableTmpl = "CREATE TABLE `%s` ( \n"
+                + "    `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP, \n"
+                + "    `order_id` varchar(20) DEFAULT NULL, \n"
+                + "    `buyer_id` varchar(20) DEFAULT NULL, \n"
+                + "    `order_snapshot` longtext, \n"
+                + "    PRIMARY KEY (`id`), \n"
+                + "    CLUSTERED COLUMNAR INDEX `%s`(`buyer_id`) PARTITION BY KEY(`id`)\n"
+                + ") PARTITION BY RANGE(`id`) \n"
+                + "(partition p0 values less than (1000)\n"
+                + ",partition p1 values less than (2000)\n"
+                + ");\n";
+            final String sqlCreateTable1 = String.format(
+                creatTableTmpl,
+                cciTestTableName1,
+                cciTestIndexName1);
+
+            // Create table with cci
+            createCciSuccess(sqlCreateTable1);
+
+            // Get real cci name
+            final String realCciName = getRealCciName(cciTestTableName1, cciTestIndexName1);
+            Truth.assertWithMessage("Query real cci name failed!")
+                .that(realCciName)
+                .isNotNull();
+
+            final List<TableGroupRecord> tgList = queryCciTgFromMetaDb(realCciName);
+            Truth.assertWithMessage("Unexpected table group record count found for cci `%s`!", realCciName)
+                .that(tgList)
+                .hasSize(1);
+
+            // Drop cci
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format("alter table %s drop index %s", cciTestTableName1, cciTestIndexName1));
+
+            // Check partition group cleared
+            checkTableGroup(realCciName, tgList.get(0).tg_name);
+
+            // Check dangling cci metadata
+            checkDanglingCciMetadata(realCciName);
+
+        } catch (Exception e) {
+            throw new RuntimeException("CREATE TABLE statement execution failed!", e);
         }
     }
 
@@ -361,5 +434,15 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
                 tgName)
             .that(clearedShowTgResultList)
             .isEmpty();
+    }
+
+    private void checkDanglingCciMetadata(String realCciName) throws Exception {
+        // Check dangling cci metadata by sql
+        final String sql =
+            String.format("SELECT * FROM information_schema.PARTITIONS WHERE table_schema = '%s'", getDdlSchema());
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        Truth.assertWithMessage("Dangling partitionInfo found for cci `%s`!", realCciName)
+            .that(rs.next())
+            .isNotNull();
     }
 }

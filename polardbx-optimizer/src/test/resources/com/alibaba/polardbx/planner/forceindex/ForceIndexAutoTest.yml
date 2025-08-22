@@ -7,7 +7,8 @@ SQL:
       select * from t_order where id in (1,2,'3') union all
       select * from t_order where id in (1,2,id) union all
       select * from t_order where (id,order_snapshot) in ((1,'321')) union all
-      select * from t_order where (id,order_snapshot) = (1,'321')
+      select * from t_order where (id,order_snapshot) = (1,'321') union all
+      select * from t_order where (id,order_snapshot) = (1,'321') and MATCH(order_snapshot) AGAINST('MySQL' IN BOOLEAN MODE)
     plan: |
       unionall(concurrent=true)
         gather(concurrent=true)
@@ -24,6 +25,8 @@ SQL:
           logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` force index(`primary`) where (((`id`, `order_snapshot`)) in(?))")
         gather(concurrent=true)
           logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` force index(`primary`) where ((`id`, `order_snapshot`) =(?, ?))")
+        gather(concurrent=true)
+          logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` force index(`primary`) where (((`id`, `order_snapshot`) =(?, ?)) and match (`order_snapshot`) against (? in boolean mode))")
   - sql: |
       select * from t_order where id = 1 and 1=1 union all
       select * from t_order where id = 1 and 1>1 union all
@@ -207,7 +210,7 @@ SQL:
       (select * from t_order where (`product_id`,`order_id`,`seller_id`)=('1','1','1') order by seller_id desc) union all
       (select * from t_order where (`product_id`,`order_id`)=('1','1') order by seller_id desc,buyer_id) union all
       (select * from t_order where (`product_id`,`order_id`)=('1','1') order by seller_id,buyer_id desc, id) union all
-      (select * from t_order where (`product_id`,`order_id`)=('1','1') order by seller_id desc, buyer_id limit 10) union all
+      (select * from t_order where (`product_id`,`order_id`+1)=('1','1') order by seller_id desc, buyer_id limit 10) union all
       (select * from t_order where (`product_id`,`order_id`)=('1','1') order by buyer_id,seller_id desc) union all
       (select * from t_order where (`product_id`,`order_id`)=('1','1') order by seller_id+1 desc, buyer_id limit 10)
     plan: |
@@ -216,7 +219,8 @@ SQL:
         logicalview(tables="t_order[p6]", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` where ((`product_id`, `order_id`, `seller_id`) =(?, ?, ?)) order by `seller_id` desc")
         logicalview(tables="t_order[p6]", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` force index(`prdo_long`) where ((`product_id`, `order_id`) =(?, ?)) order by `seller_id` desc, `buyer_id`")
         logicalview(tables="t_order[p6]", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` where ((`product_id`, `order_id`) =(?, ?)) order by `seller_id`, `buyer_id` desc, `id`")
-        logicalview(tables="t_order[p6]", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` force index(`prdo_long`) where ((`product_id`, `order_id`) =(?, ?)) order by `seller_id` desc, `buyer_id` limit ?")
+        mergesort(sort="seller_id desc,buyer_id asc", offset=0, fetch=?13)
+          logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` where ((`product_id`, (`order_id` + ?)) =(?, ?)) order by `seller_id` desc, `buyer_id` limit (? + 0)")
         logicalview(tables="t_order[p6]", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` where ((`product_id`, `order_id`) =(?, ?)) order by `buyer_id`, `seller_id` desc")
         logicalview(tables="t_order[p6]", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `product_id`, `extra_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` where ((`product_id`, `order_id`) =(?, ?)) order by (`seller_id` + ?) desc, `buyer_id` limit ?")
   - sql: |
@@ -289,12 +293,15 @@ SQL:
       unionall(concurrent=true)
         mergesort(sort="order_id asc")
           logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `order_id`, count(*) as `count(1)` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) group by `order_id` order by `order_id`")
+        memsort(sort="order_id asc")
+          project(order_id="order_id", count(1)="count(1)")
+            sortagg(group="product_id,order_id,seller_id", count(1)="count()")
+              mergesort(sort="product_id asc,order_id asc,seller_id asc")
+                logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `product_id`, `order_id`, `seller_id`, 1 as `$f3` from `t_order` as `t_order` force index(`prdo`) order by `product_id`, `order_id`, `seller_id`")
         project(order_id="order_id", count(1)="count(1)")
-          mergesort(sort="order_id asc")
-            logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `product_id`, `order_id`, `seller_id`, count(*) as `count(1)` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) group by `order_id`, `seller_id`, `product_id` order by `order_id`")
-        project(order_id="order_id", count(1)="count(1)")
-          mergesort(sort="product_id asc,order_id asc")
-            logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `product_id`, `order_id`, `seller_id`, count(*) as `count(1)` from `t_order` as `t_order` force index(`prdo`) group by `order_id`, `seller_id`, `product_id` order by `product_id`, `order_id`")
+          sortagg(group="product_id,order_id,seller_id", count(1)="count()")
+            mergesort(sort="product_id asc,order_id asc,seller_id asc")
+              logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `product_id`, `order_id`, `seller_id`, 1 as `$f3` from `t_order` as `t_order` force index(`prdo`) order by `product_id`, `order_id`, `seller_id`")
   - sql: |
       select order_id, count(1) from t_order t1 group by order_id order by `product_id`,`order_id`,`seller_id`;
     plan: |

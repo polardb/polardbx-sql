@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.TaskScheduler;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -28,6 +30,7 @@ import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -59,19 +62,42 @@ public interface RemoteExecutableDdlTask extends DdlTask {
     }
 
     default List<String> chooseCandidate() {
+        // choose standby node
         List<String> candidates = new ArrayList<>();
         // we should only choose master node here.(master node = master + standby cn).
         List<GmsNode> masterNodeList = GmsNodeManager.getInstance().getMasterNodes();
         List<GmsNode> standbyNodeList = GmsNodeManager.getInstance().getStandbyNodes();
+        List<GmsNode> remoteNodeList = GmsNodeManager.getInstance().getRemoteNodes();
         Set<String> masterNodeKeySet = fetchServerKeyFromGmsNode(masterNodeList);
         Set<String> standbyNodeKeySet = fetchServerKeyFromGmsNode(standbyNodeList);
-        if (!enableStandbyNode() && !forbidRemoteDdlTask()) {
+        // non-standby node.
+        Set<String> backfillMppCnKeys = new HashSet<>();
+        Boolean forbidRemote = forbidRemoteDdlTask();
+        if (!forbidRemote && fetchBackfillMppCnKeys(backfillMppCnKeys)) {
+            candidates.addAll(masterNodeKeySet);
+            candidates.addAll(standbyNodeKeySet);
+            Set<String> finalCandidates = new HashSet<>();
+            for (String key : candidates) {
+                if (backfillMppCnKeys.contains(key)) {
+                    finalCandidates.add(key);
+                    backfillMppCnKeys.remove(key);
+                }
+            }
+            candidates = new ArrayList<>(finalCandidates);
+        } else if (!forbidRemote && forceStandbyNode()) {
+            candidates.addAll(standbyNodeKeySet);
+        } else if (!forbidRemote && !enableStandbyNode()) {
             // non-standby node.
             candidates.addAll(masterNodeKeySet);
             candidates.removeAll(standbyNodeKeySet);
-        } else if (enableStandbyNode() && !forbidRemoteDdlTask()) {
+        } else if (!forbidRemote && enableStandbyNode()) {
             // all master node.
             candidates.addAll(masterNodeKeySet);
+        }
+        GmsNode localNode = GmsNodeManager.getInstance().getLocalNode();
+        if (localNode != null) {
+            String localNodeServerKey = localNode.getServerKey();
+            candidates.remove(localNodeServerKey);
         }
         candidates.add(null);
         return candidates;
@@ -94,7 +120,7 @@ public interface RemoteExecutableDdlTask extends DdlTask {
             for (String candidate : candidates) {
                 DdlEngineResources ddlEngineResources1 = DdlEngineResources.copyFrom(ddlEngineResources);
                 ddlEngineResources1.setServerKey(candidate);
-                if (TaskScheduler.resourceToAllocate.cover(ddlEngineResources1)) {
+                if (TaskScheduler.getResourcesToAllocate().cover(ddlEngineResources1, false)) {
                     finalCandidates.add(candidate);
                 }
             }
@@ -128,5 +154,30 @@ public interface RemoteExecutableDdlTask extends DdlTask {
             MetaDbInstConfigManager.getInstance()
                 .getInstProperty(ConnectionProperties.ENABLE_STANDBY_BACKFILL, Boolean.TRUE.toString());
         return StringUtils.equalsIgnoreCase(enableStandbyNodeStr, Boolean.TRUE.toString());
+    }
+
+    default boolean forceStandbyNode() {
+        String forceStandbyNodeStr =
+            MetaDbInstConfigManager.getInstance()
+                .getInstProperty(ConnectionProperties.FORCE_STANDBY_BACKFILL, Boolean.FALSE.toString());
+        return StringUtils.equalsIgnoreCase(forceStandbyNodeStr, Boolean.TRUE.toString());
+    }
+
+    default Boolean fetchBackfillMppCnKeys(Set<String> validCnKeys) {
+        String backfillMppCnKeys =
+            MetaDbInstConfigManager.getInstance()
+                .getInstProperty(ConnectionProperties.BACKFILL_MPP_CN_KEYS, "");
+        if (StringUtils.isEmpty(backfillMppCnKeys)) {
+            return false;
+        } else {
+            for (String key : backfillMppCnKeys.split(",")) {
+                validCnKeys.add(StringUtils.trim(key));
+            }
+            if (validCnKeys.isEmpty()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                    String.format(" you have specify an invalid cn keys [%s]", backfillMppCnKeys));
+            }
+            return true;
+        }
     }
 }

@@ -1,0 +1,128 @@
+package com.alibaba.polardbx.qatest.ddl.sharding.ddl;
+
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
+import com.alibaba.polardbx.qatest.util.ConnectionManager;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.RandomUtils;
+import org.junit.Assert;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class FullTextIndexTest extends DDLBaseNewDBTestCase {
+
+    private static final Logger logger = LoggerFactory.getLogger(FullTextIndexTest.class);
+
+    static String databaseName = "drds_fulltext_index_test";
+    private final Map<String, String> tableDefs = Arrays.asList(new Object[][]{
+                    {"t1", "create table t1(id bigint auto_increment, content text, primary key(id), FULLTEXT INDEX fulltext_idx (content)) dbpartition by hash(id)"},
+                    {"t2", "create table t2(id bigint auto_increment, content text, primary key(id)) dbpartition by hash(id)"},
+                    {"t3", "create table t3(id bigint auto_increment, content text, primary key(id)) dbpartition by hash(id)"}
+            }).stream()
+            .collect(Collectors.toMap(
+                    pair -> (String) pair[0],
+                    pair -> (String) pair[1]
+            ));
+
+    @Override
+    public boolean usingNewPartDb() {
+        return false;
+    }
+
+    @BeforeClass
+    public static void setUpTestSuite() {
+        try (Connection tddlConn = ConnectionManager.getInstance().getDruidPolardbxConnection();) {
+            String dropDb = String.format("drop database if exists %s", databaseName);
+            JdbcUtil.executeUpdateSuccess(tddlConn, dropDb);
+            JdbcUtil.executeUpdateSuccess(tddlConn, "use polardbx");
+            String createDb = String.format("create database %s mode=drds", databaseName);
+            JdbcUtil.executeUpdateSuccess(tddlConn, createDb);
+        } catch (Exception e) {
+            logger.error("", e);
+            Assert.fail(e.getMessage());
+        }
+    }
+
+    @Test
+    public void testMoveTable() throws SQLException {
+        String useDb = String.format("use %s", databaseName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, useDb);
+        String insertSql = "insert into %s(content) values(?)";
+        String querySql = "SELECT * FROM t1 " +
+                "WHERE MATCH(content) AGAINST('ab' IN BOOLEAN MODE);";
+        for (Map.Entry<String, String> entry : tableDefs.entrySet()) {
+            String dropTable = String.format("drop table if exists %s", entry.getKey());
+            JdbcUtil.executeUpdateSuccess(tddlConnection, dropTable);
+            String createTable = entry.getValue();
+            JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+            int i = 0;
+            try (PreparedStatement ps = JdbcUtil.preparedStatement(String.format(insertSql, entry.getKey()), tddlConnection)) {
+                while (i < 100) {
+                    ps.setString(1, RandomUtils.getStringBetween(20, 1000));
+                    ps.addBatch();
+                    i++;
+                }
+                ps.executeBatch();
+            }
+            if (entry.getKey().equalsIgnoreCase("t1")) {
+                JdbcUtil.executeSuccess(tddlConnection, querySql);
+            }
+        }
+        String showTopology = "show topology from t1";
+        ResultSet rs = JdbcUtil.executeQuery(showTopology, tddlConnection);
+        Set<String> storageIds = new HashSet<>();
+        List<String> storageIdList = new ArrayList<>();
+        List<String> groupName = new ArrayList<>();
+        while (rs.next()) {
+            String storageId = rs.getString("DN_ID");
+            if (!storageIds.contains(storageId)) {
+                storageIds.add(storageId);
+            }
+            groupName.add(rs.getString("GROUP_NAME"));
+        }
+        storageIdList.addAll(storageIds);
+        String moveTgSql = "move database %s,%s to '%s'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(moveTgSql, groupName.get(0), groupName.get(1), storageIdList.get(0)));
+        JdbcUtil.executeSuccess(tddlConnection, querySql);
+    }
+
+    @Test
+    public void testFullTextIndexType() throws SQLException {
+        String useDb = String.format("use %s", databaseName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, useDb);
+        String showIndex = "show index from %s";
+        for (Map.Entry<String, String> entry : tableDefs.entrySet()) {
+            String dropTable = String.format("drop table if exists %s", entry.getKey());
+            JdbcUtil.executeUpdateSuccess(tddlConnection, dropTable);
+            String createTable = entry.getValue();
+            JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+            ResultSet rs = JdbcUtil.executeQuery(String.format(showIndex, entry.getKey()), tddlConnection);
+            while (rs.next()) {
+                String indexType = rs.getString("Index_type");
+                String key_name = rs.getString("Key_name");
+                if (key_name.equalsIgnoreCase("fulltext_idx")) {
+                    Assert.assertEquals(indexType, "FULLTEXT");
+                }
+            }
+            if (entry.getKey().equalsIgnoreCase("t2")) {
+                JdbcUtil.executeSuccess(tddlConnection, "alter table t2 add fulltext index fulltext_idx(content);");
+                rs = JdbcUtil.executeQuery(String.format(showIndex, entry.getKey()), tddlConnection);
+                while (rs.next()) {
+                    String indexType = rs.getString("Index_type");
+                    String key_name = rs.getString("Key_name");
+                    if (key_name.equalsIgnoreCase("fulltext_idx")) {
+                        Assert.assertEquals(indexType, "FULLTEXT");
+                    }
+                }
+            }
+        }
+    }
+}

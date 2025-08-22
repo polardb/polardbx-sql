@@ -1,0 +1,507 @@
+SQL:
+  - sql: |
+      /*+TDDL:paging_index(pm_order_finish,indx1)*/SELECT *
+        FROM pm_order_finish FORCE INDEX (primary)
+        WHERE user_id = 43544028 AND broker_id = 0 AND s_id IN (0) AND id > 1951096268390400000 AND partition_time >= '2024-10-04 00:00:00.000' AND source != 33
+        ORDER BY modify_time DESC LIMIT 0, 20
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p1p202410,p1p202411],pm_order_finish[p1p202410,p1p202411]", shardcount=2, sql="select `pm_order_finish0`.`id` as `id0`, `pm_order_finish0`.`user_id` as `user_id0`, `pm_order_finish0`.`broker_id`, `pm_order_finish0`.`s_id`, `pm_order_finish0`.`biz_id`, `pm_order_finish0`.`index_id`, `pm_order_finish0`.`instrument_id`, `pm_order_finish0`.`side`, `pm_order_finish0`.`direction`, `pm_order_finish0`.`margin_mode`, `pm_order_finish0`.`price`, `pm_order_finish0`.`handicapbest_price`, `pm_order_finish0`.`amount`, `pm_order_finish0`.`deal_amount`, `pm_order_finish0`.`price_avg`, `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`avg_cost`, `pm_order_finish0`.`leverage`, `pm_order_finish0`.`order_type`, `pm_order_finish0`.`system_type`, `pm_order_finish0`.`reduce_only`, `pm_order_finish0`.`status`, `pm_order_finish0`.`fee`, `pm_order_finish0`.`fee_rate`, `pm_order_finish0`.`rebate`, `pm_order_finish0`.`source`, `pm_order_finish0`.`cancel_source`, `pm_order_finish0`.`close_profit`, `pm_order_finish0`.`client_oid`, `pm_order_finish0`.`tag`, `pm_order_finish0`.`refer_id`, `pm_order_finish0`.`margin_coin_id`, `pm_order_finish0`.`last_fill_id`, `pm_order_finish0`.`last_fill_price`, `pm_order_finish0`.`last_fill_size`, `pm_order_finish0`.`last_fill_time`, `pm_order_finish0`.`contract_val`, `pm_order_finish0`.`multiplier`, `pm_order_finish0`.`liquidate_price`, `pm_order_finish0`.`maintenance_ratio`, `pm_order_finish0`.`unit_buffer`, `pm_order_finish0`.`unit_treasury`, `pm_order_finish0`.`remark`, `pm_order_finish0`.`cost`, `pm_order_finish0`.`tp_price`, `pm_order_finish0`.`tp_trigger_type`, `pm_order_finish0`.`tp_trigger_price`, `pm_order_finish0`.`sl_price`, `pm_order_finish0`.`sl_trigger_type`, `pm_order_finish0`.`sl_trigger_price`, `pm_order_finish0`.`stop_type`, `pm_order_finish0`.`stop_order_type`, `pm_order_finish0`.`sl_stop_order_type`, `pm_order_finish0`.`tp_mode`, `pm_order_finish0`.`ip`, `pm_order_finish0`.`delta_type`, `pm_order_finish0`.`trigger_target`, `pm_order_finish0`.`options_medium_coin_amount`, `pm_order_finish0`.`clq_req_id`, `pm_order_finish0`.`quick_margin_type`, `pm_order_finish0`.`sort_id`, `pm_order_finish0`.`algo_client_oid`, `pm_order_finish0`.`algo_id`, `pm_order_finish0`.`stp_id`, `pm_order_finish0`.`stp_mode`, `pm_order_finish0`.`attach_algo_client_oid`, `pm_order_finish0`.`px_vol`, `pm_order_finish0`.`px_usd`, `pm_order_finish0`.`attach_order_stop_list`, `pm_order_finish0`.`linked_algo_order_id`, `pm_order_finish0`.`extend_status_flag`, `pm_order_finish0`.`ext`, `pm_order_finish0`.`attachalgoords`, `pm_order_finish0`.`partition_time` as `partition_time0`, `pm_order_finish0`.`created_at`, `pm_order_finish0`.`modified_at`, `pm_order_finish0`.`create_time`, `pm_order_finish0`.`modify_time`, `pm_order_finish0`.`amend_px_on_trigger_type`, `pm_order_finish0`.`deal_avg_price` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((`user_id` = ?) and (`broker_id` = ?) and (`s_id` in(?)) and (`id` > ?) and (`partition_time` >= ?) and (`source` <> ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:paging_index(pm_order_finish,primary,indx1)*/SELECT *
+        FROM pm_order_finish FORCE INDEX (primary)
+        WHERE user_id = 43544028 AND broker_id = 0 AND s_id IN (0) AND id > 1951096268390400000 AND partition_time >= '2024-10-04 00:00:00.000' AND source != 33
+        ORDER BY modify_time DESC LIMIT 0, 20
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p1p202410,p1p202411],pm_order_finish[p1p202410,p1p202411]", shardcount=2, sql="select `pm_order_finish0`.`id` as `id0`, `pm_order_finish0`.`user_id` as `user_id0`, `pm_order_finish0`.`broker_id`, `pm_order_finish0`.`s_id`, `pm_order_finish0`.`biz_id`, `pm_order_finish0`.`index_id`, `pm_order_finish0`.`instrument_id`, `pm_order_finish0`.`side`, `pm_order_finish0`.`direction`, `pm_order_finish0`.`margin_mode`, `pm_order_finish0`.`price`, `pm_order_finish0`.`handicapbest_price`, `pm_order_finish0`.`amount`, `pm_order_finish0`.`deal_amount`, `pm_order_finish0`.`price_avg`, `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`avg_cost`, `pm_order_finish0`.`leverage`, `pm_order_finish0`.`order_type`, `pm_order_finish0`.`system_type`, `pm_order_finish0`.`reduce_only`, `pm_order_finish0`.`status`, `pm_order_finish0`.`fee`, `pm_order_finish0`.`fee_rate`, `pm_order_finish0`.`rebate`, `pm_order_finish0`.`source`, `pm_order_finish0`.`cancel_source`, `pm_order_finish0`.`close_profit`, `pm_order_finish0`.`client_oid`, `pm_order_finish0`.`tag`, `pm_order_finish0`.`refer_id`, `pm_order_finish0`.`margin_coin_id`, `pm_order_finish0`.`last_fill_id`, `pm_order_finish0`.`last_fill_price`, `pm_order_finish0`.`last_fill_size`, `pm_order_finish0`.`last_fill_time`, `pm_order_finish0`.`contract_val`, `pm_order_finish0`.`multiplier`, `pm_order_finish0`.`liquidate_price`, `pm_order_finish0`.`maintenance_ratio`, `pm_order_finish0`.`unit_buffer`, `pm_order_finish0`.`unit_treasury`, `pm_order_finish0`.`remark`, `pm_order_finish0`.`cost`, `pm_order_finish0`.`tp_price`, `pm_order_finish0`.`tp_trigger_type`, `pm_order_finish0`.`tp_trigger_price`, `pm_order_finish0`.`sl_price`, `pm_order_finish0`.`sl_trigger_type`, `pm_order_finish0`.`sl_trigger_price`, `pm_order_finish0`.`stop_type`, `pm_order_finish0`.`stop_order_type`, `pm_order_finish0`.`sl_stop_order_type`, `pm_order_finish0`.`tp_mode`, `pm_order_finish0`.`ip`, `pm_order_finish0`.`delta_type`, `pm_order_finish0`.`trigger_target`, `pm_order_finish0`.`options_medium_coin_amount`, `pm_order_finish0`.`clq_req_id`, `pm_order_finish0`.`quick_margin_type`, `pm_order_finish0`.`sort_id`, `pm_order_finish0`.`algo_client_oid`, `pm_order_finish0`.`algo_id`, `pm_order_finish0`.`stp_id`, `pm_order_finish0`.`stp_mode`, `pm_order_finish0`.`attach_algo_client_oid`, `pm_order_finish0`.`px_vol`, `pm_order_finish0`.`px_usd`, `pm_order_finish0`.`attach_order_stop_list`, `pm_order_finish0`.`linked_algo_order_id`, `pm_order_finish0`.`extend_status_flag`, `pm_order_finish0`.`ext`, `pm_order_finish0`.`attachalgoords`, `pm_order_finish0`.`partition_time` as `partition_time0`, `pm_order_finish0`.`created_at`, `pm_order_finish0`.`modified_at`, `pm_order_finish0`.`create_time`, `pm_order_finish0`.`modify_time`, `pm_order_finish0`.`amend_px_on_trigger_type`, `pm_order_finish0`.`deal_avg_price` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((`user_id` = ?) and (`broker_id` = ?) and (`s_id` in(?)) and (`id` > ?) and (`partition_time` >= ?) and (`source` <> ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      SELECT *
+        FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id IN (0)
+          AND id > 1951096268390400000
+          AND partition_time >= '2024-10-04 00:00:00.000'
+          AND source != 33
+        ORDER BY modify_time DESC
+        LIMIT 0, 20
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p1p202410,p1p202411],pm_order_finish[p1p202410,p1p202411]", shardcount=2, sql="select `pm_order_finish0`.`id` as `id0`, `pm_order_finish0`.`user_id` as `user_id0`, `pm_order_finish0`.`broker_id`, `pm_order_finish0`.`s_id`, `pm_order_finish0`.`biz_id`, `pm_order_finish0`.`index_id`, `pm_order_finish0`.`instrument_id`, `pm_order_finish0`.`side`, `pm_order_finish0`.`direction`, `pm_order_finish0`.`margin_mode`, `pm_order_finish0`.`price`, `pm_order_finish0`.`handicapbest_price`, `pm_order_finish0`.`amount`, `pm_order_finish0`.`deal_amount`, `pm_order_finish0`.`price_avg`, `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`avg_cost`, `pm_order_finish0`.`leverage`, `pm_order_finish0`.`order_type`, `pm_order_finish0`.`system_type`, `pm_order_finish0`.`reduce_only`, `pm_order_finish0`.`status`, `pm_order_finish0`.`fee`, `pm_order_finish0`.`fee_rate`, `pm_order_finish0`.`rebate`, `pm_order_finish0`.`source`, `pm_order_finish0`.`cancel_source`, `pm_order_finish0`.`close_profit`, `pm_order_finish0`.`client_oid`, `pm_order_finish0`.`tag`, `pm_order_finish0`.`refer_id`, `pm_order_finish0`.`margin_coin_id`, `pm_order_finish0`.`last_fill_id`, `pm_order_finish0`.`last_fill_price`, `pm_order_finish0`.`last_fill_size`, `pm_order_finish0`.`last_fill_time`, `pm_order_finish0`.`contract_val`, `pm_order_finish0`.`multiplier`, `pm_order_finish0`.`liquidate_price`, `pm_order_finish0`.`maintenance_ratio`, `pm_order_finish0`.`unit_buffer`, `pm_order_finish0`.`unit_treasury`, `pm_order_finish0`.`remark`, `pm_order_finish0`.`cost`, `pm_order_finish0`.`tp_price`, `pm_order_finish0`.`tp_trigger_type`, `pm_order_finish0`.`tp_trigger_price`, `pm_order_finish0`.`sl_price`, `pm_order_finish0`.`sl_trigger_type`, `pm_order_finish0`.`sl_trigger_price`, `pm_order_finish0`.`stop_type`, `pm_order_finish0`.`stop_order_type`, `pm_order_finish0`.`sl_stop_order_type`, `pm_order_finish0`.`tp_mode`, `pm_order_finish0`.`ip`, `pm_order_finish0`.`delta_type`, `pm_order_finish0`.`trigger_target`, `pm_order_finish0`.`options_medium_coin_amount`, `pm_order_finish0`.`clq_req_id`, `pm_order_finish0`.`quick_margin_type`, `pm_order_finish0`.`sort_id`, `pm_order_finish0`.`algo_client_oid`, `pm_order_finish0`.`algo_id`, `pm_order_finish0`.`stp_id`, `pm_order_finish0`.`stp_mode`, `pm_order_finish0`.`attach_algo_client_oid`, `pm_order_finish0`.`px_vol`, `pm_order_finish0`.`px_usd`, `pm_order_finish0`.`attach_order_stop_list`, `pm_order_finish0`.`linked_algo_order_id`, `pm_order_finish0`.`extend_status_flag`, `pm_order_finish0`.`ext`, `pm_order_finish0`.`attachalgoords`, `pm_order_finish0`.`partition_time` as `partition_time0`, `pm_order_finish0`.`created_at`, `pm_order_finish0`.`modified_at`, `pm_order_finish0`.`create_time`, `pm_order_finish0`.`modify_time`, `pm_order_finish0`.`amend_px_on_trigger_type`, `pm_order_finish0`.`deal_avg_price` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((`user_id` = ?) and (`broker_id` = ?) and (`s_id` in(?)) and (`id` > ?) and (`partition_time` >= ?) and (`source` <> ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      SELECT *
+        FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id IN (0)
+          AND id > 1951096268390400000
+          AND partition_time >= '2024-10-04 00:00:00.000'
+          AND source != 33
+        ORDER BY modify_time DESC
+        LIMIT 0, 20;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p1p202410,p1p202411],pm_order_finish[p1p202410,p1p202411]", shardcount=2, sql="select `pm_order_finish0`.`id` as `id0`, `pm_order_finish0`.`user_id` as `user_id0`, `pm_order_finish0`.`broker_id`, `pm_order_finish0`.`s_id`, `pm_order_finish0`.`biz_id`, `pm_order_finish0`.`index_id`, `pm_order_finish0`.`instrument_id`, `pm_order_finish0`.`side`, `pm_order_finish0`.`direction`, `pm_order_finish0`.`margin_mode`, `pm_order_finish0`.`price`, `pm_order_finish0`.`handicapbest_price`, `pm_order_finish0`.`amount`, `pm_order_finish0`.`deal_amount`, `pm_order_finish0`.`price_avg`, `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`avg_cost`, `pm_order_finish0`.`leverage`, `pm_order_finish0`.`order_type`, `pm_order_finish0`.`system_type`, `pm_order_finish0`.`reduce_only`, `pm_order_finish0`.`status`, `pm_order_finish0`.`fee`, `pm_order_finish0`.`fee_rate`, `pm_order_finish0`.`rebate`, `pm_order_finish0`.`source`, `pm_order_finish0`.`cancel_source`, `pm_order_finish0`.`close_profit`, `pm_order_finish0`.`client_oid`, `pm_order_finish0`.`tag`, `pm_order_finish0`.`refer_id`, `pm_order_finish0`.`margin_coin_id`, `pm_order_finish0`.`last_fill_id`, `pm_order_finish0`.`last_fill_price`, `pm_order_finish0`.`last_fill_size`, `pm_order_finish0`.`last_fill_time`, `pm_order_finish0`.`contract_val`, `pm_order_finish0`.`multiplier`, `pm_order_finish0`.`liquidate_price`, `pm_order_finish0`.`maintenance_ratio`, `pm_order_finish0`.`unit_buffer`, `pm_order_finish0`.`unit_treasury`, `pm_order_finish0`.`remark`, `pm_order_finish0`.`cost`, `pm_order_finish0`.`tp_price`, `pm_order_finish0`.`tp_trigger_type`, `pm_order_finish0`.`tp_trigger_price`, `pm_order_finish0`.`sl_price`, `pm_order_finish0`.`sl_trigger_type`, `pm_order_finish0`.`sl_trigger_price`, `pm_order_finish0`.`stop_type`, `pm_order_finish0`.`stop_order_type`, `pm_order_finish0`.`sl_stop_order_type`, `pm_order_finish0`.`tp_mode`, `pm_order_finish0`.`ip`, `pm_order_finish0`.`delta_type`, `pm_order_finish0`.`trigger_target`, `pm_order_finish0`.`options_medium_coin_amount`, `pm_order_finish0`.`clq_req_id`, `pm_order_finish0`.`quick_margin_type`, `pm_order_finish0`.`sort_id`, `pm_order_finish0`.`algo_client_oid`, `pm_order_finish0`.`algo_id`, `pm_order_finish0`.`stp_id`, `pm_order_finish0`.`stp_mode`, `pm_order_finish0`.`attach_algo_client_oid`, `pm_order_finish0`.`px_vol`, `pm_order_finish0`.`px_usd`, `pm_order_finish0`.`attach_order_stop_list`, `pm_order_finish0`.`linked_algo_order_id`, `pm_order_finish0`.`extend_status_flag`, `pm_order_finish0`.`ext`, `pm_order_finish0`.`attachalgoords`, `pm_order_finish0`.`partition_time` as `partition_time0`, `pm_order_finish0`.`created_at`, `pm_order_finish0`.`modified_at`, `pm_order_finish0`.`create_time`, `pm_order_finish0`.`modify_time`, `pm_order_finish0`.`amend_px_on_trigger_type`, `pm_order_finish0`.`deal_avg_price` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((`user_id` = ?) and (`broker_id` = ?) and (`s_id` in(?)) and (`id` > ?) and (`partition_time` >= ?) and (`source` <> ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount
+        FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id IN (0)
+          AND id > 1951096268390400000
+          AND partition_time >= '2024-10-04 00:00:00.000'
+          AND source != 33
+        ORDER BY modify_time DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+          logicalview(tables="pm_order_finish[p1p202410,p1p202411],pm_order_finish[p1p202410,p1p202411]", shardcount=2, sql="select `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`modify_time` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((`user_id` = ?) and (`broker_id` = ?) and (`s_id` in(?)) and (`id` > ?) and (`partition_time` >= ?) and (`source` <> ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount
+       FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+       WHERE user_id = 43544028
+         AND broker_id = 0
+         AND s_id IN (0)
+         AND id > 1951096268390400000
+         AND partition_time >= '2024-10-04 00:00:00.000'
+         AND source != 33
+       ORDER BY modify_time,close_amount DESC
+       LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="modify_time asc,close_amount desc", offset=?6, fetch=?7)
+          logicalview(tables="pm_order_finish[p1p202410,p1p202411]", shardcount=2, sql="select `close_amount`, `modify_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((`user_id` = ?) and (`broker_id` = ?) and (`s_id` in(?)) and (`id` > ?) and (`partition_time` >= ?) and (`source` <> ?)) order by `modify_time`, `close_amount` desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount as modify_time
+        FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id IN (0)
+          AND id > 1951096268390400000
+          AND partition_time >= '2024-10-04 00:00:00.000'
+          AND source != 33
+        ORDER BY modify_time DESC
+        LIMIT 0, 20;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p1p202410,p1p202411]", shardcount=2, sql="select `close_amount` as `modify_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((`user_id` = ?) and (`broker_id` = ?) and (`s_id` in(?)) and (`id` > ?) and (`partition_time` >= ?) and (`source` <> ?)) order by `close_amount` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_AUTO_PAGINATION_INDEX=true)*/SELECT close_amount
+        FROM pm_order_finish FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id+source IN (0)
+        ORDER BY modify_time DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411],pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`modify_time` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_AUTO_PAGINATION_INDEX=false)*/SELECT close_amount
+        FROM pm_order_finish FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id+source IN (0)
+        ORDER BY modify_time DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `close_amount`, `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount
+        FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id+source IN (0)
+        ORDER BY modify_time DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411],pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`modify_time` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount
+        FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id+source IN (0)
+        ORDER BY modify_time+1 DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="(pm_order_finish.modify_time + ?) desc", offset=?4, fetch=?5)
+          logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `close_amount`, (`modify_time` + ?) as `(pm_order_finish.modify_time + ?)` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by (`modify_time` + ?) desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount
+        FROM pm_order_finish PAGING_FORCE INDEX (iNDX1)
+        WHERE user_id = 43544028
+          AND broker_Id = 0
+          AND s_id+source IN (0)
+        ORDER BY id DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="id desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411],pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`id` as `id` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by `id` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`id` desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount
+        FROM pm_order_finish PAGING_FORCE INDEX (iNDX1)
+        WHERE user_id = 43544028
+          AND broker_Id = 0
+          AND s_id+source IN (0)
+        ORDER BY modiFy_time DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411],pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`modify_time` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      SELECT close_amount
+        FROM pm_order_finish PAGING_FORCE INDEX (`iNDX1`)
+        WHERE user_id = 43544028
+          AND broker_Id = 0
+          AND s_id+source IN (0)
+        ORDER BY modiFy_time DESC
+        LIMIT 0, 20;
+    plan: |
+      project(close_amount="close_amount")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411],pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `pm_order_finish0`.`close_amount`, `pm_order_finish0`.`modify_time` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+  - sql: |
+      select y.s_id from (
+        SELECT id + 1 as id,user_id,partition_time
+        FROM pm_order_finish PAGING_FORCE INDEX (indx1)
+        WHERE user_id = 43544028
+          AND broker_id = 0
+          AND s_id+source IN (0)
+        ORDER BY modify_time DESC LIMIT 0, 20)  x
+        join pm_order_finish y
+        on x.partition_time = y.partition_time and x.user_id = y.user_id and x.id = y.id;
+    plan: |
+      project(s_id="s_id")
+        bkajoin(condition="user_id = user_id and partition_time = partition_time and id = id", type="inner")
+          mergesort(sort="modify_time desc", offset=?4, fetch=?5)
+            logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411],pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select (`pm_order_finish0`.`id` + ?) as `id`, `pm_order_finish0`.`user_id` as `user_id`, `pm_order_finish0`.`partition_time` as `partition_time`, `pm_order_finish0`.`modify_time` from (select `id`, `user_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` force index(`indx1`) where ((((`s_id` + `source`)) in(?)) and (`user_id` = ?) and (`broker_id` = ?)) order by `modify_time` desc limit (? + ?)) as `t2` inner join `pm_order_finish` as `pm_order_finish0` on ((`t2`.`id` = `pm_order_finish0`.`id`) and (`t2`.`user_id` = `pm_order_finish0`.`user_id`) and (`t2`.`partition_time` = `pm_order_finish0`.`partition_time`)) order by `pm_order_finish0`.`modify_time` desc limit (? + ?)")
+          gather(concurrent=true)
+            logicalview(tables="pm_order_finish[p1p202308,p1p202310,p1p202311,...p1p202411]", shardcount=15, sql="select `id`, `user_id`, `s_id`, `partition_time` from `pm_order_finish` as `pm_order_finish` where ((`user_id` = ?) and (((`user_id`, `partition_time`, `id`)) in (...)))")
+  - sql: |
+      select id from t_order paging_force index(auto_shard_key_seller_id)
+      where seller_id= 1 order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?1)
+        logicalview(tables="t_order[p1,p2,p3,p4]", shardcount=4, sql="select `id` from `t_order` as `t_order` force index(`auto_shard_key_seller_id`) where (`seller_id` = ?) order by `id` limit (? + 0)")
+  - sql: |
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where order_id= 1 order by id limit 10,100;
+    plan: |
+      logicalview(tables="t_order[p4],t_order[p4]", sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` = ?) order by `id` limit ? offset ?) as `t3` inner join `t_order` as `t_order0` on ((`t3`.`id` = `t_order0`.`id`) and (`t3`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit ?")
+  - sql: |
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where order_id= 1 order by id limit 10;
+    plan: |
+      logicalview(tables="t_order[p4],t_order[p4]", sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` = ?) order by `id` limit ?) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit ?")
+  - sql: |
+      # and one success
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where order_id is null and id> -1 and order_id = 'tt%' order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?2)
+        logicalview(tables="t_order[],t_order[]", shardcount=0, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where ((`order_id` is null) and (`id` > ?) and (`order_id` = ?)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      # and all fail
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where order_id is null and id> -1 and order_id+id like '%tt%' order by id limit 10;
+    plan: |
+      logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where ((`order_id` is null) and (`id` > ?) and ((`order_id` + `id`) like ?)) order by `id` limit ?) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit ?")
+  - sql: |
+      # or simple
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where order_id= 1 or order_id= 2 order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?2)
+        logicalview(tables="t_order[p1,p4],t_order[p1,p4]", shardcount=2, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` in(?, ?)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      # or complex
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where (order_id= 1 and id = 1)or (order_id= 2 and id = 2) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?4)
+        logicalview(tables="t_order[p1,p4],t_order[p1,p4]", shardcount=2, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (((`order_id` = ?) and (`id` = ?)) or ((`order_id` = ?) and (`id` = ?))) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      # or two success
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where (order_id= 1 and id = 1)or (order_id= 2 and id < order_id) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?3)
+        logicalview(tables="t_order[p1,p4],t_order[p1,p4]", shardcount=2, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (((`order_id` = ?) and (`id` = ?)) or ((`order_id` = ?) and (`id` < `order_id`))) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      # or one success
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where (order_id= 1 and id = 1)or (id < order_id) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?2)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (((`order_id` = ?) and (`id` = ?)) or (`id` < `order_id`)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- binary op two ref
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  id > order_id order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?0)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`id` > `order_id`) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- binary op
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  1 != order_id order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?1)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (? <> `order_id`) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- in
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  not order_id in (1,2,3, null) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?1)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` not in(?)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- in
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  not order_id in (1,2,"3"+1) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?4)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` not in(?, ?, (? + ?))) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- multi in
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  (id,order_id) in ((1,2),(3,2),(3,'g')) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?1)
+        logicalview(tables="t_order[p1],t_order[p1]", sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (((`id`, `order_id`)) in(?)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- multi in
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  (id+1,order_id) in ((1,2),(3,2),(3+5,'g')) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?8)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where ((((`id` + ?), `order_id`)) in((?, ?),(?, ?),((? + ?), ?))) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- multi in
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  (id,order_id+1) in ((1,2),(3,2),(3+5,'g')) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?8)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (((`id`, (`order_id` + ?))) in((?, ?),(?, ?),((? + ?), ?))) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- between
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  order_id between 1 and 2 order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?2)
+        logicalview(tables="t_order[p1,p4],t_order[p1,p4]", shardcount=2, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` between ? and ?) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- between expr 
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  order_id between 1 and 2+1 order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?3)
+        logicalview(tables="t_order[p1,p4],t_order[p1,p4]", shardcount=2, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` between ? and (? + ?)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- is not null
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  order_id is not null order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?0)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` is not null) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- not
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  not (order_id is not null) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?0)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (not (`order_id` is not null)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` = `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- is null
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  not (order_id is null) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?0)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (not (`order_id` is null)) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- is null
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  (order_id is null) order by id limit 10;
+    plan: |
+      logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` is null) order by `id` limit ?) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit ?")
+  - sql: |
+      -- <=>
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  (order_id <=> 1) order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?1)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` <=> ?) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      -- like
+      select id from t_order paging_force index(auto_shard_key_order_id)
+      where  (order_id like "tt%") order by id limit 10;
+    plan: |
+      mergesort(sort="id asc", offset=0, fetch=?1)
+        logicalview(tables="t_order[p1,p2,p3,p4],t_order[p1,p2,p3,p4]", shardcount=4, sql="select `t_order0`.`id` as `id` from (select `id`, `order_id` from `t_order` as `t_order` force index(`auto_shard_key_order_id`) where (`order_id` like ?) order by `id` limit (? + 0)) as `t2` inner join `t_order` as `t_order0` on ((`t2`.`id` = `t_order0`.`id`) and (`t2`.`order_id` <=> `t_order0`.`order_id`)) order by `t_order0`.`id` limit (? + 0)")
+  - sql: |
+      select id from t_order paging_force index(auto_shard_key_buyer_id)
+      where buyer_id= 1 order by id limit 10;
+    plan: |
+      indexscan(tables="g_i_buyer[p4],g_i_buyer[p4]", sql="select `g_i_buyer0`.`id` as `id` from (select `id`, `buyer_id` from `g_i_buyer` as `g_i_buyer` force index(`auto_shard_key_buyer_id`) where (`buyer_id` = ?) order by `id` limit ?) as `t2` inner join `g_i_buyer` as `g_i_buyer0` on ((`t2`.`id` = `g_i_buyer0`.`id`) and (`t2`.`buyer_id` = `g_i_buyer0`.`buyer_id`)) order by `g_i_buyer0`.`id` limit ?")
+  - sql: |
+      select id from t_order_multi_sk paging_force index(auto_shard_key_order_id)
+      where order_id= 1 and buyer_id=2 order by id limit 10;
+    plan: |
+      logicalview(tables="t_order_multi_sk[p4],t_order_multi_sk[p4]", sql="select `t_order_multi_sk0`.`id` as `id` from (select `buyer_id`, `id`, `order_id` from `t_order_multi_sk` as `t_order_multi_sk` force index(`auto_shard_key_order_id`) where ((`order_id` = ?) and (`buyer_id` = ?)) order by `id` limit ?) as `t2` inner join `t_order_multi_sk` as `t_order_multi_sk0` on ((`t2`.`buyer_id` = `t_order_multi_sk0`.`buyer_id`) and (`t2`.`id` = `t_order_multi_sk0`.`id`) and (`t2`.`order_id` = `t_order_multi_sk0`.`order_id`)) order by `t_order_multi_sk0`.`id` limit ?")
+DDL:
+  t_order:
+    CREATE TABLE `t_order` (
+    `id` bigint(11) NOT NULL AUTO_INCREMENT,
+    `order_id` int(20) DEFAULT NULL,
+    `buyer_id` int(20) NOT NULL,
+    `seller_id` int(20) DEFAULT NULL,
+    `product_id` int(20) DEFAULT NULL,
+    `extra_id` int(20) DEFAULT NULL,
+    `order_snapshot` longtext,
+    `order_detail` longtext,
+    PRIMARY KEY (`id`),
+    KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+    KEY `auto_shard_key_buyer_id` USING BTREE (`buyer_id`),
+    KEY `auto_shard_key_seller_id` USING BTREE (`seller_id`),
+    global INDEX `g_i_buyer`(`buyer_id`) partition by key(`buyer_id`) PARTITIONS 4,
+    global INDEX `g_i_seller`(`seller_id`) partition by key(`seller_id`) PARTITIONS 4
+    ) ENGINE = InnoDB partition by key(`order_id`) PARTITIONS 4
+  t_order_multi_sk:
+    CREATE TABLE `t_order_multi_sk` (
+    `id` bigint(11) NOT NULL AUTO_INCREMENT,
+    `order_id` int(20) DEFAULT NULL,
+    `buyer_id` int(20) NOT NULL,
+    `seller_id` int(20) DEFAULT NULL,
+    `product_id` int(20) DEFAULT NULL,
+    `extra_id` int(20) DEFAULT NULL,
+    `order_snapshot` longtext,
+    `order_detail` longtext,
+    PRIMARY KEY (`id`, `buyer_id`),
+    KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+    KEY `auto_shard_key_buyer_id` USING BTREE (`buyer_id`)
+    ) ENGINE = InnoDB partition by key(`order_id`, `buyer_id`) PARTITIONS 4
+  pm_order_finish:
+    CREATE TABLE `pm_order_finish` (
+    `id` bigint(20) NOT NULL,
+    `user_id` bigint(20) NOT NULL,
+    `broker_id` int(11) NOT NULL DEFAULT '0',
+    `s_id` bigint(20) DEFAULT '0',
+    `biz_id` tinyint(4) NOT NULL,
+    `index_id` int(11) NOT NULL DEFAULT '0',
+    `instrument_id` bigint(20) NOT NULL,
+    `side` tinyint(4) NOT NULL,
+    `direction` tinyint(4) NOT NULL DEFAULT '0',
+    `margin_mode` tinyint(4) NOT NULL,
+    `price` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `handicapBest_price` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `amount` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `deal_amount` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `price_avg` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `close_amount` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `avg_cost` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `leverage` decimal(16, 8) NOT NULL DEFAULT '0.00000000',
+    `order_type` tinyint(4) NOT NULL,
+    `system_type` tinyint(4) NOT NULL DEFAULT '0',
+    `reduce_only` tinyint(1) NOT NULL,
+    `status` tinyint(4) NOT NULL,
+    `fee` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `fee_rate` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `rebate` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `source` tinyint(4) NOT NULL,
+    `cancel_source` tinyint(4) NOT NULL DEFAULT '0',
+    `close_profit` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `client_oid` varchar(64) DEFAULT NULL,
+    `tag` varchar(32) DEFAULT NULL,
+    `refer_id` bigint(20) NOT NULL DEFAULT '0',
+    `margin_coin_id` int(11) DEFAULT NULL,
+    `last_fill_id` bigint(20) DEFAULT '0',
+    `last_fill_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    `last_fill_size` decimal(32, 16) DEFAULT '0.0000000000000000',
+    `last_fill_time` bigint(20) DEFAULT '0',
+    `contract_val` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `multiplier` decimal(16, 4) NOT NULL DEFAULT '1.0000',
+    `liquidate_price` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `maintenance_ratio` decimal(16, 8) NOT NULL DEFAULT '0.00000000',
+    `unit_buffer` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `unit_treasury` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `remark` varchar(64) DEFAULT NULL,
+    `cost` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `tp_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    `tp_trigger_type` tinyint(4) NOT NULL DEFAULT '0',
+    `tp_trigger_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    `sl_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    `sl_trigger_type` tinyint(4) NOT NULL DEFAULT '0',
+    `sl_trigger_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    `stop_type` tinyint(4) NOT NULL DEFAULT '0',
+    `stop_order_type` tinyint(4) NOT NULL DEFAULT '0',
+    `sl_stop_order_type` tinyint(4) NOT NULL DEFAULT '0',
+    `tp_mode` tinyint(4) NOT NULL DEFAULT '0',
+    `ip` varchar(128) DEFAULT '',
+    `delta_type` tinyint(4) NOT NULL DEFAULT '0',
+    `trigger_target` tinyint(4) NOT NULL DEFAULT '0',
+    `options_medium_coin_amount` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `clq_req_id` bigint(20) DEFAULT '0',
+    `quick_margin_type` tinyint(4) NOT NULL DEFAULT '0',
+    `sort_id` bigint(20) DEFAULT '0',
+    `algo_client_oid` varchar(64) DEFAULT NULL,
+    `algo_id` varchar(64) DEFAULT NULL,
+    `stp_id` int(11) NOT NULL DEFAULT '0',
+    `stp_mode` tinyint(4) NOT NULL DEFAULT '0',
+    `attach_algo_client_oid` varchar(64) DEFAULT NULL,
+    `px_vol` decimal(16, 8) NOT NULL DEFAULT '0.00000000',
+    `px_usd` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `attach_order_stop_list` text,
+    `linked_algo_order_id` bigint(20) NOT NULL DEFAULT '0',
+    `extend_status_flag` int(11) NOT NULL DEFAULT '0',
+    `ext` json DEFAULT NULL,
+    `attachAlgoOrds` json DEFAULT NULL,
+    `partition_time` datetime(3) NOT NULL,
+    `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modified_at` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    `create_time` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modify_time` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `amend_px_on_trigger_type` int(11) DEFAULT NULL,
+    `deal_avg_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    PRIMARY KEY (`id`),
+    LOCAL KEY `idx_modified_at` (`modified_at`),
+    LOCAL KEY `indx1` (`user_id`, `id`, `broker_id`, `instrument_id`, `biz_id`, `order_type`, `system_type`, `client_oid`, `source`, `create_time`, `modify_time`, `partition_time`, `s_id`),
+    LOCAL KEY `indx4` (`user_id`, `client_oid`, `id`, `broker_id`, `instrument_id`, `biz_id`, `order_type`, `system_type`, `source`, `create_time`, `modify_time`, `partition_time`, `s_id`),
+    LOCAL KEY `indx3` (`user_id`, `biz_id`, `id`, `broker_id`, `instrument_id`, `order_type`, `system_type`, `client_oid`, `create_time`, `modify_time`, `partition_time`, `s_id`),
+    LOCAL KEY `idx_system_biz` (`user_id`, `biz_id`, `system_type`, `id`, `broker_id`, `instrument_id`, `order_type`, `source`, `client_oid`, `create_time`, `modify_time`, `partition_time`, `s_id`),
+    LOCAL KEY `auto_shard_key_partition_time` USING BTREE (`partition_time`)
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+    PARTITION BY KEY(`user_id`)
+    PARTITIONS 4
+    SUBPARTITION BY RANGE(TO_DAYS(`partition_time`))
+    (SUBPARTITION `p202308` VALUES LESS THAN (739129),
+    SUBPARTITION `p202310` VALUES LESS THAN (739190),
+    SUBPARTITION `p202311` VALUES LESS THAN (739220),
+    SUBPARTITION `p202312` VALUES LESS THAN (739251),
+    SUBPARTITION `p202401` VALUES LESS THAN (739282),
+    SUBPARTITION `p202402` VALUES LESS THAN (739311),
+    SUBPARTITION `p202403` VALUES LESS THAN (739342),
+    SUBPARTITION `p202404` VALUES LESS THAN (739372),
+    SUBPARTITION `p202405` VALUES LESS THAN (739403),
+    SUBPARTITION `p202406` VALUES LESS THAN (739433),
+    SUBPARTITION `p202407` VALUES LESS THAN (739464),
+    SUBPARTITION `p202408` VALUES LESS THAN (739495),
+    SUBPARTITION `p202409` VALUES LESS THAN (739525),
+    SUBPARTITION `p202410` VALUES LESS THAN (739556),
+    SUBPARTITION `p202411` VALUES LESS THAN (739586))
+STATISTICS:
+  pm_order_finish:
+    100
+CONFIG:
+  defaltxxAPPName.isNew:
+    true

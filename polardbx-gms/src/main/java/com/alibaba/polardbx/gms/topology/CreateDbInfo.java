@@ -77,6 +77,36 @@ public class CreateDbInfo {
 
     protected List<CreatedDbHookFunc> createdDbHookFuncList = new ArrayList<>();
 
+    protected Long connId = null;
+
+    protected String traceId = null;
+
+    protected DatabaseDdlContext ddlContext = null;
+
+    public Long getConnId() {
+        return connId;
+    }
+
+    public void setConnId(Long connId) {
+        this.connId = connId;
+    }
+
+    public DatabaseDdlContext getDdlContext() {
+        return ddlContext;
+    }
+
+    public void setDdlContext(DatabaseDdlContext ddlContext) {
+        this.ddlContext = ddlContext;
+    }
+
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
+    }
+
     /**
      * The hook function callback to refresh memory only alter finishing creating db
      */

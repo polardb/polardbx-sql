@@ -33,6 +33,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLDecimalExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNullExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNumberExpr;
@@ -150,6 +151,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeRecyclebinStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLRefreshMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLReleaseSavePointStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplaceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLReturnStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLRevokeStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLRollbackStatement;
@@ -276,6 +278,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSlowSqlCcl
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateExternalCatalogStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlExplainPlanCacheStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlManageInstanceGroupStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
@@ -866,7 +869,7 @@ public class SQLStatementParser extends SQLParser {
                 continue;
             }
 
-            if(lexer.identifierEquals("RESUME")) {
+            if (lexer.identifierEquals("RESUME")) {
                 SQLStatement stmt = parseResume();
                 statementList.add(stmt);
                 stmt.setParent(parent);
@@ -6883,7 +6886,7 @@ public class SQLStatementParser extends SQLParser {
                     }
 
                     if (lexer.token == Token.COMMA) {
-                        valueExprList.add(expr);
+                        addVal(valueExprList, expr, parent);
 
                         if (lexer.ch == '\'') { // for performance
                             lexer.bufPos = 0;
@@ -6912,7 +6915,7 @@ public class SQLStatementParser extends SQLParser {
                         }
                         continue;
                     } else if (lexer.token == Token.RPAREN) {
-                        valueExprList.add(expr);
+                        addVal(valueExprList, expr, parent);
                         break;
                     } else {
                         expr = this.exprParser.primaryRest(expr);
@@ -6921,7 +6924,7 @@ public class SQLStatementParser extends SQLParser {
                         }
                         expr.setParent(values);
 
-                        valueExprList.add(expr);
+                        addVal(valueExprList, expr, parent);
                         if (lexer.token == Token.COMMA) {
                             lexer.nextTokenValue();
                             continue;
@@ -6960,6 +6963,28 @@ public class SQLStatementParser extends SQLParser {
                 continue;
             } else {
                 break;
+            }
+        }
+    }
+
+    private void addVal(List valueExprList, SQLExpr expr, SQLObject parent) {
+        if (valueExprList == null || expr == null) {
+            return;
+        }
+        valueExprList.add(expr);
+
+        if (expr instanceof SQLMethodInvokeExpr &&
+            ((SQLMethodInvokeExpr) expr).getArguments().size() > 0) {
+            if (parent instanceof MySqlInsertStatement) {
+                ((MySqlInsertStatement) parent).setHasArgsInFunction(true);
+            } else if (parent instanceof SQLReplaceStatement) {
+                ((SQLReplaceStatement) parent).setHasArgsInFunction(true);
+            }
+        } else if (expr instanceof SQLQueryExpr) {
+            if (parent instanceof MySqlInsertStatement) {
+                ((MySqlInsertStatement) parent).setHasArgsInFunction(true);
+            } else if (parent instanceof SQLReplaceStatement) {
+                ((SQLReplaceStatement) parent).setHasArgsInFunction(true);
             }
         }
     }

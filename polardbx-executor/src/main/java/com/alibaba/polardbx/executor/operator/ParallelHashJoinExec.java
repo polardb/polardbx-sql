@@ -63,7 +63,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
     private boolean finished;
     private ListenableFuture<?> blocked;
     private int buildChunkSize = 0;
-    private int operatorIndex = -1;
+    private final int operatorIndex;
     private boolean probeInputIsFinish = false;
 
     public ParallelHashJoinExec(Synchronizer synchronizer,
@@ -847,10 +847,10 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
 
     @Override
     public void doOpen() {
-        if (!passThrough && passNothing) {
-            //避免初始化probe side, minor optimizer
-            return;
-        }
+//        if (!passThrough && passNothing) {
+            // TODO 避免初始化probe side
+//            return;
+//        }
         super.doOpen();
     }
 
@@ -918,11 +918,10 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
 
     @Override
     public boolean nextJoinNullRows() {
-        synchronized (shared) {
-            if (!shared.operatorIds.isEmpty()) {
-                return false;
-            }
+        if (!shared.operatorIdBitmap.isEmpty()) {
+            return false;
         }
+
         int matchedPosition = shared.nextUnmatchedPosition();
         if (matchedPosition == -1) {
             return false;

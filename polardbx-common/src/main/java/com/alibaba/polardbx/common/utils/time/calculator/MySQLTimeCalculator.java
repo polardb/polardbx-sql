@@ -68,7 +68,7 @@ public class MySQLTimeCalculator {
         return timeTruncate(t, decimal);
     }
 
-    private static MysqlDateTime timeTruncate(MysqlDateTime t, int decimals) {
+    public static MysqlDateTime timeTruncate(MysqlDateTime t, int decimals) {
         if (t == null) {
             return null;
         }

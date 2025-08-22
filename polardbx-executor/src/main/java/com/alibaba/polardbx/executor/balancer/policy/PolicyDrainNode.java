@@ -20,7 +20,6 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.fastjson.annotation.JSONField;
-import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -44,6 +43,7 @@ import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.ActionWriteDataDistLog;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
 import com.alibaba.polardbx.executor.balancer.action.DropPhysicalDbTask;
+import com.alibaba.polardbx.executor.balancer.action.EventLogger;
 import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
 import com.alibaba.polardbx.executor.balancer.solver.MixedModel;
 import com.alibaba.polardbx.executor.balancer.solver.Solution;
@@ -118,6 +118,9 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_INVALID_DDL_PARAMS;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_TABLEGROUP_SOLVED_BY_LP;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_UNIT_PARTITION_COUNT;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_UNIT_SIZE;
 import static com.alibaba.polardbx.executor.balancer.policy.PolicyPartitionBalance.MAX_TABLEGROUP_SOLVED_BY_LP;
 import static com.alibaba.polardbx.executor.balancer.policy.PolicyUtils.getGroupDetails;
@@ -392,6 +395,15 @@ public class PolicyDrainNode implements BalancePolicy {
             return Lists.newArrayList();
         }
 
+        String logInfo =
+            String.format(
+                "[schema %s, drds mode] total %d groups,  policy = %s, generate %d actions", schemaName,
+                groupList.size(),
+                options.policy,
+                actions.size()
+            );
+        EventLogger.log(EventType.REBALANCE_INFO, logInfo);
+
         // lock
         final String name = ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, schemaName);
         final String schemaXLock = schemaName;
@@ -547,6 +559,7 @@ public class PolicyDrainNode implements BalancePolicy {
 
         DrainNodeInfo drainNodeInfo = DrainNodeInfo.parse(options.drainNode);
         doValidate(drainNodeInfo);
+        int maxTableGroupSolvedByLp = ec.getParamManager().getInt(REBALANCE_MAX_TABLEGROUP_SOLVED_BY_LP);
         // 1. Get groupMap here from schemaName and storagePoolName.
         StoragePoolManager storagePoolManager = StoragePoolManager.getInstance();
         List<String> storageInstIds = storagePoolManager.getStoragePoolInfo(storagePoolName).getDnLists();
@@ -729,7 +742,7 @@ public class PolicyDrainNode implements BalancePolicy {
 
             Solution solution = null;
             // TODO: while select drain node index is empty.
-            if (k < MAX_TABLEGROUP_SOLVED_BY_LP) {
+            if (k < maxTableGroupSolvedByLp) {
                 solution = MixedModel.solveMovePartition(m, N, originalPlace, partitionSize, drainNodeIndexes);
             } else {
                 solution = MixedModel.solveMovePartitionByGreedy(m, N, originalPlace, partitionSize, drainNodeIndexes);
@@ -1670,6 +1683,7 @@ public class PolicyDrainNode implements BalancePolicy {
             return applyToPartitionDbDrainStoragePool(ec, options, stats, schemaName, drainNodeInfo, drainStoragePool);
 
         }
+        int maxTableGroupSolvedByLp = ec.getParamManager().getInt(REBALANCE_MAX_TABLEGROUP_SOLVED_BY_LP);
 
         Map<String, String> groupToInst = Maps.newHashMap();
         List<PolicyDrainNode.DnDiskInfo> dnDiskInfo = DnDiskInfo.parseToList(options.diskInfo);
@@ -1795,6 +1809,8 @@ public class PolicyDrainNode implements BalancePolicy {
             || drainNodeIndexSet.isEmpty()) {
             EventLogger.log(EventType.DDL_WARN,
                 "drain node contains wrong storage_inst_id: " + drainNodeInfo.getDnInstIdList().toString());
+            throw new TddlRuntimeException(ERR_INVALID_DDL_PARAMS,
+                "drain node contains wrong storage_inst_id: " + drainNodeInfo.getDnInstIdList().toString());
         } else {
             int[] drainNodeIndexes = drainNodeIndexSet.stream().mapToInt(o -> o).toArray();
 
@@ -1839,7 +1855,7 @@ public class PolicyDrainNode implements BalancePolicy {
                 if (toRebalanceSequentialTg.contains(tableGroupNames.get(k))) {
                     solution =
                         MixedModel.solveMoveSequentialPartition(M, N, originalPlace, partitionSize, drainNodeIndexes);
-                } else if (k < MAX_TABLEGROUP_SOLVED_BY_LP) {
+                } else if (k < maxTableGroupSolvedByLp) {
                     solution =
                         MixedModel.solveMovePartition(M, N, originalPlace, partitionSize, solveLevel, drainNodeIndexes);
                 } else {
@@ -1886,6 +1902,7 @@ public class PolicyDrainNode implements BalancePolicy {
                 Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
             );
             long maxTaskUnitSize = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_SIZE);
+            long maxPartitionCount = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_PARTITION_COUNT);
             if (maxTaskUnitSize < 1024) {
                 maxTaskUnitSize = options.maxTaskUnitSize;
             }
@@ -1893,7 +1910,8 @@ public class PolicyDrainNode implements BalancePolicy {
             for (String tgName : movesGroupByTg.keySet()) {
                 List<PolicyPartitionBalance.MoveInfo> movesGroup = movesGroupByTg.get(tgName);
                 List<ActionMovePartitions> movePartitionsList =
-                    PolicyPartitionBalance.shuffleToGroup(schemaName, movesGroup, maxTaskUnitSize, stats);
+                    PolicyPartitionBalance.shuffleToGroup(schemaName, movesGroup, maxTaskUnitSize, maxPartitionCount,
+                        stats);
                 moveDataActions.addAll(movePartitionsList);
             }
             String distLogInfo =

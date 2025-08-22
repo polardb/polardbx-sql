@@ -1,6 +1,5 @@
 package com.alibaba.polardbx.transfer.plugin;
 
-import com.alibaba.polardbx.qatest.columnar.dql.ColumnarUtils;
 import com.alibaba.polardbx.transfer.config.TomlConfig;
 import com.alibaba.polardbx.transfer.utils.AllTypesTestUtils;
 import com.moandjiezana.toml.Toml;
@@ -106,7 +105,7 @@ public class AllTypesCheckColumnarPlugin extends BasePlugin {
             checkResults.clear();
             getConnectionAndExecute(dsn, (conn, error) -> {
                 try (Statement stmt = conn.createStatement()) {
-                    long currentTso = ColumnarUtils.columnarFlushAndGetTso(stmt);
+                    long currentTso = columnarFlushAndGetTso(stmt);
                     if (currentTso > lastTso) {
                         lastTsoMap.put(Thread.currentThread().getId(), currentTso);
                         String checkSql = "CHECK COLUMNAR INDEX "
@@ -134,7 +133,7 @@ public class AllTypesCheckColumnarPlugin extends BasePlugin {
             checkResults.clear();
             getConnectionAndExecute(dsn, (conn, error) -> {
                 try (Statement stmt = conn.createStatement()) {
-                    long currentTso = ColumnarUtils.columnarFlushAndGetTso(stmt);
+                    long currentTso = columnarFlushAndGetTso(stmt);
                     if (currentTso > lastTso) {
                         lastTsoMap.put(Thread.currentThread().getId(), currentTso);
                         String checkSql = "/*+TDDL:ENABLE_CCI_FAST_CHECKER=true */ CHECK COLUMNAR INDEX "
@@ -162,7 +161,7 @@ public class AllTypesCheckColumnarPlugin extends BasePlugin {
             checkResults.clear();
             getConnectionAndExecute(dsn, (conn, error) -> {
                 try (Statement stmt = conn.createStatement()) {
-                    long currentTso = ColumnarUtils.columnarFlushAndGetTso(stmt);
+                    long currentTso = columnarFlushAndGetTso(stmt);
                     if (currentTso > lastTso) {
                         lastTsoMap.put(Thread.currentThread().getId(), currentTso);
                         String checkSql = "/*+TDDL:ENABLE_CCI_FAST_CHECKER=false */ CHECK COLUMNAR INDEX "
@@ -183,6 +182,15 @@ public class AllTypesCheckColumnarPlugin extends BasePlugin {
             if (checkResults.isEmpty() || !checkResults.get(0).startsWith("OK")) {
                 errorAllTypesTest1(checkResults, "Cci increment checker failed.");
             }
+        }
+    }
+
+    static private long columnarFlushAndGetTso(Statement stmt) throws SQLException {
+        ResultSet rs = stmt.executeQuery("call polardbx.columnar_flush()");
+        if (rs.next()) {
+            return rs.getLong(1);
+        } else {
+            return -1;
         }
     }
 }

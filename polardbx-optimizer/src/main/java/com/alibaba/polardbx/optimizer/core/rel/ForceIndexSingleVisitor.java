@@ -209,7 +209,10 @@ public class ForceIndexSingleVisitor extends SqlShuttle {
                 // For case "count(0) AS count", we should visit "count(0)", i.e., the left operand.
                 visit((SqlCall) call.getOperandList().get(0));
             } else if (kind == SqlKind.COUNT || kind == SqlKind.SUM || SqlKind.AVG_AGG_FUNCTIONS.contains(kind)) {
-                found = true;
+                if (null == call.getFunctionQuantifier() ||
+                    !"DISTINCT".equalsIgnoreCase(call.getFunctionQuantifier().toValue())) {
+                    found = true;
+                }
             } else if (SqlKind.MIN_MAX_AGG.contains(kind) && operandList.get(0) instanceof SqlIdentifier) {
                 // For case "min/max(col)".
                 final String columnName = ((SqlIdentifier) operandList.get(0)).getLastName();

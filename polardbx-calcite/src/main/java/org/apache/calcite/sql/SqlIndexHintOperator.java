@@ -125,6 +125,10 @@ public class SqlIndexHintOperator extends SqlSpecialOperator {
           // force index only support one index
           break;
         }
+        if(Objects.equals(value0, "FORCE PAGING_INDEX")){
+          // force index only support one index
+          break;
+        }
         if (i != sqlNodeList.size() - 1) {
           writer.sep(",");
         }

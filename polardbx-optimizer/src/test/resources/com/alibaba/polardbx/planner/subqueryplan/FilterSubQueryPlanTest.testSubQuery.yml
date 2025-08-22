@@ -383,49 +383,51 @@
 
   plan: |
 
-    project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col41", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col40", int_col50="int_col5", int_col60="int_col6")
-      bkajoin(condition="int_col40 = id and int_col4 = id and int_col1 > sum(int_col2)", type="inner")
-        bkajoin(condition="int_col4 = int_col4", type="inner")
+    project(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col40", int_col5="int_col5", int_col6="int_col6", id0="id0", name0="name0", create_time0="create_time0", int_col10="int_col10", int_col20="int_col20", int_col30="int_col30", int_col40="int_col41", int_col50="int_col50", int_col60="int_col60")
+      bkajoin(condition="int_col4 = int_col4 and int_col4 = id", type="inner")
+        bkajoin(condition="int_col4 = id and int_col1 > sum(int_col2)", type="inner")
           hashagg(group="int_col4", sum(int_col2)="sum(sum(int_col2))")
             gather(concurrent=true)
               logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4`, sum(`int_col2`) as `sum(int_col2)` from `test_hash_tb2` as `test_hash_tb2` group by `int_col4`")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
 
 - sql: |
     SELECT * FROM test_hash_tb a,test_hash_tb2 b WHERE a.id=b.int_col4 and a.int_col1 > (SELECT sum(int_col2) FROM test_hash_tb2 c WHERE a.id = c.int_col4 and c.name!='a') and b.name!='a'
 
 
   plan: |
-    project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col41", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col40", int_col50="int_col5", int_col60="int_col6")
-      bkajoin(condition="int_col40 = id and int_col4 = id and int_col1 > sum(int_col2)", type="inner")
-        bkajoin(condition="int_col4 = int_col4", type="inner")
+    
+    project(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col40", int_col5="int_col5", int_col6="int_col6", id0="id0", name0="name0", create_time0="create_time0", int_col10="int_col10", int_col20="int_col20", int_col30="int_col30", int_col40="int_col41", int_col50="int_col50", int_col60="int_col60")
+      bkajoin(condition="int_col4 = int_col4 and int_col4 = id", type="inner")
+        bkajoin(condition="int_col4 = id and int_col1 > sum(int_col2)", type="inner")
           hashagg(group="int_col4", sum(int_col2)="sum(sum(int_col2))")
             gather(concurrent=true)
               logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4`, sum(`int_col2`) as `sum(int_col2)` from `test_hash_tb2` as `test_hash_tb2` where (`name` <> 'a') group by `int_col4`")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
 
 - sql: |
     SELECT * FROM test_hash_tb a,test_hash_tb2 b WHERE a.id=b.int_col4 and a.int_col1 > (SELECT sum(int_col2) FROM test_hash_tb2 c WHERE a.id = c.int_col4 and c.name!='c') and b.name!='a'
 
 
   plan: |
-
-    project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col41", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col40", int_col50="int_col5", int_col60="int_col6")
-      bkajoin(condition="int_col40 = id and int_col4 = id and int_col1 > sum(int_col2)", type="inner")
-        bkajoin(condition="int_col4 = int_col4", type="inner")
+    
+    project(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col40", int_col5="int_col5", int_col6="int_col6", id0="id0", name0="name0", create_time0="create_time0", int_col10="int_col10", int_col20="int_col20", int_col30="int_col30", int_col40="int_col41", int_col50="int_col50", int_col60="int_col60")
+      bkajoin(condition="int_col4 = int_col4 and int_col4 = id", type="inner")
+        bkajoin(condition="int_col4 = id and int_col1 > sum(int_col2)", type="inner")
           hashagg(group="int_col4", sum(int_col2)="sum(sum(int_col2))")
             gather(concurrent=true)
               logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4`, sum(`int_col2`) as `sum(int_col2)` from `test_hash_tb2` as `test_hash_tb2` where (`name` <> 'c') group by `int_col4`")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
+
 - sql: |
     /*+TDDL:cmd_extra(WINDOW_FUNC_SUBQUERY_CONDITION=true)*/SELECT * FROM test_hash_tb a,test_hash_tb2 b WHERE a.id=b.int_col4 and a.int_col1 > (SELECT sum(int_col2) FROM test_hash_tb2 c WHERE a.id = c.int_col4 and c.name!='a') and b.name!='a'
 
@@ -446,16 +448,19 @@
 
   plan: |
 
-    project(id="id0", name="name0", create_time="create_time0", int_col1="int_col10", int_col2="int_col20", int_col3="int_col30", int_col4="int_col41", int_col5="int_col50", int_col6="int_col60", id0="id", name0="name", create_time0="create_time", int_col10="int_col1", int_col20="int_col2", int_col30="int_col3", int_col40="int_col40", int_col50="int_col5", int_col60="int_col6")
-      bkajoin(condition="int_col40 = id and int_col4 = id and int_col1 > sum(int_col2)", type="inner")
-        bkajoin(condition="int_col4 = int_col4", type="inner")
+    project(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col40", int_col5="int_col5", int_col6="int_col6", id0="id0", name0="name0", create_time0="create_time0", int_col10="int_col10", int_col20="int_col20", int_col30="int_col30", int_col40="int_col41", int_col50="int_col50", int_col60="int_col60")
+      bkajoin(condition="int_col4 = int_col4 and int_col4 = id", type="inner")
+        bkajoin(condition="int_col4 = id and int_col1 > sum(int_col2)", type="inner")
           hashagg(group="int_col4", sum(int_col2)="sum(sum(int_col2))")
             gather(concurrent=true)
               logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4`, sum(`int_col2`) as `sum(int_col2)` from `test_hash_tb2` as `test_hash_tb2` where (`name` <> 'c') group by `int_col4`")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2` where ((`name` <> 'a') and (`int_col4` in (...)))")
+
+
+
 
 - sql: |
     /*+TDDL:cmd_extra(WINDOW_FUNC_SUBQUERY_CONDITION=true)*/SELECT * FROM test_hash_tb a,test_hash_tb2 b WHERE a.id=b.int_col4 and a.int_col1 > (SELECT sum(int_col2) FROM test_hash_tb2 c WHERE a.id = c.int_col4 and c.name!='e' and c.name!='c') and b.name!='c' and b.name!='e'

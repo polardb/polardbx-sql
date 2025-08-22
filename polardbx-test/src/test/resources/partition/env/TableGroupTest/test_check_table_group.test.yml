@@ -1,0 +1,49 @@
+create tablegroup tgc1;
+CREATE TABLE `t1` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 4
+TABLEGROUP = tgc1;
+
+CREATE TABLE `t2` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 4
+TABLEGROUP = tgc1;
+
+CREATE TABLE `t3` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 4
+TABLEGROUP = tgc1;
+
+create tablegroup tgc2;
+CREATE TABLE `t4` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 5
+TABLEGROUP = tgc2;
+
+check tablegroup tgc1;
+check tablegroup tgc2;
+check tablegroup where tablegroup='tgc1';
+check tablegroup where tablegroup='tgc2';
+check tablegroup order by tablegroup;
+check tablegroup order by tablegroup desc;
+check tablegroup order by tablegroup limit 1;
+check tablegroup order by tablegroup limit 1,1;
+check tablegroup where tablegroup='tgc1' order by tablegroup;
+check tablegroup where total_tables > 1;
+check tablegroup where total_tables > 1 order by tablegroup;
+check tablegroup where total_tables > 0 order by tablegroup limit 1;
+check tablegroup where match_tables > 1;
+check tablegroup where match_tables > 1 order by tablegroup;
+check tablegroup where match_tables > 0 order by tablegroup limit 1;

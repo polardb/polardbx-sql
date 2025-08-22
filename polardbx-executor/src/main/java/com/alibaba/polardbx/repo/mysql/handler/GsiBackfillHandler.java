@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MetricLevel;
@@ -136,6 +138,9 @@ public class GsiBackfillHandler extends HandlerCommon {
         // Check GSI immediately after creation by default.
         final ParamManager pm = executionContext.getParamManager();
         boolean check = pm.getBoolean(ConnectionParams.GSI_CHECK_AFTER_CREATION) && !useChangeSet;
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ROLLBACK_ON_CHECKER)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " force rollback on checker!");
+        }
         if (!check) {
             return new AffectRowCursor(affectRows);
         }

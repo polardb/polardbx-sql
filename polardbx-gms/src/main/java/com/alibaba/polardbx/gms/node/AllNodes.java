@@ -149,6 +149,51 @@ public class AllNodes {
         return workers;
     }
 
+    public int getAllWorkerCount(MppScope scope) {
+        int count = 0;
+        switch (scope) {
+        case SLAVE:
+            for (InternalNode node : otherActiveRowNodes) {
+                if (node.isWorker()) {
+                    count++;
+                }
+            }
+            return count;
+        case COLUMNAR:
+            for (InternalNode node : otherActiveColumnarNodes) {
+                if (node.isWorker()) {
+                    count++;
+                }
+            }
+            return count;
+        case CURRENT:
+            for (InternalNode node : activeNodes) {
+                if (node.isWorker()) {
+                    count++;
+                }
+            }
+            break;
+        case ALL:
+            for (InternalNode node : otherActiveColumnarNodes) {
+                if (node.isWorker()) {
+                    count++;
+                }
+            }
+            for (InternalNode node : otherActiveRowNodes) {
+                if (node.isWorker()) {
+                    count++;
+                }
+            }
+            for (InternalNode node : activeNodes) {
+                if (node.isWorker()) {
+                    count++;
+                }
+            }
+            return count;
+        }
+        return count;
+    }
+
     public List<Node> getAllCoordinators() {
         List<Node> coordinators = new ArrayList<>();
         for (Node node : activeNodes) {

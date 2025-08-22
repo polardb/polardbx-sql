@@ -6,11 +6,15 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
 import com.alibaba.polardbx.executor.sync.ColumnarSnapshotUpdateSyncAction;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecordSimplified;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -29,7 +33,9 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -220,7 +226,14 @@ public class ColumnarManagerTest {
             // Initialize columnar manager and set min/latest tso
             DynamicColumnarManager cm = (DynamicColumnarManager) ColumnarManager.getInstance();
 
-            cm.injectForTest(mockFileVersionStorage, mockMultiVersionColumnarSchema, new AtomicLong(0L), null);
+            cm.injectForTest(mockFileVersionStorage, mockMultiVersionColumnarSchema, new AtomicLong(0L),
+                CacheBuilder.newBuilder()
+                    .build(new CacheLoader<Long, Map<String, List<ColumnarAppendedFilesRecord>>>() {
+                        @Override
+                        public Map<String, List<ColumnarAppendedFilesRecord>> load(@NotNull Long tso) {
+                            return new HashMap<>();
+                        }
+                    }), null);
             Assert.assertEquals(minTso, cm.getMinTso().longValue());
             Assert.assertEquals(initTso, cm.latestTso());
 
@@ -304,7 +317,7 @@ public class ColumnarManagerTest {
             // Initialize columnar manager and set min/latest tso
             DynamicColumnarManager cm = (DynamicColumnarManager) ColumnarManager.getInstance();
 
-            cm.injectForTest(mockFileVersionStorage, mockMultiVersionColumnarSchema, new AtomicLong(0), null);
+            cm.injectForTest(mockFileVersionStorage, mockMultiVersionColumnarSchema, new AtomicLong(0), null, null);
             Assert.assertEquals(minTso, cm.getMinTso().longValue());
             Assert.assertEquals(initTso, cm.latestTso());
 

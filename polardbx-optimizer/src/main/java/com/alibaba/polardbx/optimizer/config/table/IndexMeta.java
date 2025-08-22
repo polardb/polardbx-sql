@@ -317,4 +317,8 @@ public class IndexMeta implements Serializable, Cloneable {
         return true;
     }
 
+    public boolean isFullTextIndex() {
+        return indexType == IndexType.FULLTEXT;
+    }
+
 }

@@ -168,6 +168,10 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     private boolean hasConstantFold = false;
 
+    private boolean hasPagingForce = false;
+
+    private boolean hasAutoPagination = false;
+
     private boolean useColumnarPlanCache = false;
 
     private boolean inExprToLookupJoin = false;
@@ -489,6 +493,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
             // Set the maximum number of shards for columnar storage, defaulting to 20
             this.columnarMaxShardCnt = (Integer) extendMap.getOrDefault("columnarMaxShardCnt", 20);
+
+            //this.hasAutoPagination = (Boolean) extendMap.getOrDefault("hasAutoPagination", false);
         } catch (Exception e) {
             // Handle any potential exceptions during conversion
             ModuleLogInfo.getInstance().logRecord(Module.SPM, LogPattern.UNEXPECTED,
@@ -620,12 +626,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.addForcePrimary = addForcePrimary;
     }
 
-    public boolean isEnableSelectStatistics() {
-        return enableSelectStatistics;
-    }
-
-    public void setEnableSelectStatistics(boolean enableSelectStatistics) {
-        this.enableSelectStatistics = enableSelectStatistics;
+    public void setEnableSelectStatistics() {
+        this.enableSelectStatistics = true;
         this.viewMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     }
 
@@ -761,6 +763,22 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     public void setHasConstantFold(boolean hasConstantFold) {
         this.hasConstantFold = hasConstantFold;
+    }
+
+    public boolean isHasPagingForce() {
+        return hasPagingForce;
+    }
+
+    public void setHasPagingForce(boolean hasPagingForce) {
+        this.hasPagingForce = hasPagingForce;
+    }
+
+    public boolean isHasAutoPagination() {
+        return hasAutoPagination;
+    }
+
+    public void setHasAutoPagination(boolean hasAutoPagination) {
+        this.hasAutoPagination = hasAutoPagination;
     }
 
     public boolean hasLocalIndexHint() {

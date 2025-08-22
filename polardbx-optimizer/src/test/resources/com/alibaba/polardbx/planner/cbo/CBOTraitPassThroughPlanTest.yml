@@ -71,7 +71,7 @@
 
 
 - sql: |
-    /*+TDDL:cmd_extra(enable_hash_agg=false,workload_type=ap,enable_mpp=false,enable_cbo_push_agg=false)*/
+    /*+TDDL:cmd_extra(enable_hash_agg=false,workload_type=ap,enable_mpp=false,enable_cbo_push_agg=false,enable_push_topn_and_agg=false)*/
     select o_custkey,o_orderpriority,  count(*) from orders group by o_custkey,o_orderpriority order by o_custkey desc ,o_orderpriority desc  limit 1;
 
   plan: |
@@ -82,7 +82,7 @@
 
 
 - sql: |
-    /*+TDDL:cmd_extra(enable_hash_agg=false,workload_type=ap,enable_mpp=true,enable_cbo_push_agg=false)*/
+    /*+TDDL:cmd_extra(enable_hash_agg=false,workload_type=ap,enable_mpp=true,enable_cbo_push_agg=false,enable_push_topn_and_agg=false)*/
     select o_custkey,o_orderpriority,  count(*) from orders group by o_custkey,o_orderpriority order by o_custkey desc ,o_orderpriority desc  limit 1;
 
   plan: |

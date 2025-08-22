@@ -30,6 +30,7 @@ import lombok.Getter;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -42,6 +43,10 @@ public class RebuildTableCutOverTask extends BaseGmsTask {
     private final boolean autoPartition;
     private final boolean single;
     private final boolean broadcast;
+    private final List<String> addColumns;
+    private final List<String> dropColumns;
+    private final Map<String, String> changeColumnsMap;
+    private final List<String> modifyColumns;
     private final long versionId;
 
     public RebuildTableCutOverTask(final String schemaName,
@@ -50,12 +55,20 @@ public class RebuildTableCutOverTask extends BaseGmsTask {
                                    boolean autoPartition,
                                    boolean single,
                                    boolean broadcast,
+                                   List<String> addColumns,
+                                   List<String> dropColumns,
+                                   Map<String, String> changeColumnsMap,
+                                   List<String> modifyColumns,
                                    long versionId) {
         super(schemaName, logicalTableName);
         this.tableNameMap = tableNameMap;
         this.autoPartition = autoPartition;
         this.single = single;
         this.broadcast = broadcast;
+        this.addColumns = addColumns;
+        this.dropColumns = dropColumns;
+        this.changeColumnsMap = changeColumnsMap;
+        this.modifyColumns = modifyColumns;
         this.versionId = versionId;
         onExceptionTryRollback();
     }
@@ -83,6 +96,10 @@ public class RebuildTableCutOverTask extends BaseGmsTask {
             autoPartition,
             single,
             broadcast,
+            addColumns,
+            dropColumns,
+            changeColumnsMap,
+            modifyColumns,
             versionId,
             jobId
         );

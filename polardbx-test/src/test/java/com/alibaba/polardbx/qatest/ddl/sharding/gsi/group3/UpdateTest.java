@@ -21,7 +21,6 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.hamcrest.Matchers;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -896,7 +895,9 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         // write only
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateSql, "trace " + hint + updateSql, null, true);
@@ -910,7 +911,9 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
 
         org.junit.Assert.assertThat(trace2.size(), Matchers.is(1 + 2 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }

@@ -792,10 +792,13 @@ public class CBOUtil {
         }
     }
 
-    public static RelNode optimizeByPullProject(RelNode input, PlannerContext plannerContext) {
+    public static RelNode optimizeByColumnarPostRBO(RelNode input, PlannerContext plannerContext) {
         if (!plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_PULL_UP_PROJECT)) {
             return input;
         }
+        plannerContext.getCalcitePlanOptimizerTrace()
+            .ifPresent(x -> x.addSnapshot("Columnar Post RBO", input, plannerContext));
+
         HepProgramBuilder builder = new HepProgramBuilder();
 
         builder.addGroupBegin();

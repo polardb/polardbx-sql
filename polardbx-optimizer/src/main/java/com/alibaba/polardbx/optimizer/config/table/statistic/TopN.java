@@ -346,7 +346,7 @@ public class TopN {
         topNJson.put("sampleRate", topN.sampleRate);
         topNJson.put("valueArr", valueJsonArray);
         topNJson.put("countArr", countJsonArray);
-        return topNJson.toString(SerializerFeature.DisableCircularReferenceDetect);
+        return topNJson.toJSONString();
     }
 
     public static TopN deserializeFromJson(String json) {
@@ -367,7 +367,6 @@ public class TopN {
         try {
             validateTopNValues(valueArr);
         } catch (IllegalArgumentException e) {
-            logger.error("validateBucketBounds error ", e);
             return null;
         }
         Object[] countObjArr = countJsonArray.toArray();

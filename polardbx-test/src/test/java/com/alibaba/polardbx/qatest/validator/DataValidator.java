@@ -440,6 +440,47 @@ public class DataValidator {
     /**
      * 验证查询结果非顺序一致 allowEmptyResultSet 查询语句返回结果是否允许为空
      */
+    public static void selectStringContentSameAssert(
+        String mysqlSql, String tddlSql, List<Object> param, Connection mysqlConnection, Connection tddlConnection,
+        boolean allowEmptyResultSet, boolean part) {
+        ResultSet mysqlRs = null;
+        ResultSet tddlRs = null;
+
+        try {
+            mysqlRs = JdbcUtil.executeQuery(mysqlSql, mysqlConnection);
+            tddlRs = JdbcUtil.executeQuery(tddlSql, tddlConnection);
+
+            metaInfoCheckSame(mysqlRs, tddlRs);
+            List<List<String>> mysqlResults = JdbcUtil.getStringResult(mysqlRs, false);
+            List<List<String>> tddlResults = JdbcUtil.getStringResult(tddlRs, false);
+            // Convert.
+            for (List<String> l0 : mysqlResults) {
+                for (int i = 0; i < l0.size(); ++i) {
+                    if (l0.get(i) instanceof String && ((String) l0.get(i))
+                        .equalsIgnoreCase(PropertiesUtil.mysqlDBName1())) {
+                        l0.set(i, PropertiesUtil.polardbXDBName1(part).toLowerCase());
+                    }
+                }
+            }
+            // 不允许为空结果集合
+            if (!allowEmptyResultSet) {
+                Assert.assertTrue("sql语句:" + tddlSql + " 查询的结果集为空，请修改sql语句，保证有结果集",
+                    mysqlResults.size() != 0);
+            }
+            assertWithMessage(" 非顺序情况下：mysql 返回结果与tddl 返回结果不一致 \n sql 语句为：" + tddlSql + " 参数为 :"
+                + param).that(tddlResults).containsExactlyElementsIn(mysqlResults);
+        } catch (Exception e) {
+            log.error(e.getMessage());
+            throw new RuntimeException(e);
+        } finally {
+            JdbcUtil.close(mysqlRs);
+            JdbcUtil.close(tddlRs);
+        }
+    }
+
+    /**
+     * 验证查询结果非顺序一致 allowEmptyResultSet 查询语句返回结果是否允许为空
+     */
     public static void selectStringContentIgnoreCaseSameAssert(
         String sql, List<Object> param, Connection mysqlConnection, Connection tddlConnection,
         boolean allowEmptyResultSet, boolean part) {

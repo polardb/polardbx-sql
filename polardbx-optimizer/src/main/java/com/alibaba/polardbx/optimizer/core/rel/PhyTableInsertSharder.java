@@ -529,7 +529,7 @@ public class PhyTableInsertSharder {
             }
             PartPrunedResult result =
                 PartitionPruner.doPruningByTupleRouteInfo(tupleRouting, tupleTemplateIdx, executionContext);
-            List<PhysicalPartitionInfo> prunedPartnfos = result.getPrunedParttions();
+            List<PhysicalPartitionInfo> prunedPartnfos = result.getPrunedPartitions();
             if (prunedPartnfos.size() == 0) {
                 throw new NoFoundPartitionsException();
             }

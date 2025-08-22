@@ -19,6 +19,8 @@ package com.alibaba.polardbx.common.datatype;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.nio.ByteBuffer;
+
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_DIV_ZERO;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OK;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OVERFLOW;
@@ -219,7 +221,7 @@ public class DecimalConverterTest {
 
     private void doTestGetUnscaledDecimal(byte[] buffer, int precision, int scale,
                                           long expectResult) {
-        long unscaledDecimal = DecimalConverter.getUnscaledDecimal(buffer, precision, scale);
+        long unscaledDecimal = DecimalConverter.getUnscaledDecimal(ByteBuffer.wrap(buffer), precision, scale);
         Assert.assertEquals(expectResult, unscaledDecimal);
     }
 
@@ -228,9 +230,21 @@ public class DecimalConverterTest {
         doTestGetDecimal(new byte[] {-125, -50, 50, -111, 69}, 10, 2, Decimal.fromString("63845009.69"));
     }
 
+    @Test
+    public void testNormalDecimalWithTrialingZero() {
+        final int precision = 64;
+        final int scale = 16;
+        byte[] bytes = new byte[] {
+            -128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        Decimal decimal = DecimalConverter.getDecimal(ByteBuffer.wrap(bytes), precision, scale);
+        String decStr = decimal.toString();
+        Assert.assertEquals("0.0000000000000000", decStr);
+    }
+
     private void doTestGetDecimal(byte[] buffer, int precision, int scale,
                                   Decimal expectResult) {
-        Decimal decimal = DecimalConverter.getDecimal(buffer, precision, scale);
+        Decimal decimal = DecimalConverter.getDecimal(ByteBuffer.wrap(buffer), precision, scale);
         Assert.assertEquals(expectResult, decimal);
     }
 }

@@ -53,7 +53,7 @@ public class AlterTableGroupBaseBuilder {
 
     protected Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
         new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-    protected Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+    protected Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
         new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected Map<String, AlterTableGroupItemPreparedData> tablesPreparedData =
         new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -118,7 +118,7 @@ public class AlterTableGroupBaseBuilder {
         return newPartitionsPhysicalPlansMap;
     }
 
-    public Map<String, Map<String, List<List<String>>>> getTablesTopologyMap() {
+    public Map<String, TreeMap<String, List<List<String>>>> getTablesTopologyMap() {
         return tablesTopologyMap;
     }
 

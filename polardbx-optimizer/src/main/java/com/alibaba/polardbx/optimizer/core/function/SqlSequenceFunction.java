@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.function;
 
+import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.DefaultSchema;
-import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlFunction;
 import org.apache.calcite.sql.SqlFunctionCategory;
@@ -36,6 +36,8 @@ import org.apache.calcite.sql.validate.SqlValidatorScope;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.apache.calcite.util.Static.RESOURCE;
 
 public class SqlSequenceFunction extends SqlFunction {
 
@@ -69,7 +71,10 @@ public class SqlSequenceFunction extends SqlFunction {
         String seqName = null;
         if (operandSize == 2) {
             seqName = ((SqlLiteral) operands.get(0)).getValueAs(String.class);
-            SequenceManagerProxy.getInstance().checkIfExists(defaultSchemaName, seqName);
+            if (SequenceManagerProxy.getInstance().checkIfExists(defaultSchemaName, seqName) == Type.NA) {
+                throw validator.newValidationError(call,
+                    RESOURCE.sequenceNotFound(defaultSchemaName + "." + seqName));
+            }
         } else if (operandSize == 3) {
             String schemaName = null;
 
@@ -77,7 +82,10 @@ public class SqlSequenceFunction extends SqlFunction {
             seqName = ((SqlLiteral) operands.get(1)).getValueAs(String.class);
 
             scope.getValidator().getCatalogReader().getRootSchema().getSubSchema(schemaName, false);
-            SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
+            if (SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName) == Type.NA) {
+                throw validator.newValidationError(call,
+                    RESOURCE.sequenceNotFound(schemaName + "." + seqName));
+            }
         }
 
     }

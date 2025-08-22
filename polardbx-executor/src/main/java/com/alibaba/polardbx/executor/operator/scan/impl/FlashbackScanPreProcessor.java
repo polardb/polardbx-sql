@@ -48,7 +48,7 @@ public class FlashbackScanPreProcessor extends DefaultScanPreProcessor {
             // in columnar mode.
             FlashbackDeleteBitmapManager deleteBitmapManager = deleteBitmapManagers.computeIfAbsent(
                 columnarManager.fileMetaOf(filePath.getName()).getPartitionName(),
-                p -> FlashbackDeleteBitmapManager.getInstance(tso, schemaName, logicalTableName, p,
+                p -> columnarManager.getFlashbackDeleteBitmapManager(tso, schemaName, logicalTableName, p,
                     allDelPositions.get(p))
             );
             bitmap = deleteBitmapManager.getDeleteBitmapOf(filePath.getName());

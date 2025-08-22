@@ -71,6 +71,8 @@ public class TddlConstants {
     public static final String IMPLICIT_COL_NAME = "_drds_implicit_id_";
     public static final String IMPLICIT_KEY_NAME = "_drds_implicit_pk_";
 
+    public static final String RDS_IMPLICIT_COL_NAME = "__#alibaba_rds_row_id#__";
+
     public static final String UGSI_PK_INDEX_NAME = "_gsi_pk_idx_";
 
     // temp local index, only for backfill
@@ -99,4 +101,13 @@ public class TddlConstants {
     public static final String ENABLE_LOAD_DATA_FILE = "ENABLE_LOAD_DATA_FILE";
 
     public static final String ENABLE_STRICT_SET_GLOBAL = "ENABLE_STRICT_SET_GLOBAL";
+
+    public static final String CRON_EXPR = "CRON_EXPR";
+
+    public static final String ZONE_ID = "ZONE_ID";
+
+    public static final String COLUMNAR_AUTO_SNAPSHOT_CONFIG = "COLUMNAR_AUTO_SNAPSHOT_CONFIG";
+
+    //MySQL80的information_schema表缓存时间，单位秒, 默认一天过期
+    public static final int INFORMATION_SCHEMA_STATS_EXPIRY_TIME = 86400;
 }

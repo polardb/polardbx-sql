@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
@@ -35,6 +37,7 @@ import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.util.Arrays;
 import java.util.BitSet;
@@ -50,6 +53,8 @@ public class SliceBlock extends AbstractCommonBlock {
      * If compatible is true, use collation to handle sorting, comparing and hashing.
      */
     private final boolean compatible;
+
+    @FieldMemoryCounter(false)
     private SliceType dataType;
     /**
      * In direct mode, storing the bytes' data.
@@ -62,6 +67,7 @@ public class SliceBlock extends AbstractCommonBlock {
     /**
      * In dictionary mode, storing the dict data.
      */
+    @FieldMemoryCounter(false)
     private BlockDictionary dictionary;
     /**
      * In dictionary mode, storing the dict id.
@@ -161,6 +167,14 @@ public class SliceBlock extends AbstractCommonBlock {
         // need to manually call the updateSizeInfo().
     }
 
+    /**
+     * Copy from another slice block, This API is for CSV block only
+     */
+    public static SliceBlock from(SliceBlock other, boolean compatible) {
+        return new SliceBlock(other.dataType, other.arrayOffset, other.positionCount, other.isNull, other.offsets,
+            other.data, compatible);
+    }
+
     public static SliceBlock from(SliceBlock other, int selSize, int[] selection, boolean compatible,
                                   boolean useSelection) {
         if (useSelection) {
@@ -206,7 +220,14 @@ public class SliceBlock extends AbstractCommonBlock {
                         null, compatible
                     );
                 }
-                SliceOutput sliceOutput = new DynamicSliceOutput(selSize);
+                int len = 0;
+                for (int position = 0; position < selSize; position++) {
+                    int beginOffset = other.beginOffsetInner(selection[position]);
+                    int endOffset = other.endOffsetInner(selection[position]);
+                    len += (endOffset - beginOffset);
+                }
+
+                SliceOutput sliceOutput = new DynamicSliceOutput(len);
                 for (int position = 0; position < selSize; position++) {
                     int beginOffset = other.beginOffsetInner(selection[position]);
                     int endOffset = other.endOffsetInner(selection[position]);
@@ -1072,13 +1093,17 @@ public class SliceBlock extends AbstractCommonBlock {
     public void updateSizeInfo() {
         if (dictionary == null) {
             // Slice.length is the memory size in bytes.
-            estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + (data == null ? 0 : data.length()) + sizeOf(offsets);
-            elementUsedBytes =
-                Byte.BYTES * positionCount + (data == null ? 0 : data.length()) + Integer.BYTES * positionCount;
+            elementUsedBytes = INSTANCE_SIZE
+                + VMSupport.align((int) sizeOf(isNull))
+                + VMSupport.align((int) sizeOf(offsets))
+                + FastMemoryCounter.sizeOf(data);
         } else {
-            estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + dictionary.sizeInBytes() + sizeOf(dictIds);
-            elementUsedBytes = Byte.BYTES * positionCount + dictionary.sizeInBytes() + Integer.BYTES * positionCount;
+            elementUsedBytes = INSTANCE_SIZE
+                + VMSupport.align((int) sizeOf(isNull))
+                + VMSupport.align((int) sizeOf(dictIds))
+                + FastMemoryCounter.sizeOf(data);
         }
+        estimatedSize = elementUsedBytes;
     }
 
     public int[] getSelection() {

@@ -24,7 +24,6 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRoutingContext;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
@@ -90,12 +89,18 @@ public class PartTupleRouter extends AbstractLifecycle {
      * Note: The targetTuple to be routed which must contain all partition column values
      */
     public PhysicalPartitionInfo routeTuple(List<List<Object>> targetTuples) {
+        return routeTuple(targetTuples, true);
+    }
 
+    /**
+     * useTmpCtx 为true会使用ExecutionContext.copy()，保证并发安全，有一定开销，如果调用线程能保证安全，可以设置为false
+     */
+    public PhysicalPartitionInfo routeTuple(List<List<Object>> targetTuples, boolean useTmpCtx) {
         checkIfTupleValuesInvalid(targetTuples);
 
         Parameters valuesParams = routingContext.createPartColValueParametersByPartTupleAndSubPartTuple(targetTuples);
         List<PhysicalPartitionInfo> phyInfos =
-            BuildPlanUtils.resetParamsAndDoPruning(routeInfo, context, true, 0, valuesParams);
+            BuildPlanUtils.resetParamsAndDoPruning(routeInfo, context, useTmpCtx, 0, valuesParams);
         if (phyInfos.size() == 0) {
             return null;
         }

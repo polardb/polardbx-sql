@@ -47,7 +47,8 @@ public enum SQLIntervalUnit {
     TIMEZONE_HOUR,
     TIMEZONE_MINUTE,
     DOY,
-    YEAR_TO_MONTH("YEAR TO MONTH");
+    YEAR_TO_MONTH("YEAR TO MONTH"),
+    NUMBER("NUMBER");
 
     public final String name;
     public final String name_lcase;

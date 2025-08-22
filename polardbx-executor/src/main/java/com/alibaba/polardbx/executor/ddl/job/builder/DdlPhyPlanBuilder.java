@@ -26,11 +26,14 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
@@ -41,6 +44,7 @@ import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.meta.delegate.TableInfoManagerDelegate;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterGsiAddLocalIndexTask;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
@@ -71,11 +75,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.commons.collections.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Build physical plan for ddl node
@@ -85,7 +85,7 @@ import java.util.Set;
 public abstract class DdlPhyPlanBuilder {
 
     // this sql is only used for build sql for add local index.
-    private static final String ADD_INDEX_SQL = "ALTER TABLE t1 ADD INDEX k1(c1);";
+    private static final String ADD_INDEX_SQL = "ALTER TABLE t1 ADD INDEX k1(c1), ADD KEY k2(c2);";
 
     protected DDL relDdl;
 
@@ -104,7 +104,7 @@ public abstract class DdlPhyPlanBuilder {
 
     protected TableRule tableRule;
     protected PartitionInfo partitionInfo;
-    protected Map<String, List<List<String>>> tableTopology;
+    protected TreeMap<String, List<List<String>>> tableTopology;
     protected List<PhyDdlTableOperation> physicalPlans;
     protected List<PhyDdlTableOperation> physicalPlansForLocalIndex;
 
@@ -114,6 +114,15 @@ public abstract class DdlPhyPlanBuilder {
      * A flag to identify whether physical plan has been built, to avoid build multiple times.
      */
     protected boolean built = false;
+
+    public static PhysicalPlanData getPhysicalPlanDataForLocalIndex(DdlPhyPlanBuilder builder, Boolean autoPartition) {
+        PhysicalPlanData physicalPlanDataForLocalIndex = null;
+        if (builder.getPhysicalPlansForLocalIndex() != null) {
+            physicalPlanDataForLocalIndex = builder.genPhysicalPlanData(autoPartition, true);
+        }
+        return physicalPlanDataForLocalIndex;
+    }
+
 
     public DdlPhyPlanBuilder(@Deprecated DDL ddl, DdlPreparedData preparedData, ExecutionContext executionContext) {
         this.relDdl = ddl;
@@ -214,7 +223,7 @@ public abstract class DdlPhyPlanBuilder {
 
     protected void buildNewTableTopology(String schemaName, String tableName) {
         List<List<TargetDB>> targetDBs = DataNodeChooser.shardCreateTable(schemaName, tableName, relDdl, tableRule);
-        tableTopology = convertTargetDBs(schemaName, targetDBs);
+        tableTopology = new TreeMap<>(convertTargetDBs(schemaName, targetDBs));
     }
 
     protected void buildChangedTableTopology(String schemaName, String tableName) {
@@ -224,12 +233,12 @@ public abstract class DdlPhyPlanBuilder {
         } else {
             targetDBs = DataNodeChooser.shardChangeTable(schemaName, tableName, executionContext);
         }
-        tableTopology = convertTargetDBs(schemaName, targetDBs);
+        tableTopology = new TreeMap<>(convertTargetDBs(schemaName, targetDBs));
     }
 
     protected void buildGsiTableTopology(String schemaName, String tableName) {
         List<List<TargetDB>> targetDBs = DataNodeChooser.shardGsi(schemaName, tableName, executionContext);
-        tableTopology = convertTargetDBs(schemaName, targetDBs);
+        tableTopology = new TreeMap<>(convertTargetDBs(schemaName, targetDBs));
     }
 
     protected Map<String, List<List<String>>> convertTargetDBs(String schemaName, List<List<TargetDB>> targetDBs) {
@@ -387,16 +396,21 @@ public abstract class DdlPhyPlanBuilder {
         SQLAlterTableStatement alterStatement =
             (SQLAlterTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(ADD_INDEX_SQL,
                 JdbcConstants.MYSQL).get(0);
-        SQLAlterTableAddIndex item = (SQLAlterTableAddIndex) alterStatement.getItems().get(0);
+        SQLAlterTableAddIndex alterTableAddIndex = (SQLAlterTableAddIndex) alterStatement.getItems().get(0);
+        SQLAlterTableAddIndex alterTableAddKey = (SQLAlterTableAddIndex) alterStatement.getItems().get(1);
         List<SQLAlterTableItem> sqlAlterTableAddIndexes = new ArrayList<>();
         for (SQLTableElement index : indexes) {
-            SQLAlterTableAddIndex sqlAlterTableAddIndex = (SQLAlterTableAddIndex) item.clone();
             if (index instanceof MySqlTableIndex) {
+                SQLAlterTableAddIndex sqlAlterTableAddIndex = (SQLAlterTableAddIndex) alterTableAddIndex.clone();
                 sqlAlterTableAddIndex.setIndexDefinition(((MySqlTableIndex) index).getIndexDefinition());
+                sqlAlterTableAddIndexes.add(sqlAlterTableAddIndex);
             } else if (index instanceof MySqlKey) {
-                sqlAlterTableAddIndex.setIndexDefinition(((MySqlKey) index).getIndexDefinition());
+                SQLAlterTableAddIndex sqlAlterTableAddKey = (SQLAlterTableAddIndex) alterTableAddKey.clone();
+                SQLIndexDefinition sqlIndexDefinition = (SQLIndexDefinition)((MySqlKey) index).getIndexDefinition();
+                sqlIndexDefinition.setKey(true);
+                sqlAlterTableAddKey.setIndexDefinition(sqlIndexDefinition);
+                sqlAlterTableAddIndexes.add(sqlAlterTableAddKey);
             }
-            sqlAlterTableAddIndexes.add(sqlAlterTableAddIndex);
         }
         alterStatement.setItems(sqlAlterTableAddIndexes);
         alterStatement.setTableSource(new SQLIdentifierExpr("?", 0));
@@ -404,6 +418,24 @@ public abstract class DdlPhyPlanBuilder {
         return sql;
     }
 
+    public static List<String> getLocalIndexesFromSql(String sql) {
+        sql = AlterGsiAddLocalIndexTask.substitueQuestionToTableName(sql, "t1");
+        SQLAlterTableStatement alterStatement =
+            (SQLAlterTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(sql,
+                JdbcConstants.MYSQL).get(0);
+        List<String> localIndexes = new ArrayList<>();
+        List<SQLAlterTableItem> items = alterStatement.getItems();
+        for (SQLAlterTableItem item:items){
+            if (item instanceof SQLAlterTableAddIndex) {
+                String index = ((SQLAlterTableAddIndex) item).getIndexDefinition().getName().toString();
+                localIndexes.add(SQLUtils.normalize(index));
+            }else if(item instanceof SQLAlterTableAddConstraint){
+                String index = ((SQLAlterTableAddConstraint)item).getConstraint().getName().toString();
+                localIndexes.add(SQLUtils.normalize(index));
+            }
+        }
+        return localIndexes;
+    }
     private Map<Integer, ParameterContext> buildParams(List<String> tableNames) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
         return PlannerUtils.buildParam(tableNames, this.params, paramIndex);
@@ -430,11 +462,11 @@ public abstract class DdlPhyPlanBuilder {
         return partitionInfo;
     }
 
-    public Map<String, List<List<String>>> getTableTopology() {
+    public TreeMap<String, List<List<String>>> getTableTopology() {
         return tableTopology;
     }
 
-    public void setTableTopology(Map<String, List<List<String>>> tableTopology) {
+    public void setTableTopology(TreeMap<String, List<List<String>>> tableTopology) {
         this.tableTopology = tableTopology;
     }
 

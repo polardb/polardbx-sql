@@ -1,0 +1,211 @@
+## DISABLE_FAST_SQL_PARSER
+set ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX = true
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
+create table test_cci_date_by_day(
+a int not null auto_increment,
+b date default '0000-00-00',
+primary key(a)
+)
+ttl = ttl_definition( TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 2 ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a) partitions 2
+show create table test_cci_date_by_day
+Table,Create Table
+test_cci_date_by_day,CREATE TABLE `test_cci_date_by_day` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` date DEFAULT '0000-00-00',
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+create table test_cci_date_by_day_bk like test_cci_date_by_day engine='columnar' archive_mode='ttl'
+show create table test_cci_date_by_day
+Table,Create Table
+test_cci_date_by_day,CREATE TABLE `test_cci_date_by_day` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` date DEFAULT '0000-00-00',
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_test_cci_date_by_day_bk` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240625 VALUES LESS THAN ('2024-06-25') ENGINE = Columnar,
+		 PARTITION p20240626 VALUES LESS THAN ('2024-06-26') ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN ('2024-06-27') ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN ('2024-06-28') ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN ('2024-06-29') ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN ('2024-06-30') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'test_cci_date_by_day_bk', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+insert into test_cci_date_by_day values
+(1, '1970-01-01'),
+(2, '2024-06-25'),
+(3, '2024-06-26'),
+(4, '2024-06-27'),
+(5, '2024-06-28'),
+(6, '2024-06-29'),
+(7, '2024-06-30'),
+(8, '2024-07-01'),
+(9, '2024-07-02'),
+(10, '2024-07-03')
+alter table test_cci_date_by_day modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE=4
+alter table test_cci_date_by_day cleanup expired data
+show create table test_cci_date_by_day
+Table,Create Table
+test_cci_date_by_day,CREATE TABLE `test_cci_date_by_day` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` date DEFAULT '0000-00-00',
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_test_cci_date_by_day_bk` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION p20240625 VALUES LESS THAN ('2024-06-25') ENGINE = Columnar,
+		 PARTITION p20240626 VALUES LESS THAN ('2024-06-26') ENGINE = Columnar,
+		 PARTITION p20240627 VALUES LESS THAN ('2024-06-27') ENGINE = Columnar,
+		 PARTITION p20240628 VALUES LESS THAN ('2024-06-28') ENGINE = Columnar,
+		 PARTITION p20240629 VALUES LESS THAN ('2024-06-29') ENGINE = Columnar,
+		 PARTITION p20240630 VALUES LESS THAN ('2024-06-30') ENGINE = Columnar,
+		 PARTITION p20240701 VALUES LESS THAN ('2024-07-01') ENGINE = Columnar,
+		 PARTITION p20240702 VALUES LESS THAN ('2024-07-02') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB AUTO_INCREMENT = 11 DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = 'test_cci_date_by_day_bk', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+select * from test_cci_date_by_day order by a
+a,b
+1,1970-01-01
+2,2024-06-25
+3,2024-06-26
+4,2024-06-27
+5,2024-06-28
+6,2024-06-29
+7,2024-06-30
+8,2024-07-01
+9,2024-07-02
+10,2024-07-03
+select * from test_cci_date_by_day_bk order by a
+a,b
+1,1970-01-01
+2,2024-06-25
+3,2024-06-26
+4,2024-06-27
+5,2024-06-28
+6,2024-06-29
+7,2024-06-30
+8,2024-07-01
+9,2024-07-02
+10,2024-07-03
+insert into test_cci_date_by_day values
+(11, '1970-01-01'),
+(12, '2024-06-25'),
+(13, '2024-06-26'),
+(14, '2024-06-27'),
+(15, '2024-06-28'),
+(16, '2024-06-29'),
+(17, '2024-06-30'),
+(18, '2024-07-01'),
+(19, '2024-07-02'),
+(20, '2024-07-03')
+select sleep(5)
+sleep(5)
+0
+reload columnarmanager snapshot
+select * from test_cci_date_by_day_bk order by a
+a,b
+1,1970-01-01
+2,2024-06-25
+3,2024-06-26
+4,2024-06-27
+5,2024-06-28
+6,2024-06-29
+7,2024-06-30
+8,2024-07-01
+9,2024-07-02
+10,2024-07-03
+11,1970-01-01
+12,2024-06-25
+13,2024-06-26
+14,2024-06-27
+15,2024-06-28
+16,2024-06-29
+17,2024-06-30
+18,2024-07-01
+19,2024-07-02
+20,2024-07-03
+select * from test_cci_date_by_day_bk where b = '2024-06-25' order by a
+a,b
+2,2024-06-25
+12,2024-06-25
+select * from test_cci_date_by_day_bk where b = '2024-06-26' order by a
+a,b
+3,2024-06-26
+13,2024-06-26
+select * from test_cci_date_by_day_bk where b <= '2024-06-30' order by a
+a,b
+1,1970-01-01
+2,2024-06-25
+3,2024-06-26
+4,2024-06-27
+5,2024-06-28
+6,2024-06-29
+7,2024-06-30
+11,1970-01-01
+12,2024-06-25
+13,2024-06-26
+14,2024-06-27
+15,2024-06-28
+16,2024-06-29
+17,2024-06-30
+select * from test_cci_date_by_day_bk where b > '2024-06-30' order by a
+a,b
+8,2024-07-01
+9,2024-07-02
+10,2024-07-03
+18,2024-07-01
+19,2024-07-02
+20,2024-07-03
+select * from test_cci_date_by_day_bk where b <= '2024-07-03' and b > '2024-06-26' order by a
+a,b
+4,2024-06-27
+5,2024-06-28
+6,2024-06-29
+7,2024-06-30
+8,2024-07-01
+9,2024-07-02
+10,2024-07-03
+14,2024-06-27
+15,2024-06-28
+16,2024-06-29
+17,2024-06-30
+18,2024-07-01
+19,2024-07-02
+20,2024-07-03
+select * from test_cci_date_by_day_bk where b between '2024-06-26' and '2024-07-03' order by a
+a,b
+3,2024-06-26
+4,2024-06-27
+5,2024-06-28
+6,2024-06-29
+7,2024-06-30
+8,2024-07-01
+9,2024-07-02
+10,2024-07-03
+13,2024-06-26
+14,2024-06-27
+15,2024-06-28
+16,2024-06-29
+17,2024-06-30
+18,2024-07-01
+19,2024-07-02
+20,2024-07-03
+select * from test_cci_date_by_day_bk where b in ('2024-06-25', '1970-01-01', '2024-07-03', '2024-07-02') order by a
+a,b
+1,1970-01-01
+2,2024-06-25
+9,2024-07-02
+10,2024-07-03
+11,1970-01-01
+12,2024-06-25
+19,2024-07-02
+20,2024-07-03
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false
+drop table test_cci_date_by_day;

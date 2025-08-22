@@ -49,6 +49,7 @@ public class ZoneMapIndex extends BaseColumnIndex {
     private final Map<Integer, ArrayList<Object>> dataMap;
     private final Map<Integer, DataType> dtMap;
     private final Map<Integer, RoaringBitmap> nullValMap;
+    private long sizeInBytes = -1;
 
     // internal fields
     private Map<Integer, Collection<RoaringBitmap>> groupDataMap = Maps.newConcurrentMap();
@@ -299,5 +300,26 @@ public class ZoneMapIndex extends BaseColumnIndex {
             return 0;
         }
         return groupDataMap.get(colId).size();
+    }
+
+    @Override
+    public long getSizeInBytes() {
+        if (this.sizeInBytes >= 0) {
+            return this.sizeInBytes;
+        }
+        long size = 0;
+        for (ArrayList<Object> objList : dataMap.values()) {
+            if (objList != null) {
+                // lower bound
+                size += objList.size() * 4L;
+            }
+        }
+        for (RoaringBitmap bitmap : nullValMap.values()) {
+            if (bitmap != null) {
+                size += bitmap.getLongSizeInBytes();
+            }
+        }
+        this.sizeInBytes = size;
+        return this.sizeInBytes;
     }
 }

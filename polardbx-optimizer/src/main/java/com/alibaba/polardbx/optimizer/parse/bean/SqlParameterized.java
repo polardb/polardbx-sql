@@ -25,6 +25,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplaceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlLoadXmlStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
@@ -183,6 +184,9 @@ public class SqlParameterized {
 
     private long doComputeDigest(boolean enableStrictMode) {
         long digest = 0L;
+        if (insertWithoutParamsInFunction(stmt)) {
+            return digest;
+        }
         if (DynamicConfig.getInstance().enablePlanTypeDigest()) {
             if (enableStrictMode) {
                 for (Object value : parameters) {
@@ -220,7 +224,17 @@ public class SqlParameterized {
         return digest;
     }
 
-    private static int getTypeCode(Object param) {
+    public static boolean insertWithoutParamsInFunction(SQLStatement stmt) {
+        if (stmt instanceof MySqlInsertStatement) {
+            return !((MySqlInsertStatement) stmt).isHasArgsInFunction();
+        }
+        if (stmt instanceof SQLReplaceStatement) {
+            return !((SQLReplaceStatement) stmt).isHasArgsInFunction();
+        }
+        return false;
+    }
+
+    public static int getTypeCode(Object param) {
         if (param == null) {
             // NULL
             return NULL_CODE;

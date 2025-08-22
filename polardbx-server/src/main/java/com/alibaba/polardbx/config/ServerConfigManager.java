@@ -16,15 +16,6 @@
 
 package com.alibaba.polardbx.config;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.ddl.Job;
@@ -32,7 +23,6 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
-import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -44,7 +34,6 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.matrix.config.MatrixConfigHolder;
-import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -52,8 +41,15 @@ import com.alibaba.polardbx.optimizer.context.DdlContext;
 
 import java.util.List;
 import java.util.Map;
+
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.server.conn.InnerConnection;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -143,6 +139,12 @@ public class ServerConfigManager implements IServerConfigManager {
             }
         }
         return null;
+    }
+
+    @Override
+    public List<ExecutionContext.ErrorMessage> performAsyncDDLJob(Job job, String schemaName, Object jobRequest) {
+        MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schemaName);
+        return matrixConfigHolder.performAsyncDDLJob(job, schemaName, (JobRequest) jobRequest);
     }
 
     @Override

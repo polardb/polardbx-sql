@@ -18,6 +18,7 @@ package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -32,13 +33,17 @@ import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime.Timestamp;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slice;
 import org.apache.calcite.sql.SqlShowDdlResults;
 
+import java.text.SimpleDateFormat;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -130,6 +135,9 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
             record.ddlType,
             record.state,
             null,
+            formatAndTruncateDdlStmt(record.ddlStmt),
+            convertTimeMillisToDate(record.gmtCreated),
+            convertTimeMillisToDate(record.gmtModified)
         };
     }
 
@@ -141,7 +149,23 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
             job.getType(),
             job.getState(),
             null,
+            formatAndTruncateDdlStmt(job.getDdlStmt()),
+            convertTimeMillisToDate(job.getGmtCreated()),
+            convertTimeMillisToDate(job.getGmtModified())
         };
+    }
+
+    static public String formatAndTruncateDdlStmt(Object ddlStmtObject) {
+        String ddlStmt = "";
+        if(ddlStmtObject != null){
+            ddlStmt = ddlStmtObject.toString();
+        }
+        int maxDdlStmtLength = Math.max(DynamicConfig.getInstance().getMaxShowDdlStmtLength(), 1);
+        String formatDdlStmt = ddlStmt.replace("\n", "   ").replace("\r", "  ");
+        if (formatDdlStmt.length() > maxDdlStmtLength) {
+            formatDdlStmt = formatDdlStmt.substring(0, maxDdlStmtLength) + "...";
+        }
+        return formatDdlStmt;
     }
 
     private Object[] buildRow(Map<String, Object> row) {
@@ -151,7 +175,10 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
             row.get("OBJECT_NAME"),
             row.get("DDL_TYPE"),
             row.get("RESULT_TYPE"),
-            row.get("RESULT_CONTENT")
+            row.get("RESULT_CONTENT"),
+            formatAndTruncateDdlStmt(row.get("DDL_STMT")),
+            row.get("START_TIME"),
+            row.get("END_TIME")
         };
     }
 
@@ -165,6 +192,9 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
                 .put("DDL_TYPE", i++)
                 .put("RESULT_TYPE", i++)
                 .put("RESULT_CONTENT", i++)
+                .put("DDL_STMT", i++)
+                .put("START_TIME", i++)
+                .put("END_TIME", i++)
                 .build();
 
         List<Object[]> result = new ArrayList<>();
@@ -248,6 +278,17 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
             DEFAULT_DB_NAME,
             null
         );
+    }
+
+    public static String convertTimeMillisToDate(Object timeMillis) {
+        try {
+            final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            Long time = Long.parseLong(timeMillis.toString());
+            Date date = new Date(time);
+            return formatter.format(date);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
 }

@@ -18,7 +18,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.ddl;
 
 import com.alibaba.polardbx.gms.metadb.limit.Limits;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestUtils;
+import com.alibaba.polardbx.qatest.ddl.datamigration.locality.LocalityTestCaseUtils.LocalityTestUtils;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang.StringUtils;

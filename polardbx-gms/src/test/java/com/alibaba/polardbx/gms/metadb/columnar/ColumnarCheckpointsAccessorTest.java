@@ -67,6 +67,17 @@ public class ColumnarCheckpointsAccessorTest {
             count = accessor.deleteLimitByTsoAndTypesAndInfoIsNull(12345, ImmutableList.of(
                 ColumnarCheckpointsAccessor.CheckPointType.STREAM), 1000);
             Assert.assertEquals(18, count);
+
+            deleteCount.set(19);
+            count = accessor.deleteLimitByTsoAndSchemaTable("test", "table", 123L,
+                ImmutableList.of(ColumnarCheckpointsAccessor.CheckPointType.STREAM), 1000);
+            Assert.assertEquals(19, count);
+
+            deleteCount.set(20);
+            count = accessor.deleteLimitByTsoAndSchema("test", 123L,
+                ImmutableList.of(ColumnarCheckpointsAccessor.CheckPointType.STREAM), 1000);
+            Assert.assertEquals(20, count);
+
             metaDbUtilMockedStatic.when(() -> MetaDbUtil.delete(Mockito.anyString(), Mockito.anyMap(),
                 Mockito.any())).thenThrow(new RuntimeException("metaDB error"));
 
@@ -110,6 +121,9 @@ public class ColumnarCheckpointsAccessorTest {
 
             result = accessor.queryCompactionByStartTsoAndEndTso(100L, 123L);
             Assert.assertEquals(1, result.size());
+
+            result = accessor.queryColumnarTsoByBinlogTsoAndCheckpointTsoAsc(100L);
+            Assert.assertEquals(1, result.size());
         }
     }
 
@@ -134,6 +148,23 @@ public class ColumnarCheckpointsAccessorTest {
 
             result = tableInfoManager.queryColumnarCheckpointsByCommitTs(123L);
             Assert.assertEquals(1, result.size());
+        }
+    }
+
+    @Test
+    public void testSelectError() {
+        try (final MockedStatic<MetaDbUtil> metaDbUtilMockedStatic = mockStatic(MetaDbUtil.class)) {
+            metaDbUtilMockedStatic.when(() -> MetaDbUtil.query(Mockito.anyString(), Mockito.anyMap(),
+                    Mockito.eq(ColumnarCheckpointsRecord.class), Mockito.any()))
+                .thenThrow(new RuntimeException("mock error"));
+            ColumnarCheckpointsAccessor accessor = new ColumnarCheckpointsAccessor();
+
+            try {
+                accessor.queryColumnarTsoByBinlogTsoAndCheckpointTsoAsc(12345L);
+                Assert.fail();
+            } catch (Exception ignored) {
+
+            }
         }
     }
 

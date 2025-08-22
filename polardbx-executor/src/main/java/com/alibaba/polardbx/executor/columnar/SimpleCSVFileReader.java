@@ -28,10 +28,11 @@ import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import org.apache.hadoop.fs.FSDataInputStream;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -41,7 +42,7 @@ import java.util.stream.Collectors;
  */
 public class SimpleCSVFileReader implements CSVFileReader {
     private int fieldNum;
-    private FSDataInputStream inputStream;
+    private InputStream inputStream;
     private List<ColumnProvider> columnProviders;
     private List<ColumnMeta> columnMetas;
     private ByteCSVReader rowReader;
@@ -62,17 +63,20 @@ public class SimpleCSVFileReader implements CSVFileReader {
         this.context = context;
         this.fieldNum = columnMetas.size();
 
-        this.inputStream = FileSystemUtils.openStreamFileWithBuffer(csvFileName, engine, true);
-        if (offset > 0) {
-            inputStream.seek(offset);
-        }
-        this.length = length == EOF ? Integer.MAX_VALUE : length;
+        byte[] buffer = new byte[length];
+        FileSystemUtils.readFile(csvFileName, offset, length, buffer, engine, true);
+        this.length = length;
 
+        this.inputStream = new ByteArrayInputStream(buffer);
         this.columnProviders = columnMetas.stream()
             .map(ColumnProviders::getProvider).collect(Collectors.toList());
         this.columnMetas = columnMetas;
-        this.rowReader = new ByteCSVReader(csvFileName, inputStream, this.length);
         this.offset = offset;
+
+        byte[] reusableNulls = new byte[fieldNum];
+        int[] reusableOffsets = new int[fieldNum];
+
+        this.rowReader = new ByteCSVReader(csvFileName, inputStream, this.length, reusableNulls, reusableOffsets);
     }
 
     @Override
@@ -82,11 +86,26 @@ public class SimpleCSVFileReader implements CSVFileReader {
 
     @Override
     public Chunk nextUntilPosition(long pos) {
+        return nextUntilPosition(pos, Integer.MAX_VALUE);
+    }
+
+    @Override
+    public Chunk nextUntilPosition(long pos, int expectedRowCount) {
         long positionBound = Math.min(pos, offset + length);
+
+        try {
+            if (offset + rowReader.position() >= positionBound || !rowReader.isReadable()) {
+                // return in advance to prevent create block builder with 0 capacity
+                return null;
+            }
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+
         List<BlockBuilder> blockBuilders = this.columnMetas
             .stream()
             .map(ColumnMeta::getDataType)
-            .map(t -> BlockBuilders.create(t, context))
+            .map(t -> BlockBuilders.create(t, context, Math.min(expectedRowCount, chunkLimit)))
             .collect(Collectors.toList());
 
         int totalRow = 0;
@@ -119,7 +138,7 @@ public class SimpleCSVFileReader implements CSVFileReader {
     }
 
     @NotNull
-    protected Chunk buildChunk(List<BlockBuilder> blockBuilders, int totalRow) {
+    public static Chunk buildChunk(List<BlockBuilder> blockBuilders, int totalRow) {
         return new Chunk(totalRow, blockBuilders.stream()
             .map(BlockBuilder::build).toArray(Block[]::new));
     }

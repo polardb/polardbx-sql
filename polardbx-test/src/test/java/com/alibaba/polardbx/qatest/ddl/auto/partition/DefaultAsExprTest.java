@@ -42,6 +42,7 @@ public class DefaultAsExprTest extends PartitionAutoLoadSqlTestBase {
         String exceptedResult = null;
         String testResult = null;
         Connection conn = null;
+        TestCaseResultOptions resultOptions = new TestCaseResultOptions();
         try {
             exceptedResult = loadTestResultByTestName(tcName.toLowerCase(), testClass);
             exceptedResult = exceptedResult.trim();
@@ -51,7 +52,7 @@ public class DefaultAsExprTest extends PartitionAutoLoadSqlTestBase {
                 JdbcUtil.createPartDatabase(conn, dbName);
                 applyResourceFileIfExists(dbName, tcName.toLowerCase(), testClass);
                 testResult = runTestBySourceSql(tcName.toLowerCase(), supportAutoPart, testClass, dbName, conn,
-                    s -> applySubstitute(s));
+                    s -> applySubstitute(s), resultOptions);
                 JdbcUtil.dropDatabase(conn, dbName);
             } catch (Throwable ex) {
                 throw ex;

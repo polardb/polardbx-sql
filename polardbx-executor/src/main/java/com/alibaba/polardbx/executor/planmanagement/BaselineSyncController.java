@@ -45,21 +45,21 @@ public class BaselineSyncController implements IBaselineSyncController {
     }
 
     @Override
-    public void deleteBaseline(String schemaName, BaselineInfo baselineInfo) {
+    public void deleteBaseline(String schemaName, Integer baselineId) {
         SyncManagerHelper.syncWithDefaultDB(
             new BaselineDeleteSyncAction(
                 schemaName,
-                baselineInfo.getId()),
+                baselineId),
             SyncScope.CURRENT_ONLY);
     }
 
     @Override
-    public void deletePlan(String schemaName, BaselineInfo baselineInfo, PlanInfo planInfo) {
+    public void deletePlan(String schemaName, Integer baselineId, Integer planId) {
         SyncManagerHelper.syncWithDefaultDB(
             new BaselineDeleteSyncAction(
                 schemaName,
-                baselineInfo.getId(),
-                planInfo.getId()),
+                baselineId,
+                planId),
             SyncScope.CURRENT_ONLY);
     }
 

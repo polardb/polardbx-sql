@@ -3,9 +3,11 @@ package com.alibaba.polardbx.gms.metadb.columnar;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.oss.ColumnarFileType;
+import com.alibaba.polardbx.common.oss.ColumnarPartitionPrunedSnapshot;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
@@ -26,8 +28,10 @@ public class FlashbackColumnarManager {
     private final Map<String, List<Pair<String, Long>>> deletePositionMap = new HashMap<>();
     private final Map<String, Pair<List<String>, List<Pair<String, Long>>>> snapshotInfo = new HashMap<>();
     private final Map<String, Long> schemaTsoMap = new HashMap<>();
+    private Long columnarDeltaCheckpointTso = null;
 
-    public FlashbackColumnarManager(long flashbackTso, String logicalSchema, String logicalTable) {
+    public FlashbackColumnarManager(long flashbackTso, String logicalSchema, String logicalTable,
+                                    boolean autoPosition) {
         try (Connection connection = MetaDbUtil.getConnection()) {
             ColumnarTableMappingAccessor accessor = new ColumnarTableMappingAccessor();
             accessor.setConnection(connection);
@@ -45,14 +49,17 @@ public class FlashbackColumnarManager {
             FilesAccessor filesAccessor = new FilesAccessor();
             filesAccessor.setConnection(connection);
 
-            ColumnarAppendedFilesAccessor appendedFilesAccessor = new ColumnarAppendedFilesAccessor();
-            appendedFilesAccessor.setConnection(connection);
-
             List<FilesRecordSimplified> snapshotFiles = filesAccessor
                 .queryColumnarSnapshotFilesByTsoAndTableId(flashbackTso, logicalSchema, String.valueOf(tableId));
-            List<ColumnarAppendedFilesRecord> appendedFilesRecords =
-                appendedFilesAccessor.queryLastValidAppendByTsoAndTableId(flashbackTso, logicalSchema,
-                    String.valueOf(tableId));
+
+            if (autoPosition) {
+                ColumnarCheckpointsAccessor checkpointsAccessor = new ColumnarCheckpointsAccessor();
+                checkpointsAccessor.setConnection(connection);
+
+                this.columnarDeltaCheckpointTso =
+                    checkpointsAccessor.queryColumnarTsoByBinlogTsoAndCheckpointTsoAsc(flashbackTso)
+                        .get(0).checkpointTso;
+            }
 
             for (FilesRecordSimplified record : snapshotFiles) {
                 String fileName = record.fileName;
@@ -69,8 +76,34 @@ public class FlashbackColumnarManager {
                     schemaTsoMap.put(fileName, schemaTso);
                 } else if (columnarFileType.isDeltaFile()) {
                     schemaTsoMap.put(fileName, schemaTso);
+
+                    if (autoPosition) {
+                        if (columnarFileType == ColumnarFileType.CSV) {
+                            snapshotInfo.computeIfAbsent(
+                                partName,
+                                s -> Pair.of(new ArrayList<>(), new ArrayList<>())
+                            ).getValue().add(Pair.of(fileName, -1L));
+                        } else if (columnarFileType == ColumnarFileType.DEL) {
+                            deletePositionMap.computeIfAbsent(
+                                partName,
+                                s -> new ArrayList<>()
+                            ).add(Pair.of(fileName, -1L));
+                        }
+                    }
                 }
             }
+
+            if (autoPosition) {
+                // for auto position, we get the read position from the csv file content, rather than GMS
+                return;
+            }
+
+            ColumnarAppendedFilesAccessor appendedFilesAccessor = new ColumnarAppendedFilesAccessor();
+            appendedFilesAccessor.setConnection(connection);
+
+            List<ColumnarAppendedFilesRecord> appendedFilesRecords =
+                appendedFilesAccessor.queryLastValidAppendByTsoAndTableId(flashbackTso, logicalSchema,
+                    String.valueOf(tableId));
 
             for (ColumnarAppendedFilesRecord record : appendedFilesRecords) {
                 String fileName = record.fileName;
@@ -111,9 +144,13 @@ public class FlashbackColumnarManager {
         return deletePositionMap;
     }
 
-    public Map<String, Pair<List<String>, List<Pair<String, Long>>>> getSnapshotInfo(
+    public Long getColumnarDeltaCheckpointTso() {
+        return columnarDeltaCheckpointTso;
+    }
+
+    public Map<String, ColumnarPartitionPrunedSnapshot> getSnapshotInfo(
         SortedMap<Long, Set<String>> partitionResult) {
-        Map<String, Pair<List<String>, List<Pair<String, Long>>>> result = new HashMap<>();
+        Map<String, ColumnarPartitionPrunedSnapshot> result = new HashMap<>();
         snapshotInfo.forEach((partName, partSnapshot) -> {
             for (String orcFileName : partSnapshot.getKey()) {
                 Long schemaTso = schemaTsoMap.get(orcFileName);
@@ -122,8 +159,8 @@ public class FlashbackColumnarManager {
                     Set<String> partitionSet = headMap.get(headMap.lastKey());
                     if (partitionSet != null && partitionSet.contains(partName)) {
                         result.computeIfAbsent(partName,
-                            s -> Pair.of(new ArrayList<>(), new ArrayList<>())
-                        ).getKey().add(orcFileName);
+                            s -> new ColumnarPartitionPrunedSnapshot()
+                        ).getOrcFilesAndSchemaTs().add(Pair.of(orcFileName, schemaTso));
                     }
                 }
             }
@@ -135,8 +172,9 @@ public class FlashbackColumnarManager {
                     Set<String> partitionSet = headMap.get(headMap.lastKey());
                     if (partitionSet != null && partitionSet.contains(partName)) {
                         result.computeIfAbsent(partName,
-                            s -> Pair.of(new ArrayList<>(), new ArrayList<>())
-                        ).getValue().add(csvNameAndPos);
+                                s -> new ColumnarPartitionPrunedSnapshot()
+                            ).getCsvFilesAndSchemaTsWithPos()
+                            .add(Pair.of(csvNameAndPos.getKey(), Pair.of(schemaTso, csvNameAndPos.getValue())));
                     }
                 }
             }

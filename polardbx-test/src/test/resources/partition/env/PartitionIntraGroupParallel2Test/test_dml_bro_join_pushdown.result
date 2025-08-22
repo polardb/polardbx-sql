@@ -24,7 +24,7 @@ LogicalInsert(table="my_hash_t2", columns=RecordType(BIGINT_UNSIGNED a, BIGINT_U
 explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b;
 Logical ExecutionPlan
 Gather(concurrent=true)
-  LogicalView(tables="my_hash_t1[p1,p2,p3,p4,p5,p6,p7,p8],my_bro_t1", shardCount=8, sql="SELECT `my_bro_t1`.`a` AS `a0`, `my_bro_t1`.`b` AS `b0`, `my_hash_t1`.`a`, `my_hash_t1`.`b` FROM `my_hash_t1` AS `my_hash_t1` INNER JOIN `my_bro_t1` AS `my_bro_t1` ON (`my_hash_t1`.`b` = `my_bro_t1`.`b`)")
+  LogicalView(tables="my_hash_t1[p1,p2,p3,p4,p5,p6,p7,p8],my_bro_t1", shardCount=8, sql="SELECT `my_bro_t1`.`a`, `my_bro_t1`.`b`, `my_hash_t1`.`a` AS `a0`, `my_hash_t1`.`b` AS `b0` FROM `my_hash_t1` AS `my_hash_t1` INNER JOIN `my_bro_t1` AS `my_bro_t1` ON (`my_hash_t1`.`b` = `my_bro_t1`.`b`)")
 explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b for update;
 Logical ExecutionPlan
 BKAJoin(condition="b = b", type="inner")

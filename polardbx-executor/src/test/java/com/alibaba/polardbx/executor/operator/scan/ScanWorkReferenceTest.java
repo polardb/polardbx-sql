@@ -1,7 +1,6 @@
 package com.alibaba.polardbx.executor.operator.scan;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;

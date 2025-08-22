@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.google.common.collect.Lists;
@@ -87,6 +88,19 @@ public class GsiMetaChanger {
             .getGsiMetaManager()
             .updateIndexVisibility(metaDbConnection, schemaName, primaryTableName, indexName, beforeVisibility,
                 afterVisibility);
+
+    }
+
+    public static void updateLackingLocalIndex(Connection metaDbConnection,
+                                             String schemaName,
+                                             String primaryTableName,
+                                             String indexName,
+                                             LackLocalIndexStatus lackingLocalIndex){
+        ExecutorContext
+            .getContext(schemaName)
+            .getGsiManager()
+            .getGsiMetaManager()
+            .updateLackingLocalIndex(metaDbConnection, schemaName, primaryTableName, indexName, lackingLocalIndex);
 
     }
 

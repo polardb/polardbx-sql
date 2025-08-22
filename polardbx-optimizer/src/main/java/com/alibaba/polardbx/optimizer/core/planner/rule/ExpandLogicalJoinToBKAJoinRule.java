@@ -17,13 +17,11 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToBKAJoinRule;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
@@ -32,7 +30,6 @@ import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.logical.LogicalJoin;
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.runtime.PredicateImpl;
 
@@ -98,30 +95,8 @@ public class ExpandLogicalJoinToBKAJoinRule extends RelOptRule {
         } else {
             logicalView = call.rel(2);
         }
-
-        RexUtils.RestrictType restrictType;
-        switch (join.getJoinType()) {
-        case LEFT:
-        case INNER:
-            restrictType = RexUtils.RestrictType.RIGHT;
-            break;
-        case RIGHT:
-            restrictType = RexUtils.RestrictType.LEFT;
-            break;
-        default:
-            return;
-        }
-
-        RexNode newCondition =
-            JoinConditionSimplifyRule.simplifyCondition(join.getCondition(), join.getCluster().getRexBuilder());
-
-        if (!RexUtils.isBatchKeysAccessCondition(join, newCondition, join.getLeft().getRowType().getFieldCount(),
-            restrictType,
-            (Pair<RelDataType, RelDataType> relDataTypePair) -> CBOUtil.bkaTypeCheck(relDataTypePair))) {
-            return;
-        }
-
-        if (!CBOUtil.canBKAJoin(join)) {
+        RexNode newCondition = LogicalJoinToBKAJoinRule.buildNewCondition(join);
+        if (newCondition == null) {
             return;
         }
 

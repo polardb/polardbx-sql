@@ -40,6 +40,12 @@ public class DropDbInfo {
 
     private long versionId;
 
+    private Long connId;
+
+    private String traceId;
+
+    private DatabaseDdlContext ddlContext;
+
     public String getDbName() {
         return dbName;
     }
@@ -94,5 +100,29 @@ public class DropDbInfo {
 
     public void setVersionId(long versionId) {
         this.versionId = versionId;
+    }
+
+    public Long getConnId() {
+        return connId;
+    }
+
+    public void setConnId(Long connId) {
+        this.connId = connId;
+    }
+
+    public DatabaseDdlContext getDdlContext() {
+        return ddlContext;
+    }
+
+    public void setDdlContext(DatabaseDdlContext ddlContext) {
+        this.ddlContext = ddlContext;
+    }
+
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
     }
 }

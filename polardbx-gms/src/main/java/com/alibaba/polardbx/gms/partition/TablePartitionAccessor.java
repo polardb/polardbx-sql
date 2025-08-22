@@ -37,6 +37,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_TABLE_TYPE_PARTITION_TABLE;
+
 /**
  * Handle all the config change in metadb of partition tables
  *
@@ -122,6 +124,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
 
     private static final String UPDATE_TABLE_PARTITIONS_LOCALITY_BY_ID =
         "update table_partitions set part_extras=?  where table_schema=? and id=? ";
+
+    private static final String UPDATE_TABLE_PARTITIONS_TYPE_BY_UK =
+        "update table_partitions set part_expr=?,part_desc=?,tbl_type=?,group_id=?  where table_schema=? and table_name=? and part_name =? ";
 
     private static final String UPDATE_TABLE_PARTITIONS_TTL_STATE_BY_ID =
         "update table_partitions set part_extras=?  where table_schema=? and id=? ";
@@ -952,6 +957,46 @@ public class TablePartitionAccessor extends AbstractAccessor {
                 "query", "table_partitions", e.getMessage());
         }
 
+    }
+
+    public void updateTablePartitionConfig4RepartitionOptimize(TablePartitionRecord logicalTableRecord,
+                                                               List<TablePartitionRecord> partitionRecords,
+                                                               String tableName) {
+        try {
+            List<TablePartitionRecord> records = new ArrayList<>();
+            records.add(logicalTableRecord);
+            records.addAll(partitionRecords);
+
+            updateTablePartitionsType4SingleRepartition(records, tableName, PARTITION_TABLE_TYPE_PARTITION_TABLE);
+        } catch (Throwable e) {
+            logger.error("Failed to query the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                "query", "table_partitions", e.getMessage());
+        }
+    }
+
+    public void updateTablePartitionsType4SingleRepartition(List<TablePartitionRecord> tablePartitionRecordList,
+                                                            String tableName, int tableType)
+        throws SQLException {
+        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>();
+        for (int i = 0; i < tablePartitionRecordList.size(); i++) {
+            TablePartitionRecord tpRecord = tablePartitionRecordList.get(i);
+            Map<Integer, ParameterContext> params = new HashMap<>();
+
+            int j = 1;
+            MetaDbUtil.setParameter(j++, params, ParameterMethod.setString, tpRecord.partExpr);
+            MetaDbUtil.setParameter(j++, params, ParameterMethod.setString, tpRecord.partDesc);
+            MetaDbUtil.setParameter(j++, params, ParameterMethod.setInt, tableType);
+            MetaDbUtil.setParameter(j++, params, ParameterMethod.setLong, tpRecord.groupId);
+            MetaDbUtil.setParameter(j++, params, ParameterMethod.setString, tpRecord.tableSchema);
+            MetaDbUtil.setParameter(j++, params, ParameterMethod.setString, tableName);
+            MetaDbUtil.setParameter(j++, params, ParameterMethod.setString, tpRecord.partName);
+            paramsBatch.add(params);
+        }
+        String sql = UPDATE_TABLE_PARTITIONS_TYPE_BY_UK;
+
+        DdlMetaLogUtil.logSql(sql, paramsBatch);
+        MetaDbUtil.update(sql, paramsBatch, this.connection);
     }
 
     public void resetTablePartitionsLocalityByGroupIds(String dbName, List<Long> groupIds) throws Exception {

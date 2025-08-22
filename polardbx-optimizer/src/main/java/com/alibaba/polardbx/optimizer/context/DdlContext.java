@@ -109,6 +109,8 @@ public class DdlContext {
     // rewrite origin sql for different fk naming behaviours in 5.7 & 8.0
     private String foreignKeyOriginalSql;
 
+    private String ddlJobFactoryName;
+
     public static DdlContext create(String schemaName, String objectName, DdlType ddlType,
                                     ExecutionContext executionContext) {
         DdlContext ddlContext = new DdlContext();
@@ -218,7 +220,6 @@ public class DdlContext {
         res.setEncoding(getEncoding());
         res.setTimeZone(getTimeZone());
         res.setParentDdlContext(getParentDdlContext());
-        res.setForeignKeyOriginalSql(getForeignKeyOriginalSql());
         res.setSkipSubJobCdcMark(isSkipSubJobCdcMark());
 
         return res;
@@ -535,19 +536,19 @@ public class DdlContext {
         this.rollbackPausedPolicy = rollbackPausedPolicy;
     }
 
-    public void setForeignKeyOriginalSql(String foreignKeyOriginalSql) {
-        this.foreignKeyOriginalSql = foreignKeyOriginalSql;
-    }
-
-    public String getForeignKeyOriginalSql() {
-        return this.foreignKeyOriginalSql;
-    }
-
     public void setSkipSubJobCdcMark(boolean skipSubJobCdcMark) {
         this.skipSubJobCdcMark = skipSubJobCdcMark;
     }
 
     public boolean isSkipSubJobCdcMark() {
         return skipSubJobCdcMark;
+    }
+
+    public String getDdlJobFactoryName() {
+        return ddlJobFactoryName;
+    }
+
+    public void setDdlJobFactoryName(String ddlJobFactoryName) {
+        this.ddlJobFactoryName = ddlJobFactoryName;
     }
 }

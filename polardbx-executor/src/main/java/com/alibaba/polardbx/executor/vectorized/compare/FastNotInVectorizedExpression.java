@@ -1,9 +1,11 @@
 package com.alibaba.polardbx.executor.vectorized.compare;
 
+import com.alibaba.polardbx.executor.chunk.DateBlock;
 import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.chunk.TimestampBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InValuesVectorizedExpression;
@@ -69,6 +71,18 @@ public class FastNotInVectorizedExpression extends AbstractVectorizedExpression 
             return;
         }
 
+        // for datetime / timestamp type and the left input is not intermediate result.
+        if (leftInputVectorSlot.isInstanceOf(TimestampBlock.class)) {
+            evalDatetimeNotIn(output, leftInputVectorSlot.cast(TimestampBlock.class), batchSize, isSelectionInUse, sel);
+            return;
+        }
+
+        // for date type and the left input is not intermediate result.
+        if (leftInputVectorSlot.isInstanceOf(DateBlock.class)) {
+            evalDateNotIn(output, leftInputVectorSlot.cast(DateBlock.class), batchSize, isSelectionInUse, sel);
+            return;
+        }
+
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {
                 int j = sel[i];
@@ -105,6 +119,42 @@ public class FastNotInVectorizedExpression extends AbstractVectorizedExpression 
                                int batchSize, boolean isSelectionInUse,
                                int[] sel) {
         long[] longArray = leftInputSlot.longArray();
+        if (isSelectionInUse) {
+            for (int i = 0; i < batchSize; i++) {
+                int j = sel[i];
+                output[j] = inValuesSet.contains(longArray[j]) ?
+                    LongBlock.FALSE_VALUE : LongBlock.TRUE_VALUE;
+            }
+        } else {
+            for (int i = 0; i < batchSize; i++) {
+                output[i] = inValuesSet.contains(longArray[i]) ?
+                    LongBlock.FALSE_VALUE : LongBlock.TRUE_VALUE;
+            }
+        }
+    }
+
+    private void evalDatetimeNotIn(long[] output, TimestampBlock leftInputSlot,
+                                   int batchSize, boolean isSelectionInUse,
+                                   int[] sel) {
+        long[] longArray = leftInputSlot.getPacked();
+        if (isSelectionInUse) {
+            for (int i = 0; i < batchSize; i++) {
+                int j = sel[i];
+                output[j] = inValuesSet.contains(longArray[j]) ?
+                    LongBlock.FALSE_VALUE : LongBlock.TRUE_VALUE;
+            }
+        } else {
+            for (int i = 0; i < batchSize; i++) {
+                output[i] = inValuesSet.contains(longArray[i]) ?
+                    LongBlock.FALSE_VALUE : LongBlock.TRUE_VALUE;
+            }
+        }
+    }
+
+    private void evalDateNotIn(long[] output, DateBlock leftInputSlot,
+                               int batchSize, boolean isSelectionInUse,
+                               int[] sel) {
+        long[] longArray = leftInputSlot.getPacked();
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {
                 int j = sel[i];

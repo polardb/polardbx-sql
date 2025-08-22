@@ -41,6 +41,9 @@ public class InformationSchemaTest extends DDLBaseNewDBTestCase {
 
     private static final String INFO_COLUMNS =
         "select table_schema, table_name, column_name from information_schema.columns where table_schema = '%s' and table_name = '%s'";
+
+    private static final String INFO_COLUMNS_NOT_NULL =
+        "select table_schema, table_name, column_name from information_schema.columns where table_schema = '%s' and table_name = '%s' and column_default is not null";
     private static final String INFO_STATISTICS =
         "select table_schema, table_name, index_schema, index_name, column_name from information_schema.statistics where table_schema = '%s' and table_name = '%s'";
 
@@ -151,6 +154,10 @@ public class InformationSchemaTest extends DDLBaseNewDBTestCase {
             .that(found).isTrue();
         rs.close();
         sql = String.format(INFO_COLUMNS, db, tb);
+        checkInfoColumns(db, tb, sql, mysqlConnection, columns);
+        checkInfoColumns(db, tb, sql, tddlConnection, columns);
+
+        sql = String.format(INFO_COLUMNS_NOT_NULL, db, tb);
         checkInfoColumns(db, tb, sql, mysqlConnection, columns);
         checkInfoColumns(db, tb, sql, tddlConnection, columns);
 

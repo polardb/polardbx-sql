@@ -17,9 +17,6 @@
 package com.alibaba.polardbx.executor.archive.columns;
 
 import com.alibaba.polardbx.common.CrcAccumulator;
-import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
-import com.alibaba.polardbx.common.datatype.DecimalConverter;
-import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.datatype.UInt64Utils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -36,7 +33,6 @@ import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.google.common.base.Preconditions;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
@@ -46,6 +42,7 @@ import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
@@ -141,8 +138,8 @@ class UnsignedLongColumnProvider implements ColumnProvider<Long> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
-        long result = ColumnProvider.longFromByte(bytes, bytes.length);
+        ByteBuffer bytes = row.getBytes(columnId);
+        long result = ColumnProvider.longFromByte(bytes);
         blockBuilder.writeLong(result);
     }
 

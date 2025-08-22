@@ -25,7 +25,6 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
@@ -33,7 +32,11 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexInputRef;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.util.Pair;
 
@@ -162,6 +165,9 @@ public enum ExecutionStrategy {
         final boolean primaryKeyCheck = ec.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK);
         final boolean pushablePrimaryKeyCheck = pushablePrimaryKeyConstraint(context, schema, targetTable);
 
+        final boolean checkUpsertDynamicImplicitWithColumnRef =
+            ec.getParamManager().getBoolean(ConnectionParams.DML_CHECK_UPSERT_DYNAMIC_IMPLICIT_WITH_COLUMN_REF);
+
         boolean multiWriteForReplication;
         boolean canPush;
         if (insert.isUpsert()) {
@@ -193,8 +199,12 @@ public enum ExecutionStrategy {
 
             canPush = (pushDuplicateCheck || canPushDuplicateCheck) && !modifyPartitionKey && !updateGsi
                 && !containUnpushableFunction;
+
             canPush = canPush && (!foreignKeyChecks || !CheckModifyLimitation.checkModifyFkReferenced(insert,
                 context.getExecutionContext()));
+
+            canPush = canPush && !(checkUpsertDynamicImplicitWithColumnRef
+                && checkUpdateDynamicImplicitValueColumnWithColumnRef(insert));
         } else if (insert.isReplace()) {
             // For REPLACE, do DELETE when DELETE_ONLY, do REPLACE when WRITE_ONLY
             multiWriteForReplication = replicateCanWrite;
@@ -388,5 +398,28 @@ public enum ExecutionStrategy {
             }
         }
         return true;
+    }
+
+    public static boolean checkUpdateDynamicImplicitValueColumnWithColumnRef(LogicalInsert insert) {
+        final Map<Integer, RexNode> dynamicImplicitDefaultColumnIndex =
+            insert.getDynamicImplicitDefaultColumnIndexMap();
+
+        final RexUtils.ColumnRefFinder columnRefFinder = new RexUtils.ColumnRefFinder();
+        final boolean updateDynamicImplicitValueColumnWithColumnRef =
+            insert.getDuplicateKeyUpdateList().stream()
+                .anyMatch(duplicateKeyUpdateItem -> {
+                    final RexCall rexCall = (RexCall) duplicateKeyUpdateItem;
+                    final RexInputRef columnRef = (RexInputRef) rexCall.getOperands().get(0);
+                    final int columnIndex = columnRef.getIndex();
+                    final RexNode rex = rexCall.getOperands().get(1);
+
+                    // For execution mode DETERMINISTIC_PUSHDOWN, we do not have before-value of column,
+                    // so that column ref expression can not be computed on CN.
+                    final boolean rexContainsColumnRef = columnRefFinder.analyze(rex);
+                    final boolean withDynamicImplicitDefault =
+                        dynamicImplicitDefaultColumnIndex.containsKey(columnIndex);
+                    return rexContainsColumnRef && withDynamicImplicitDefault;
+                });
+        return updateDynamicImplicitValueColumnWithColumnRef;
     }
 }

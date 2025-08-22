@@ -1,12 +1,13 @@
 package com.alibaba.polardbx.executor.statistics;
 
+import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
-import org.apache.calcite.avatica.Meta;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -16,7 +17,10 @@ import org.mockito.MockitoAnnotations;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -24,7 +28,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -180,5 +183,166 @@ public class PolarDbXSystemTableNDVSketchStatisticTest {
 
         assert !rs;
 
+    }
+
+    @Test
+    public void testMarkTimeout() throws SQLException {
+        String schema = "test_schema";
+        String table = "test_table";
+        String col = "test_col";
+
+        MetaDbDataSource metaDbDataSourceMock = mock(MetaDbDataSource.class);
+        DataSource mockDataSourceMock = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement preparedStatement = mock(PreparedStatement.class);
+        when(metaDbDataSourceMock.getDataSource()).thenReturn(mockDataSourceMock);
+        when(mockDataSourceMock.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
+
+        try (MockedStatic<MetaDbDataSource> metaDbDataSourceMockedStatic = mockStatic(MetaDbDataSource.class);
+            MockedStatic<ConfigDataMode> configDataModeMockedStatic = mockStatic(ConfigDataMode.class)) {
+            metaDbDataSourceMockedStatic.when(MetaDbDataSource::getInstance).thenReturn(metaDbDataSourceMock);
+
+            boolean rs = polarDbXSystemTableNDVSketchStatistic.markTimeout(schema, table, col);
+            assert !rs;
+
+            configDataModeMockedStatic.when(ConfigDataMode::isMasterMode).thenReturn(true);
+            rs = polarDbXSystemTableNDVSketchStatistic.markTimeout(schema, table, col);
+            assert rs;
+        }
+    }
+
+    @Test
+    public void testDeleteBySchemaName() throws SQLException {
+        String schema = "test_schema";
+
+        MetaDbDataSource metaDbDataSourceMock = mock(MetaDbDataSource.class);
+        DataSource mockDataSourceMock = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement preparedStatement = mock(PreparedStatement.class);
+        when(metaDbDataSourceMock.getDataSource()).thenReturn(mockDataSourceMock);
+        when(mockDataSourceMock.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
+
+        try (MockedStatic<MetaDbDataSource> metaDbDataSourceMockedStatic = mockStatic(MetaDbDataSource.class);
+            MockedStatic<ConfigDataMode> configDataModeMockedStatic = mockStatic(ConfigDataMode.class);
+            MockedStatic<JdbcUtils> jdbcUtilsMockedStatic = mockStatic(JdbcUtils.class)
+        ) {
+            metaDbDataSourceMockedStatic.when(MetaDbDataSource::getInstance).thenReturn(metaDbDataSourceMock);
+            configDataModeMockedStatic.when(ConfigDataMode::isMasterMode).thenReturn(false);
+
+            polarDbXSystemTableNDVSketchStatistic.deleteBySchemaName(schema);
+
+            configDataModeMockedStatic.verify(ConfigDataMode::isMasterMode, times(1));
+
+            configDataModeMockedStatic.when(ConfigDataMode::isMasterMode).thenReturn(true);
+
+            polarDbXSystemTableNDVSketchStatistic.deleteBySchemaName(schema);
+
+            jdbcUtilsMockedStatic.verify(() -> JdbcUtils.close(preparedStatement), times(1));
+            jdbcUtilsMockedStatic.clearInvocations();
+
+            doThrow(new SQLException()).when(preparedStatement).executeUpdate();
+
+            polarDbXSystemTableNDVSketchStatistic.deleteBySchemaName(schema);
+
+            jdbcUtilsMockedStatic.verify(() -> JdbcUtils.close(preparedStatement), times(1));
+        }
+    }
+
+    @Test
+    public void testLoadAllSchemaAndTableName() throws SQLException {
+        String schema = "test_schema";
+        String table1 = "test_table1";
+        String table2 = "test_table";
+
+        MetaDbDataSource metaDbDataSourceMock = mock(MetaDbDataSource.class);
+        DataSource mockDataSourceMock = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement preparedStatement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        when(metaDbDataSourceMock.getDataSource()).thenReturn(mockDataSourceMock);
+        when(mockDataSourceMock.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
+        when(preparedStatement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(true, true, false);
+        when(resultSet.getString(eq("SCHEMA_NAME"))).thenReturn(schema, schema);
+        when(resultSet.getString(eq("TABLE_NAME"))).thenReturn(table1, table2);
+
+        try (MockedStatic<MetaDbDataSource> metaDbDataSourceMockedStatic = mockStatic(MetaDbDataSource.class);
+            MockedStatic<MetaDbUtil> metaDbUtilMockedStatic = mockStatic(MetaDbUtil.class);
+            MockedStatic<JdbcUtils> jdbcUtilsMockedStatic = mockStatic(JdbcUtils.class)) {
+            metaDbDataSourceMockedStatic.when(MetaDbDataSource::getInstance).thenReturn(metaDbDataSourceMock);
+            metaDbUtilMockedStatic.when(MetaDbUtil::getConnection).thenReturn(connection);
+
+            Map<String, Set<String>> schemaMap = polarDbXSystemTableNDVSketchStatistic.loadAllSchemaAndTableName();
+            assert schemaMap.size() == 1 && schemaMap.get(schema).size() == 2;
+
+            doThrow(new SQLException()).when(preparedStatement).executeQuery();
+
+            schemaMap = polarDbXSystemTableNDVSketchStatistic.loadAllSchemaAndTableName();
+
+            assert schemaMap.isEmpty();
+        }
+    }
+
+    @Test
+    public void testIsTimeoutMarked() throws SQLException {
+        String schema = "test_schema";
+        String table = "test_table";
+        String col = "test_col";
+
+        MetaDbDataSource metaDbDataSourceMock = mock(MetaDbDataSource.class);
+        DataSource mockDataSourceMock = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement preparedStatement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        when(metaDbDataSourceMock.getDataSource()).thenReturn(mockDataSourceMock);
+        when(mockDataSourceMock.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
+        when(preparedStatement.executeQuery()).thenReturn(resultSet);
+
+        try (MockedStatic<MetaDbDataSource> metaDbDataSourceMockedStatic = mockStatic(MetaDbDataSource.class);
+            MockedStatic<MetaDbUtil> metaDbUtilMockedStatic = mockStatic(MetaDbUtil.class)) {
+            // 模拟MetaDbDataSource.getInstance返回metaDbDataSourceMock
+            metaDbDataSourceMockedStatic.when(MetaDbDataSource::getInstance).thenReturn(metaDbDataSourceMock);
+
+            // 模拟MetaDbUtil.getConnection返回connection
+            metaDbUtilMockedStatic.when(MetaDbUtil::getConnection).thenReturn(connection);
+
+            // 测试数据源为空时的情况
+            boolean r = polarDbXSystemTableNDVSketchStatistic.isTimeoutMarked(schema, table, col, null);
+
+            assert !r;
+
+            when(resultSet.next()).thenReturn(false);
+
+            // 测试结果集为空, 返回false的情况
+            r = polarDbXSystemTableNDVSketchStatistic.isTimeoutMarked(schema, table, col, mockDataSourceMock);
+
+            assert !r;
+
+            // 测试结果集不为空, timeout_flag为0的情况
+            when(resultSet.next()).thenReturn(true);
+            when(resultSet.getInt(eq("timeout_flag"))).thenReturn(0);
+
+            r = polarDbXSystemTableNDVSketchStatistic.isTimeoutMarked(schema, table, col, mockDataSourceMock);
+
+            assert !r;
+
+            // 测试结果集不为空, timeout_flag为1的情况
+            when(resultSet.getInt(eq("timeout_flag"))).thenReturn(1);
+
+            r = polarDbXSystemTableNDVSketchStatistic.isTimeoutMarked(schema, table, col, mockDataSourceMock);
+
+            assert r;
+
+            // 测试访问 metadb 失败的情况
+            doThrow(new SQLException()).when(preparedStatement).executeQuery();
+
+            r = polarDbXSystemTableNDVSketchStatistic.isTimeoutMarked(schema, table, col, mockDataSourceMock);
+
+            assert !r;
+        }
     }
 }

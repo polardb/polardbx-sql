@@ -16,22 +16,30 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
 import com.alibaba.polardbx.optimizer.core.datatype.BlobType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import io.airlift.slice.XxHash64;
+import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.sql.Blob;
 import java.sql.SQLException;
 import java.util.Arrays;
 
 import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
+import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Blob Block
  *
  */
 public class BlobBlock extends ReferenceBlock<Blob> {
+    private static final long INSTANCE_SIZE = ClassLayout.parseClass(BlobBlock.class).instanceSize();
+
+    private static final int BLOB_INSTANCE_SIZE = ClassLayout.parseClass(
+        com.alibaba.polardbx.optimizer.core.datatype.Blob.class).instanceSize();
 
     public BlobBlock(int positionCount) {
         super(0, positionCount, new boolean[positionCount],
@@ -135,6 +143,22 @@ public class BlobBlock extends ReferenceBlock<Blob> {
         } catch (SQLException e) {
             return NULL_TAG;
         }
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        long valueMemoryUsage = 0L;
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] instanceof com.alibaba.polardbx.optimizer.core.datatype.Blob) {
+                valueMemoryUsage += FastMemoryCounter.sizeOf((Blob) values[i], BLOB_INSTANCE_SIZE);
+            }
+        }
+
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(values))
+            + valueMemoryUsage;
+        estimatedSize = elementUsedBytes;
     }
 
     public Blob[] blobArray() {

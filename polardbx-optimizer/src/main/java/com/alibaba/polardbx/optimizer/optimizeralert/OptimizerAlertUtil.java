@@ -18,7 +18,9 @@ package com.alibaba.polardbx.optimizer.optimizeralert;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.utils.ExceptionUtils;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
@@ -27,10 +29,13 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.statis.XplanStat;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -94,18 +99,26 @@ public class OptimizerAlertUtil {
         }
     }
 
+    public static void statisticsAlert(String schema, String table, OptimizerAlertType type, ExecutionContext ec, Object obj) {
+        Map<String, Object> extraMap = new HashMap<>();
+        extraMap.put("schema", schema);
+        extraMap.put("table", table);
+        if (obj instanceof Throwable){
+            obj = ExceptionUtils.exceptionStackTrace((Throwable) obj);
+        }
+        OptimizerAlertManager.getInstance().log(type, ec, obj, extraMap);
+    }
+
     /**
      * check if any statistic info(both topn&histogram) missing
      */
-    public static void statisticsAlert(String schema, String table, StatisticManager.CacheLine c) {
-        if (!DynamicConfig.getInstance().optimizerAlert()) {
-            return;
-        }
+    public static void checkStatisticsMiss(String schema, String table, StatisticManager.CacheLine c, int sampleRowSize) {
         if (SystemDbHelper.isDBBuildIn(schema)) {
             return;
         }
         // if table row count == 0 ,skip check
-        if (c.getRowCount() == 0L) {
+        if (c.getRowCount() == 0L ||
+                (c.getRowCount() < InstConfUtil.getInt(ConnectionParams.STATISTICS_MISS_MIN_ROWCOUNT) && sampleRowSize == 0)) {
             return;
         }
         List<ColumnMeta> columnMetas = StatisticUtils.getColumnMetas(false, schema, table);
@@ -114,6 +127,7 @@ public class OptimizerAlertUtil {
         }
         for (ColumnMeta cm : columnMetas) {
             String col = cm.getName().toLowerCase();
+            DataType dataType = cm.getDataType();
             if (c.getAllNullCols().contains(col)) {
                 continue;
             }
@@ -121,7 +135,7 @@ public class OptimizerAlertUtil {
             boolean topNNull = c.getTopN(col) == null;
             Histogram histogram = c.getHistogramMap() == null ? null : c.getHistogramMap().get(col);
             boolean histogramNull = false;
-            if (histogram == null || histogram.getBuckets().size() == 0) {
+            if (!DataTypeUtil.isChar(dataType) && (histogram == null || histogram.getBuckets().size() == 0)) {
                 histogramNull = true;
             }
 
@@ -135,7 +149,7 @@ public class OptimizerAlertUtil {
                             schema + "," + table + "," + col
                         },
                         NORMAL);
-                OptimizerAlertManager.getInstance().log(OptimizerAlertType.STATISTIC_MISS, null);
+                OptimizerAlertUtil.statisticsAlert(schema, table, OptimizerAlertType.STATISTIC_MISS, null, null);
             }
         }
     }

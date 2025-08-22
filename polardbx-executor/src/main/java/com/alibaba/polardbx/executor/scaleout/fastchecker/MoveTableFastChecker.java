@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import org.apache.calcite.util.Pair;
 
 import java.util.List;
 import java.util.Map;
@@ -51,18 +52,22 @@ public class MoveTableFastChecker extends FastChecker {
                                 PhyTableOperation planSelectHashCheckWithLowerBoundDst,
                                 PhyTableOperation planSelectHashCheckWithLowerUpperBoundDst,
                                 PhyTableOperation planIdleSelectSrc, PhyTableOperation planIdleSelectDst,
-                                PhyTableOperation planSelectSampleSrc, PhyTableOperation planSelectSampleDst) {
+                                PhyTableOperation planSelectSampleSrc, PhyTableOperation planSelectSampleDst,
+                                Map<Pair<String, String>, List<Pair<String, String>>> srcTarPhyTableMap,
+                                boolean isMirrorCheck) {
         super(schemaName, schemaName, srcLogicalTableName, dstLogicalTableName, srcPhyDbAndTables,
             dstPhyDbAndTables, srcColumns, dstColumns, srcPks, dstPks, planSelectHashCheckSrc,
             planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
             planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
             planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
-            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
+            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst, srcTarPhyTableMap, isMirrorCheck);
     }
 
     public static FastChecker create(String schemaName, String tableName,
                                      Map<String, Set<String>> srcPhyDbAndTables,
                                      Map<String, Set<String>> dstPhyDbAndTables,
+                                     Map<Pair<String, String>, List<Pair<String, String>>> srcTarPhyTableMap,
+                                     boolean isMirrorCheck,
                                      ExecutionContext ec) {
         final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         final TableMeta tableMeta = sm.getTable(tableName);
@@ -95,6 +100,8 @@ public class MoveTableFastChecker extends FastChecker {
             builder.buildIdleSelectForChecker(tableMeta, allColumns),
 
             builder.buildSqlSelectForSample(tableMeta, pks),
-            builder.buildSqlSelectForSample(tableMeta, pks));
+            builder.buildSqlSelectForSample(tableMeta, pks),
+            srcTarPhyTableMap,
+            isMirrorCheck);
     }
 }

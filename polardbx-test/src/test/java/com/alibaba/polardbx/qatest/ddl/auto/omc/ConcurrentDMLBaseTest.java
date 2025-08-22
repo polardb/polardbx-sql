@@ -64,35 +64,78 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
     public void concurrentTestInternal(String tableName, String colDef, String alterSql, String selectSql,
                                        Function<Integer, String> generator1, Function<Integer, String> generator2,
                                        QuadFunction<Integer, Integer, String, String, Boolean> checker,
-                                       boolean fillData, boolean withGsi, int batchSize) throws Exception {
+                                       boolean fillData, boolean withGsi) throws Exception {
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
-            withGsi, batchSize, false);
+            withGsi, false);
     }
 
     public void concurrentTestInternal(String tableName, String colDef, String alterSql, String selectSql,
                                        Function<Integer, String> generator1, Function<Integer, String> generator2,
                                        QuadFunction<Integer, Integer, String, String, Boolean> checker,
-                                       boolean fillData, boolean withGsi,
-                                       int batchSize, boolean isModifyPartitionKey) throws Exception {
+                                       boolean fillData, boolean withGsi, boolean isModifyPartitionKey)
+        throws Exception {
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
-            withGsi, batchSize, isModifyPartitionKey, true, null);
+            withGsi, isModifyPartitionKey, true, null, true, !isModifyPartitionKey);
+    }
+
+    public void concurrentTestInternalWithPhyDdl(String tableName, String colDef, String alterSql, String selectSql,
+                                                 Function<Integer, String> generator1,
+                                                 Function<Integer, String> generator2,
+                                                 QuadFunction<Integer, Integer, String, String, Boolean> checker,
+                                                 boolean fillData, boolean withGsi) throws Exception {
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
+            withGsi, false, true, null, false, false);
+    }
+
+    public void concurrentTestInternalWithoutGeneratedColumn(String tableName, String colDef, String alterSql,
+                                                             String selectSql,
+                                                             Function<Integer, String> generator1,
+                                                             Function<Integer, String> generator2,
+                                                             QuadFunction<Integer, Integer, String, String, Boolean> checker,
+                                                             boolean fillData, boolean withGsi)
+        throws Exception {
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
+            withGsi, false, true, null, false, true);
+    }
+
+    public void concurrentTestInternalWithoutGeneratedColumn(String tableName, String colDef, String alterSql,
+                                                             String selectSql,
+                                                             Function<Integer, String> generator1,
+                                                             Function<Integer, String> generator2,
+                                                             QuadFunction<Integer, Integer, String, String, Boolean> checker,
+                                                             boolean fillData, boolean withGsi,
+                                                             boolean isModifyPartitionKey)
+        throws Exception {
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
+            withGsi, isModifyPartitionKey, true, null, false, !isModifyPartitionKey);
+    }
+
+    public void concurrentTestInternalWithNotStrict(String tableName, String colDef, String alterSql, String selectSql,
+                                                    Function<Integer, String> generator1,
+                                                    Function<Integer, String> generator2,
+                                                    QuadFunction<Integer, Integer, String, String, Boolean> checker,
+                                                    boolean fillData, boolean withGsi)
+        throws Exception {
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
+            withGsi, false, false, null, false, true);
     }
 
     public void concurrentTestInternalWithCreateSql(String tableName, String colDef, String alterSql, String selectSql,
                                                     Function<Integer, String> generator1,
                                                     Function<Integer, String> generator2,
                                                     QuadFunction<Integer, Integer, String, String, Boolean> checker,
-                                                    boolean fillData, boolean withGsi,
-                                                    int batchSize, String createSql) throws Exception {
+                                                    boolean fillData, boolean withGsi, String createSql)
+        throws Exception {
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
-            withGsi, batchSize, false, true, createSql);
+            withGsi, false, true, createSql, false, true);
     }
 
     public void concurrentTestInternal(String tableName, String colDef, String alterSql, String selectSql,
                                        Function<Integer, String> generator1, Function<Integer, String> generator2,
                                        QuadFunction<Integer, Integer, String, String, Boolean> checker,
-                                       boolean fillData, boolean withGsi, int batchSize, boolean isModifyPartitionKey,
-                                       boolean isStrictMode, String createTableSql)
+                                       boolean fillData, boolean withGsi, boolean isModifyPartitionKey,
+                                       boolean isStrictMode, String createTableSql, boolean hasGeneratedColumns,
+                                       boolean isOmc)
         throws Exception {
         tableName = tableName + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
@@ -167,8 +210,26 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                 }
             }
 
+            if (hasGeneratedColumns) {
+                String alterGeneratedColumnSql = String.format(
+                    "alter table %s add column tmp timestamp default current_timestamp", finalTableName);
+                JdbcUtil.executeUpdateSuccess(conn, alterGeneratedColumnSql);
+
+                alterGeneratedColumnSql = String.format(
+                    "alter table %s add column v_a bigint GENERATED ALWAYS AS (tmp) virtual", finalTableName);
+                JdbcUtil.executeUpdateSuccess(conn, alterGeneratedColumnSql);
+
+                alterGeneratedColumnSql = String.format(
+                    "alter table %s add column v_b bigint GENERATED ALWAYS AS (tmp) stored", finalTableName);
+                JdbcUtil.executeUpdateSuccess(conn, alterGeneratedColumnSql);
+
+                alterGeneratedColumnSql = String.format(
+                    "alter table %s add column v_c bigint GENERATED ALWAYS AS (tmp) logical", finalTableName);
+                JdbcUtil.executeUpdateSuccess(conn, alterGeneratedColumnSql);
+            }
+
             if (fillData) {
-                final String insert = String.format("insert into %s values (?,?,?,?)", tableName);
+                final String insert = String.format("insert into %s(a,b,c,d) values (?,?,?,?)", tableName);
                 for (int i = 0; i < FILL_COUNT; i += FILL_BATCH_SIZE) {
                     List<List<Object>> params = new ArrayList<>();
                     for (int j = 0; j < FILL_BATCH_SIZE; j++) {
@@ -236,7 +297,7 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                             JdbcUtil.updateDataTddl(connection, sql, null);
                         }
                         Thread.sleep(1000);
-                        String algorithm = isModifyPartitionKey ? "" : USE_OMC_ALGORITHM;
+                        String algorithm = isOmc ? USE_OMC_ALGORITHM : "";
                         String batchHint = "/*+TDDL:cmd_extra(GSI_BACKFILL_BATCH_SIZE=50,CHANGE_SET_APPLY_BATCH=32)*/";
                         String sql = batchHint + String.format(alterSql, finalTableName) + algorithm;
                         try {
@@ -279,8 +340,6 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                                 ResultSet rs = statement.executeQuery(
                                     String.format(selectSql, finalTableName + index.get(cnt % index.size())));
                                 cnt++;
-                                ResultSetMetaData rsmd = rs.getMetaData();
-                                assertEquals(4, rsmd.getColumnCount());
                                 while (rs.next() && tot > 0) {
                                     int colA = rs.getInt(1);
                                     Object tmpB = rs.getObject(2);
@@ -308,8 +367,6 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                             Thread.sleep(500); // sleep to wait dmlTask
                             ResultSet rs =
                                 JdbcUtil.executeQuerySuccess(connection, String.format(selectSql, finalTableName));
-                            ResultSetMetaData rsmd = rs.getMetaData();
-                            assertEquals(4, rsmd.getColumnCount());
                             int actualCount = 0;
                             while (rs.next()) {
                                 int colA = rs.getInt(1);
@@ -330,7 +387,6 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                                 assertTrue(checker.apply(colA, colB, colC, colD));
                                 actualCount++;
                             }
-                            // assertEquals(totalCount.get() * batchSize, actualCount); // this will fail sometimes due to sync problem
                         } finally {
                             connection.close();
                         }

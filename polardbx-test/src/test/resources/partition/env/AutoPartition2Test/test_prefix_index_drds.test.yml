@@ -1,0 +1,25 @@
+drop database if exists prefix_index_test_db;
+
+create database prefix_index_test_db mode = 'drds';
+
+use prefix_index_test_db;
+
+drop table if exists prefix_index_test_t1;
+
+create table prefix_index_test_t1(
+a int primary key, 
+b text, 
+c int, 
+global index(a,c,b(10)) dbpartition by hash(a), 
+unique global index(a,c,b(20)) dbpartition by hash(a)
+) dbpartition by hash(a);
+
+show full create table prefix_index_test_t1;
+
+alter table prefix_index_test_t1 dbpartition by hash(c);
+
+show full create table prefix_index_test_t1;
+
+alter table prefix_index_test_t1 single;
+
+show full create table prefix_index_test_t1;

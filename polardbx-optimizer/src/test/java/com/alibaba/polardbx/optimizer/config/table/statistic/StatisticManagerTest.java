@@ -6,9 +6,11 @@ import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.clearspring.analytics.util.Lists;
 import org.junit.Assert;
@@ -29,6 +31,7 @@ import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUti
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.digestForStatisticTrace;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -39,7 +42,6 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -146,6 +148,21 @@ public class StatisticManagerTest {
             assert statisticResult.getLongValue() == 1L;
             assert statisticResult.getSource() == StatisticResultSource.HLL_SKETCH;
         }
+    }
+
+    @Test
+    public void testUpdateAllShardParts() throws Exception {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+
+        String schema = "test_schema";
+        String tableName = "test_table";
+        String columnName = "test_col";
+        StatisticManager statisticManager = new MockStatisticManager();
+
+        statisticManager.sds = mock(StatisticDataSource.class);
+        statisticManager.updateAllShardParts(schema, tableName, columnName, new ExecutionContext(), null);
+
+        assertTrue(statisticManager.getCardinalitySketch().containsKey("test_schema:test_table:test_col"));
     }
 
     @Test

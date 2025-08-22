@@ -48,9 +48,9 @@ public class LogicalAlterStoragePool extends BaseDdlOperation {
 
     public void prepareData(Boolean validateStorageInstIdle) {
         AlterStoragePoolPrepareData preparedData = new AlterStoragePoolPrepareData();
-        preparedData.setStoragePoolName(alterStoragePool.getStoragePoolName().toString());
+        preparedData.setStoragePoolName(alterStoragePool.getStoragePoolName().toString().toLowerCase());
         preparedData.setSchemaName(DEFAULT_DB_NAME);
-        String dnList = formatDnList(alterStoragePool.getDnList().toString());
+        String dnList = formatDnList(alterStoragePool.getDnList().toString().toLowerCase());
         String[] dnIds = dnList.split(",");
         preparedData.setDnIds(Arrays.stream(dnIds).collect(Collectors.toList()));
         preparedData.setOperationType(alterStoragePool.getOperationType().toString());

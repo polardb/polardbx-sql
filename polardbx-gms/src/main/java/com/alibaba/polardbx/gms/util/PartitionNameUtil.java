@@ -18,22 +18,14 @@ package com.alibaba.polardbx.gms.util;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
-import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
-import com.aliyun.oss.common.comm.ExecutionContext;
 import org.apache.commons.lang.StringUtils;
 
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -246,4 +238,95 @@ public class PartitionNameUtil {
         String subPartName = String.format(SUB_PART_NAME_TEMPLATE, subPartPosiInTemp, partPosi);
         return toLowerCase(subPartName);
     }
+
+    protected static final String DUPLICATED_PART_NAME_INDEX_SEPARATOR = "@";
+    protected static final String DEFAULT_DUPLICATED_PART_NAME_INDEX_STRING = "@01";
+    protected static final Integer DUPLICATED_PART_NAME_INDEX_STRING_LENGTH = 3;
+    protected static final Integer MAX_DUPLICATED_PART_NAME_INDEX = 99;//01~99
+
+    /**
+     * Build new PartName for the duplicated PartName
+     */
+    public static String buildNewPartNameForDuplicatedPartName(String duplicatedPartName) {
+        /**
+         * if found the duplicated partName , the
+         * auto gen new name by duplicated + @01/@02/...
+         *
+         */
+        int targetIdx = duplicatedPartName.lastIndexOf(PartitionNameUtil.DUPLICATED_PART_NAME_INDEX_SEPARATOR);
+        int dupIndexStrLength = PartitionNameUtil.DUPLICATED_PART_NAME_INDEX_STRING_LENGTH;
+        boolean foundDupFlag = targetIdx != -1;
+
+        String newPartNamePrefix = duplicatedPartName;
+        String newDupIndexStrPostfix = "";
+        boolean buildNewPartNameForTHeDuplicatedName = false;
+        if (foundDupFlag) {
+            String substrPostfix = duplicatedPartName.substring(targetIdx);
+            String substrPrefix = duplicatedPartName.substring(0, targetIdx);
+            newPartNamePrefix = substrPrefix;
+            if (StringUtils.isNotEmpty(substrPrefix)
+                && StringUtils.isNotEmpty(substrPostfix)
+                && substrPostfix.length() == dupIndexStrLength) {
+                String dupPostNumStr = substrPostfix.substring(1);
+                if (StringUtils.isNumeric(dupPostNumStr)) {
+                    Integer dupIdx = Integer.valueOf(dupPostNumStr);
+                    if (dupIdx > 0) {
+                        Integer dupNewIdx = dupIdx + 1;
+
+                        // 00 ~ 99
+                        if (dupNewIdx <= MAX_DUPLICATED_PART_NAME_INDEX) {
+                            newDupIndexStrPostfix =
+                                String.format("%s%02d", PartitionNameUtil.DUPLICATED_PART_NAME_INDEX_SEPARATOR,
+                                    dupNewIdx);
+                        } else {
+                            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format(
+                                "Find too more duplicated partition names of %s, please rename partition name",
+                                duplicatedPartName));
+                        }
+
+                        buildNewPartNameForTHeDuplicatedName = true;
+                    }
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                        String.format("Find invalid duplicated number from the partition name", duplicatedPartName));
+                }
+            }
+        }
+
+        if (!buildNewPartNameForTHeDuplicatedName) {
+            newDupIndexStrPostfix = String.format(PartitionNameUtil.DEFAULT_DUPLICATED_PART_NAME_INDEX_STRING);
+        }
+
+        String newPartName = null;
+        int maxPartitionNameLength = DynamicConfig.getInstance().getMaxPartitionNameLength();
+        if (newPartNamePrefix.length() + dupIndexStrLength > maxPartitionNameLength) {
+            /**
+             *  if newPartNamePrefix > maxPartNameLen, then
+             *  change to the following format:
+             *      first 11 char of newPartNamePrefix(8 char) + _{newPartNamePrefixHashCode}(4 char)
+             */
+            newPartNamePrefix =
+                compressPartNameToTargetLength(newPartNamePrefix, maxPartitionNameLength - dupIndexStrLength);
+        }
+        newPartName = newPartNamePrefix + newDupIndexStrPostfix;
+        return newPartName;
+    }
+
+    protected static String compressPartNameToTargetLength(String partNameToBeCompressed,
+                                                           int finalPartNameLength) {
+
+        /**
+         *  if partNameToBeCompressed > finalPartNameLength, then
+         *  change to the following format:
+         *      first 11 char of newPartNamePrefix( finalPartNameLength - 8 ) + {newPartNamePrefixHashCode}(8 char)
+         */
+        String fullPartNameHashCode = GroupInfoUtil.doMurmur3Hash32(partNameToBeCompressed).toLowerCase();
+        String last4CharOfHashCode = fullPartNameHashCode.substring(fullPartNameHashCode.length() - 4);
+        String newPartNamePrefix = partNameToBeCompressed.substring(0, finalPartNameLength - 5);
+        String newPartName = String.format("%s$%s", newPartNamePrefix, last4CharOfHashCode);
+        return newPartName;
+
+    }
 }
+
+

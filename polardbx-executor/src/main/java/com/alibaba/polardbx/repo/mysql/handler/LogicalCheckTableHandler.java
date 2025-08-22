@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
@@ -39,6 +40,7 @@ import com.alibaba.polardbx.gms.metadb.record.RecordConverter;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
@@ -47,6 +49,7 @@ import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -55,6 +58,7 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.IndexType;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils;
 import com.alibaba.polardbx.optimizer.config.table.PolarDBXOrcSchema;
@@ -67,18 +71,23 @@ import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.repo.mysql.checktable.CheckTableUtil;
 import com.alibaba.polardbx.repo.mysql.checktable.ColumnDiffResult;
 import com.alibaba.polardbx.repo.mysql.checktable.FieldDescription;
+import com.alibaba.polardbx.repo.mysql.checktable.IndexDescription;
 import com.alibaba.polardbx.repo.mysql.checktable.TableCheckResult;
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCheckTable;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -92,6 +101,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -100,9 +110,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildPhysicalDbNameFromGroupName;
+import static com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil.buildTargetTablesFromPartitionInfo;
 
 /**
  * @author chenmo.cm
@@ -176,12 +188,25 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                     }
                     doCheckForOnePartTableTopology(schemaName, table, executionContext, result);
                     doCheckTableColumn(schemaName, table, executionContext, result);
-                    doCheckForOnePartTableLocalIndex(schemaName, table, executionContext, result);
-                    doCheckForOnePartTableGsi(schemaName, table, executionContext, result);
-                    doCheckForOnePartTableForeignKeys(schemaName, table, executionContext, result);
+                    try {
+                        doCheckForOnePartTableLocalIndex(schemaName, table, executionContext, result, false);
+                        doCheckForOnePartTableGsi(schemaName, table, executionContext, result);
+                        doCheckForOnePartTableForeignKeys(schemaName, table, executionContext, result);
+                    } catch (SQLException e) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION,
+                            " we have failed to execute query on metadb, you can try it again! the cause is "
+                                + e.getMessage());
+                    }
 
                 } else {
                     doCheckForOneTable(schemaName, appName, table, executionContext, result);
+                    try {
+                        doCheckForOnePartTableLocalIndex(schemaName, table, executionContext, result, false);
+                    } catch (SQLException e) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION,
+                            " we have failed to execute query on metadb, you can try it again! the cause is "
+                                + e.getMessage());
+                    }
                 }
             }
         }
@@ -390,81 +415,179 @@ public class LogicalCheckTableHandler extends HandlerCommon {
     }
 
     protected void doCheckForOnePartTableLocalIndex(String schemaName, String logicalTableName,
-                                                    ExecutionContext executionContext, ArrayResultCursor result) {
+                                                    ExecutionContext executionContext, ArrayResultCursor result,
+                                                    Boolean forGsi)
+        throws SQLException {
+        // there would be many secondary index. we should optimize this logical.
         if (null == executionContext) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_DATABASE, schemaName);
         }
-        Map<String, IndexMeta> secondaryIndexMap =
-            executionContext.getSchemaManager(schemaName).getTable(logicalTableName).getSecondaryIndexesMap();
-        for (String indexName : secondaryIndexMap.keySet()) {
-            IndexMeta indexMeta = secondaryIndexMap.get(indexName);
-            doCheckForLocalIndexTopology(schemaName, logicalTableName, indexName, executionContext, result,
-                indexMeta);
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(metaDbConn);
+            List<IndexesRecord> records = tableInfoManager.queryIndexes(schemaName, logicalTableName);
+            Map<String, IndexMeta> secondaryIndexMap =
+                executionContext.getSchemaManager(schemaName).getTable(logicalTableName).getSecondaryIndexesMap();
+            doCheckForLocalIndexTopology(schemaName, logicalTableName, records, secondaryIndexMap, executionContext,
+                result);
         }
     }
 
-    protected void doCheckForLocalIndexTopology(String schemaName, String logicalTableName, String indexName,
-                                                ExecutionContext executionContext, ArrayResultCursor result,
-                                                IndexMeta indexMeta) {
-        PartitionInfo partInfo =
-            executionContext.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager()
-                .getPartitionInfo(logicalTableName);
-        String tableText = String.format("%s.%s:Local Index", logicalTableName, indexName);
-        String opText = "check";
-        String statusText = "status";
-        String msgText = statusOK;
+    protected void doCheckForLocalIndexTopology(String schemaName, String logicalTableName,
+                                                List<IndexesRecord> indexesRecords,
+                                                Map<String, IndexMeta> indexMetaMap,
+                                                ExecutionContext executionContext, ArrayResultCursor result) {
+
+        final Set<String> localIndexesType = Sets.newHashSet(IndexType.BTREE.toString(), IndexType.FULLTEXT.toString());
         Boolean flag = true;
-        if (partInfo == null) {
-            return;
+        Boolean enableCheckGpp =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CHECK_GPP_FOR_LOCAL_INDEX);
+        Map<String, List<List<String>>> tableTopology =
+            PartitionInfoUtil.getTableTopology(schemaName, logicalTableName);
+        Map<String, IndexesRecord> indexesRecordMap = new HashMap<>();
+        for (IndexesRecord indexesRecord : indexesRecords) {
+            indexesRecordMap.put(indexesRecord.indexName, indexesRecord);
         }
-        Map<String, Set<String>> partTblTopology = partInfo.getTopology();
-        List<String> columns = indexMeta.getKeyColumns().stream().map(o -> o.getName()).collect(Collectors.toList());
-        for (String groupName : partTblTopology.keySet()) {
+        for (String indexName : indexMetaMap.keySet()) {
+            if (!indexesRecordMap.containsKey(indexName)
+                || indexesRecordMap.get(indexName).indexStatus != IndexStatus.PUBLIC.getValue()) {
+                flag = false;
+                String tableText = String.format("%s.%s:Local Index", logicalTableName, indexName);
+                String opText = "check";
+                String msgText =
+                    String.format("index '%s' doesn't exist in metadb or in no public status but in table meta",
+                        indexName);
+                result.addRow(new Object[] {tableText, opText, MsgType.status.name(), msgText});
+            }
+        }
+        for (String indexName : indexesRecordMap.keySet()) {
+            if (localIndexesType.contains(indexesRecordMap.get(indexName).indexType) && !indexMetaMap.containsKey(
+                indexName) && !indexName.equalsIgnoreCase("PRIMARY")) {
+                flag = false;
+                String tableText = String.format("%s.%s:Local Index", logicalTableName, indexName);
+                String opText = "check";
+                String msgText = String.format("index '%s' doesn't exist in table meta but in metadb", indexName);
+                result.addRow(new Object[] {tableText, opText, MsgType.status.name(), msgText});
+            }
+
+        }
+        Map<String, Map<String, Map<String, IndexDescription>>> localIndexes = new ConcurrentHashMap<>();
+        for (String groupName : tableTopology.keySet()) {
             String phyDbName = buildPhysicalDbNameFromGroupName(groupName);
             List<String> phyTableLists =
-                partTblTopology.get(groupName).stream().map(String::toLowerCase).collect(Collectors.toList());
-            Map<String, List<String>> phyColumnsMap =
-                CheckTableUtil.getTableIndexColumns(schemaName, groupName, phyTableLists, indexName,
+                tableTopology.get(groupName).stream().map(o -> o.get(0).toLowerCase()).collect(Collectors.toList());
+            Map<String, Map<String, IndexDescription>> localIndexesOnGroup =
+                CheckTableUtil.getTableIndexesOnGroup(schemaName, groupName, enableCheckGpp, phyTableLists,
                     phyDbName);
+            localIndexes.put(groupName, localIndexesOnGroup);
+        }
+        Map<String, Boolean> expectedGpp = new HashMap<>();
+        for (String groupName : tableTopology.keySet()) {
+            Map<String, Map<String, IndexDescription>> localIndexesOnGroup = localIndexes.get(groupName);
+            List<String> phyTableLists =
+                tableTopology.get(groupName).stream().map(o -> o.get(0).toLowerCase()).collect(Collectors.toList());
             for (String phyTable : phyTableLists) {
-                if (InstanceVersion.isMYSQL80() && columns.isEmpty() && !phyColumnsMap.containsKey(phyTable)) {
-                    //mysql 80 函数索引没有列名
-                    continue;
-                }
-                if (!phyColumnsMap.containsKey(phyTable) || phyColumnsMap.get(phyTable).isEmpty()) {
+                if (!localIndexesOnGroup.containsKey(phyTable) || localIndexesOnGroup.get(phyTable).isEmpty()) {
                     flag = false;
-                    msgText = String.format(
-                        "index '%s' doesn't exist on group '%s' for physical table '%s'",
-                        indexName, groupName, phyTable);
-                    result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
-                } else {
-                    List<String> phyColumns = phyColumnsMap.get(phyTable);
-                    List<String> redundantColumns = phyColumns.stream().filter(o -> !columns.contains(o)).collect(
-                        Collectors.toList());
-                    List<String> lackColumns =
-                        columns.stream().filter(o -> !phyColumns.contains(o)).collect(Collectors.toList());
-                    if (!lackColumns.isEmpty() || !redundantColumns.isEmpty()) {
-                        flag = false;
-                        String msgText1 = String.format(
-                            "index '%s' on group '%s' for physical table '%s' has redundant columns: '%s'. ",
-                            indexName, groupName, phyTable, StringUtils.join(redundantColumns, ","));
-                        String msgText2 = String.format(
-                            "index '%s' on group '%s' for physical table '%s' lack columns: '%s'. ",
-                            indexName, groupName, phyTable, StringUtils.join(lackColumns, ","));
-                        msgText =
-                            (redundantColumns.isEmpty() ? "" : msgText1) + (lackColumns.isEmpty() ? "" : msgText2);
+                    for (String indexName : indexMetaMap.keySet()) {
+                        String tableText = String.format("%s.%s:Local Index", logicalTableName, indexName);
+                        String opText = "check";
+                        String msgText = String.format(
+                            "index '%s' doesn't exist on group '%s' for physical table '%s'",
+                            indexName, groupName, phyTable);
                         result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
                     }
+                } else if (!compareLocalIndex(logicalTableName, groupName, phyTable, localIndexesOnGroup.get(phyTable),
+                    indexMetaMap, expectedGpp, result)) {
+                    flag = false;
                 }
             }
         }
         if (flag) {
-            result.addRow(new Object[] {tableText, opText, statusText, msgText});
+            for (String indexName : indexMetaMap.keySet()) {
+                String tableText = String.format("%s.%s:Local Index", logicalTableName, indexName);
+                String opText = "check";
+                String msgText = "OK";
+                result.addRow(new Object[] {tableText, opText, MsgType.status.name(), msgText});
+            }
         }
     }
 
+    protected Boolean compareLocalIndex(String logicalTableName,
+                                        String group,
+                                        String physicalTable,
+                                        Map<String, IndexDescription> indexDescriptionMap,
+                                        Map<String, IndexMeta> indexMetaMap,
+                                        Map<String, Boolean> expectedGpp,
+                                        ArrayResultCursor result) {
+        Boolean flag = true;
+        for (String index : indexMetaMap.keySet()) {
+            if (!indexDescriptionMap.containsKey(index)) {
+                flag = false;
+                String tableText = String.format("%s.%s:Local Index", logicalTableName, index);
+                String opText = "check";
+                String msgText = String.format(
+                    "index '%s' is lack on group '%s' for physical table '%s', with meta in table meta",
+                    index, group, physicalTable);
+                result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+            }
+
+        }
+        for (String index : indexDescriptionMap.keySet()) {
+            String tableText = String.format("%s.%s:Local Index", logicalTableName, index);
+            String opText = "check";
+            if (!indexMetaMap.containsKey(index)) {
+                flag = false;
+                String msgText = String.format(
+                    "index '%s' is rebundant on group '%s' for physical table '%s', no such meta in table meta",
+                    index, group, physicalTable);
+                result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+            } else {
+                int phyColumnSize = indexDescriptionMap.get(index).getColumns().size();
+                List<String> phyColumns = new ArrayList<>();
+                for (int i = 1; i <= phyColumnSize; i++) {
+                    phyColumns.add(indexDescriptionMap.get(index).getColumns().get(i));
+                }
+                List<String> metaColumns =
+                    indexMetaMap.get(index).getKeyColumns().stream().map(o -> o.getOriginColumnName()).collect(
+                        Collectors.toList());
+                List<String> redundantColumns =
+                    phyColumns.stream().filter(o -> !metaColumns.contains(o) && !StringUtil.isEmpty(o)).collect(
+                        Collectors.toList());
+                List<String> lackColumns =
+                    metaColumns.stream().filter(o -> !phyColumns.contains(o) && !TStringUtil.isEmpty(o))
+                        .collect(Collectors.toList());
+                if (!lackColumns.isEmpty() || !redundantColumns.isEmpty()) {
+                    flag = false;
+                    String msgText1 = String.format(
+                        "index '%s' on group '%s' for physical table '%s' has redundant columns: '%s'. ",
+                        index, group, physicalTable, StringUtils.join(redundantColumns, ","));
+                    String msgText2 = String.format(
+                        "index '%s' on group '%s' for physical table '%s' lack columns: '%s'. ",
+                        index, group, physicalTable, StringUtils.join(lackColumns, ","));
+                    String msgText =
+                        (redundantColumns.isEmpty() ? "" : msgText1) + (lackColumns.isEmpty() ? "" : msgText2);
+                    result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+                }
+            }
+
+            Boolean gpp = indexDescriptionMap.get(index).getGpp();
+            if (!expectedGpp.containsKey(index)) {
+                expectedGpp.put(index, gpp);
+            } else if (!expectedGpp.get(index).equals(gpp)) {
+                flag = false;
+                String msgText = String.format(
+                    "index '%s' on group '%s' for physical table '%s' has inconsistent gpp option: '%s'. ",
+                    index, group, physicalTable, gpp);
+                result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+            }
+        }
+        return flag;
+    }
+
     protected void doCheckForOnePartTableGsi(String schemaName, String logicalTableName,
-                                             ExecutionContext executionContext, ArrayResultCursor result) {
+                                             ExecutionContext executionContext, ArrayResultCursor result)
+        throws SQLException {
         ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
         if (null == executionContext) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_DATABASE, schemaName);
@@ -480,6 +603,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                 GsiMetaManager.GsiIndexMetaBean gsiMetaBean = bean.gsiMetaBean;
                 doCheckForOnePartTableTopology(schemaName, gsiMetaBean.indexName, executionContext, result,
                     logicalTableName);
+                doCheckForOnePartTableLocalIndex(schemaName, gsiMetaBean.indexName, executionContext, result, true);
                 doCheckTableGsiCoveringColumns(schemaName, gsiMetaBean.indexName, logicalTableName,
                     executionContext, result);
             }
@@ -821,6 +945,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
     protected void doCheckForOnePartTableTopology(String schemaName, String logicalTableName,
                                                   ExecutionContext executionContext, ArrayResultCursor result,
                                                   String tableName) {
+
         TddlRuleManager tddlRuleManager = OptimizerContext.getContext(schemaName).getRuleManager();
         PartitionInfo partInfo = tddlRuleManager.getPartitionInfoManager().getPartitionInfo(logicalTableName);
         if (partInfo == null) {

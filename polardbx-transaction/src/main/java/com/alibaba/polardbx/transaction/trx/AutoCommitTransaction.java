@@ -62,7 +62,7 @@ public class AutoCommitTransaction extends BaseTransaction {
 
     public AutoCommitTransaction(ExecutionContext ec, ITransactionManager manager) {
         super(ec, manager);
-        ch = new AutoCommitConnectionHolder();
+        ch = new AutoCommitConnectionHolder(ec);
         this.consistentReplicaRead = executionContext.getParamManager().getBoolean(
             ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ);
     }

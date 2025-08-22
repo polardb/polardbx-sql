@@ -319,4 +319,20 @@ public class FileSystemManager {
         }
         return fileSystem;
     }
+
+    static public Engine getDefaultColumnarEngine() {
+        if (getFileSystemGroup(Engine.OSS, false) != null) {
+            return Engine.OSS;
+        } else if (getFileSystemGroup(Engine.EXTERNAL_DISK, false) != null) {
+            return Engine.EXTERNAL_DISK;
+        } else if (getFileSystemGroup(Engine.NFS, false) != null) {
+            return Engine.NFS;
+        } else if (getFileSystemGroup(Engine.S3, false) != null) {
+            return Engine.S3;
+        } else if (getFileSystemGroup(Engine.ABS, false) != null) {
+            return Engine.LOCAL_DISK;
+        } else {
+            return Engine.OSS;
+        }
+    }
 }

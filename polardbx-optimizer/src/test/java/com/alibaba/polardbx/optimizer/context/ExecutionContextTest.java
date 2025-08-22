@@ -1,12 +1,20 @@
 package com.alibaba.polardbx.optimizer.context;
 
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.Schema;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author fangwu
@@ -23,6 +31,28 @@ public class ExecutionContextTest {
         Assert.assertTrue(ec.getScalarSubqueryVal(0) != null);
         Assert.assertTrue(ec.getScalarSubqueryVal(-1) != null);
         Assert.assertTrue(ec.getScalarSubqueryVal(-23342227) != null);
+    }
+
+    /**
+     * 正常情况下复制一个新的ExecutionContext实例
+     */
+    @Test
+    public void testCopyForShardingNormalCase() {
+        Parameters mockParams = mock(Parameters.class);
+        InternalTimeZone mockTimeZone = mock(InternalTimeZone.class);
+
+        String schema = "test_schema";
+        ExecutionContext context = new ExecutionContext("initial_schema");
+        Map<String, SchemaManager> schemaManagers = new HashMap<>();
+        SchemaManager mockSchemaManager = mock(SchemaManager.class);
+        schemaManagers.put(schema, mockSchemaManager);
+
+        ExecutionContext copiedContext = context.copyForSharding(schema, mockParams, schemaManagers, mockTimeZone);
+
+        assertEquals(mockSchemaManager, copiedContext.getSchemaManager(schema));
+        assertSame(mockParams, copiedContext.getParams());
+        assertSame(schemaManagers, copiedContext.getSchemaManagers());
+        assertSame(mockTimeZone, copiedContext.getTimeZone());
     }
 
     @Test
@@ -73,5 +103,11 @@ public class ExecutionContextTest {
         Assert.assertTrue(ec.isFlashbackArea());
         ec.clearContextInsideTrans();
         Assert.assertFalse(ec.isFlashbackArea());
+    }
+
+    @Test
+    public void copyTest() {
+        ExecutionContext context = new ExecutionContext();
+        context.copy();
     }
 }

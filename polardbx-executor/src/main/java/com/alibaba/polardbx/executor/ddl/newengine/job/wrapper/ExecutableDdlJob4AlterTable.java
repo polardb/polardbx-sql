@@ -17,7 +17,9 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job.wrapper;
 
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import lombok.Data;
 
@@ -27,6 +29,10 @@ public class ExecutableDdlJob4AlterTable extends ExecutableDdlJob {
      * first task in Alter Table
      */
     private BaseValidateTask tableValidateTask;
+
+    private DdlTask beforeChangeMetaTask;
+
+    private DdlTask changeMetaTask;
 
     /**
      * last task in Alter Table

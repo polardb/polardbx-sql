@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.jdbc;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
+import java.util.Collection;
 
 public interface IDataSource extends DataSource {
 
@@ -27,6 +28,8 @@ public interface IDataSource extends DataSource {
     IConnection getConnection() throws SQLException;
 
     IConnection getConnection(MasterSlave masterSlave) throws SQLException;
+
+    IConnection getConnection(MasterSlave masterSlave, Collection<IConnection> allocated) throws SQLException;
 
     String getMasterDNId();
 }

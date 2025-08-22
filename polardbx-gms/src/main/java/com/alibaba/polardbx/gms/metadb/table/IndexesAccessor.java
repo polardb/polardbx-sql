@@ -222,7 +222,7 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String UPDATE_INDEXES_COLUMN_NAMES =
         UPDATE_INDEXES + "`column_name` = ?" + WHERE_SCHEMA_TABLE_COLUMN;
-    private static final String DELETE_INDEXES = "delete" + FROM_INDEXES_TABLE;
+    private static final String DELETE_INDEXES = "delete t from " + INDEXES_TABLE + " as t force index(`table_schema`)";
 
     private static final String DELETE_INDEXES_ALL = DELETE_INDEXES + WHERE_SCHEMA;
 
