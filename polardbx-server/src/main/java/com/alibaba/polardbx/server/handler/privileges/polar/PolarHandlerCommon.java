@@ -116,38 +116,32 @@ public class PolarHandlerCommon {
         c.writeErrMessage(ErrorCode.ER_NO, error);
     }
 
-    protected static void handleSetPasswordError(PrivManageResult res, ServerConnection c) {
-        if (res.getResultCodes().get(0) == PrivManageCode.NO_PRIVILEGE) {
-            String error = String.format(SET_PASSWORD_NO_PRIVILEGE, res.getGranter().getIdentifier());
-            c.writeErrMessage(ErrorCode.ER_NO, error);
-            return;
+protected static void handleSetPasswordError(PrivManageResult res, ServerConnection c) {
+    if (res.getResultCodes().get(0) == PrivManageCode.NO_PRIVILEGE) {
+        String error = String.format(SET_PASSWORD_NO_PRIVILEGE, res.getGranter().getIdentifier());
+        if (!res.getGranter().getIdentifier().equals("polardbx_root")) {
+            c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, error);
         }
-
-        List<String> users = new ArrayList<>();
-        for (PolarAccountInfo user : res.getFailedGrantees()) {
-            users.add(user.getIdentifier());
-        }
-
-        String error = String.format(SET_PASSWORD_FAILED, String.join(",", users));
-        c.writeErrMessage(ErrorCode.ER_NO, error);
+        return;
     }
 
-    protected static void checkMasterInstance() {
-        // Can't do GRANT/REVOKE/CREATE/DROP/SET on slave instance
-        if (!ConfigDataMode.isMasterMode()) {
+    List<String> users = new ArrayList<>();
+    for (PolarAccountInfo user : res.getFailedGrantees()) {
+        users.add(user.getIdentifier());
+    }
+
+    String error = String.format(SET_PASSWORD_FAILED, String.join(",", users));
+    c.writeErrMessage(com.alibaba.polardbx.ErrorCode.ER_NO, error);
+}
+
+protected static void checkDrdsRoot(List<PolarAccountInfo> grantees) {
+    for (PolarAccountInfo grantee : grantees) {
+        if (StringUtils.equalsIgnoreCase(grantee.getUsername(), POLAR_ROOT) && !grantee.getUsername().equals("polardbx_root")) {
             throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
-                PrivilegeErrorMsg.AUTHORIZE_RESTRICTED_TO_MASTER_INSTANCE);
+                String.format("Can not modify %s since it is reserved for system", POLAR_ROOT));
         }
     }
-
-    protected static void checkDrdsRoot(List<PolarAccountInfo> grantees) {
-        for (PolarAccountInfo grantee : grantees) {
-            if (StringUtils.equalsIgnoreCase(grantee.getUsername(), POLAR_ROOT)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
-                    String.format("Can not modify %s since it is reserved for system", POLAR_ROOT));
-            }
-        }
-    }
+}
 
     protected static List<PolarAccountInfo> getGrantees(SQLExprTableSource sqlExprTableSource, List<SQLExpr> users,
                                                         List<SQLPrivilegeItem> privilegeItems, ServerConnection c)
