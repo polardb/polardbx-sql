@@ -62,7 +62,7 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     public static final String INVALID_ADDRESS = "127.0.0.1:3306";
 
-    public static final String VERSION = "2.4.1";
+    public static final String VERSION = "2.4.2";
 
     public static final String PREFIX = "com.taobao.tddl.jdbc.group_V" + VERSION + "_";
 
