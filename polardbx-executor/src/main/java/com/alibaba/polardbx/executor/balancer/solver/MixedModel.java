@@ -21,9 +21,13 @@ import com.alibaba.polardbx.druid.util.StringUtils;
 import com.sun.jna.Platform;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -50,7 +54,8 @@ public class MixedModel {
         BALANCE_DEFAULT,
         NON_HOT_SPLIT,
         MIN_COST,
-        HOT_SPLIT
+        HOT_SPLIT,
+        EXTERNAL
     }
 
     public static Boolean checkNativeOptimizationSupport() {
@@ -69,6 +74,13 @@ public class MixedModel {
         this.lpModel = new LpModel();
         this.lpModel.setVariable(M, N, X, Weight, 1 - mu, 1 + mu, drainNodeIndexes);
     }
+
+//    public void buildExpensiveLpModel(int M, int N, int[] X, double Weight[], TreeMap<String, Set<Integer>> mergeMap,
+//                                      double lambda1, double lambda2, int[] storedPartitionNum,
+//                                      double[] storagedWeight) {
+//        this.lpModel = new LpModel();
+//        this.lpModel.setVariable(M, N, X, Weight, lambda1, lambda2, mergeMap, storedPartitionNum, storagedWeight);
+//    }
 
     public void buildSplitModel(int M, int N, int[] X, double Weight[], PartitionSplitInfo partitionSplitInfo,
                                 double mu) {
@@ -353,6 +365,19 @@ public class MixedModel {
             }
         }
         return solution;
+    }
+
+    public static Solution solveMovePartitionForceCompute(int m, int n, int[] originalPlace, double[] partitionSize,
+                                                          TreeMap<String, Set<Integer>> mergeMap,
+                                                          int[] storedPartitionNum, double[] storedPartitionSize,
+                                                          double lambda1, double lambda2) {
+        return null;
+//        MixedModel model = new MixedModel();
+//        model.buildExpensiveLpModel(m, n, originalPlace, partitionSize, mergeMap, lambda1, lambda2, storedPartitionNum,
+//            storedPartitionSize);
+//        Solution tempSolution = model.lpSolve();
+//        model.closeLpModel();
+//        return tempSolution;
     }
 
     public static Solution solveMovePartition(int m, int n, int[] originalPlace, double[] partitionSize,

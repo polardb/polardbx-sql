@@ -29,6 +29,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -48,6 +49,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlInterruptSyncAction;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequest;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.KillActivePhyDdlSyncAction;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
@@ -435,6 +437,67 @@ public class DdlHelper {
         return count > 0;
     }
 
+    /**
+     * 检查物理表空间是否已被丢弃
+     *
+     * @param schemaName 数据库名称
+     * @param groupName 组名称
+     * @param phyTableName 物理表名称
+     * @return 如果表空间已被丢弃，则返回true；否则返回false
+     */
+    public static boolean checkIfPhyTableSpaceDiscard(String schemaName, String groupName, String phyTableName) {
+        // 丢弃状态的字符串表示
+        final String DISCARDED_STATE = "discarded";
+        // 获取物理表的schema名称
+        String phyTableSchema = getPhyTableSchema(schemaName, groupName);
+        // 规范化物理表名称
+        phyTableName = SQLUtils.normalize(phyTableName);
+        // 保存原始的物理表名称，用于错误信息中
+        String originalPhyTableName = phyTableName;
+        // 获取物理分区名称列表
+        List<String> partitionNames =
+            PhysicalBackfillUtils.getPhysicalPartitionNames(schemaName, groupName, phyTableSchema, phyTableName);
+        // 检查是否是MySQL 8.0版本
+        boolean isMySQL80 = ExecUtils.isMysql80Version();
+        // 如果存在分区名称，则更新物理表名称以包含分区信息
+        if (GeneralUtil.isNotEmpty(partitionNames)) {
+            phyTableName = String.format("%s#p#%s", phyTableName, partitionNames.get(0) + "%");
+        }
+        // 根据MySQL版本构建查询语句
+        String query80 = String.format(
+            "select file_size,state from information_schema.innodb_tablespaces where name like '%s/%s'",
+            phyTableSchema, phyTableName);
+        String query57 = String.format(
+            "select file_size from information_schema.innodb_sys_tablespaces where name like '%s/%s'",
+            phyTableSchema, phyTableName);
+        // 构建错误信息模板
+        String errMsg =
+            String.format("check if the physical table '%s' status on %s. Caused by: %%s", originalPhyTableName,
+                groupName);
+        // 根据MySQL版本选择合适的查询语句
+        String sql = isMySQL80 ? query80 : query57;
+        // 初始化丢弃状态为false
+        boolean discarded = false;
+        try (Connection conn = getPhyConnection(schemaName, groupName);
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ResultSet rs = ps.executeQuery()) {
+            // 处理查询结果
+            if (rs.next()) {
+                // 根据file_size判断表空间是否已被丢弃
+                discarded = (0 == rs.getInt(1));
+                // 如果是MySQL 8.0版本，还需要根据state字段判断
+                if (isMySQL80) {
+                    discarded = TStringUtil.equalsIgnoreCase(DISCARDED_STATE, rs.getString(2));
+                }
+            }
+        } catch (SQLException e) {
+            // 如果发生SQLException，抛出TddlRuntimeException异常
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_FAILED, String.format(errMsg, e.getMessage()), e);
+        }
+        // 返回丢弃状态
+        return discarded;
+    }
+
     private static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
 
     private static final String INFO_SCHEMA_PROCESSLIST = "information_schema.processlist";
@@ -544,6 +607,7 @@ public class DdlHelper {
             (MyRepository) ExecutorContext.getContext(schemaName).getRepositoryHolder().get(MYSQL_JDBC.name());
 
         List<Group> groups = OptimizerContext.getContext(schemaName).getMatrix().getGroups();
+        int delay = DynamicConfig.getInstance().getKillPhysicalConnectionDelay();
 
         boolean noActivePhyDDLFound = true;
 
@@ -590,6 +654,9 @@ public class DdlHelper {
                     for (Pair<Long, String> phyDDL : phyDDLs) {
                         try {
                             stmt.executeUpdate(String.format(KILL_PHY_PROCESS, phyDDL.getKey()));
+                            if (delay > 0) {
+                                Thread.sleep(delay);
+                            }
                             LOGGER.info(String.format("Killed an active physical DDL %s (%s)", phyDDL.getKey(),
                                 phyDDL.getValue()));
                         } catch (Exception e) {

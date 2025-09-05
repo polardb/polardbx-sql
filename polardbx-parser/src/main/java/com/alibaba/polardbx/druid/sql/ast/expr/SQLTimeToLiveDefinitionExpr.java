@@ -14,6 +14,8 @@ public class SQLTimeToLiveDefinitionExpr extends SQLExprImpl {
     protected SQLExpr ttlExpr;
     protected SQLExpr ttlJobExpr;
     protected SQLExpr ttlFilterExpr;
+    protected SQLExpr ttlPartIntervalExpr;
+    protected SQLExpr ttlCleanupExpr;
     protected SQLExpr archiveTypeExpr;
     protected SQLExpr archiveTableSchemaExpr;
     protected SQLExpr archiveTableNameExpr;
@@ -40,6 +42,7 @@ public class SQLTimeToLiveDefinitionExpr extends SQLExprImpl {
         SQLExpr otherTtlExpr = otherTtlDefineExpr.getTtlExpr();
         SQLExpr otherTtlJobExpr = otherTtlDefineExpr.getTtlJobExpr();
         SQLExpr otherTtlFilterExpr = otherTtlDefineExpr.getTtlFilterExpr();
+        SQLExpr otherTtlSkipCleanupExpr = otherTtlDefineExpr.getTtlCleanupExpr();
         SQLExpr otherArchiveTypeExpr = otherTtlDefineExpr.getArchiveTypeExpr();
         SQLExpr otherArchiveSchemaExpr = otherTtlDefineExpr.getArchiveTableSchemaExpr();
         SQLExpr otherArchiveNameExpr = otherTtlDefineExpr.getArchiveTableNameExpr();
@@ -89,11 +92,24 @@ public class SQLTimeToLiveDefinitionExpr extends SQLExprImpl {
             if (otherTtlFilterExpr == null) {
                 return false;
             }
-            if (!ttlExpr.equals(otherTtlFilterExpr)) {
+            if (!ttlFilterExpr.equals(otherTtlFilterExpr)) {
                 return false;
             }
         } else {
             if (otherTtlFilterExpr != null) {
+                return false;
+            }
+        }
+
+        if (ttlCleanupExpr != null) {
+            if (otherTtlSkipCleanupExpr == null) {
+                return false;
+            }
+            if (!ttlCleanupExpr.equals(otherTtlSkipCleanupExpr)) {
+                return false;
+            }
+        } else {
+            if (otherTtlSkipCleanupExpr != null) {
                 return false;
             }
         }
@@ -180,6 +196,8 @@ public class SQLTimeToLiveDefinitionExpr extends SQLExprImpl {
         result = 31 * result + (ttlExpr != null ? ttlExpr.hashCode() : 0);
         result = 31 * result + (ttlJobExpr != null ? ttlJobExpr.hashCode() : 0);
         result = 31 * result + (ttlFilterExpr != null ? ttlFilterExpr.hashCode() : 0);
+        result = 31 * result + (ttlCleanupExpr != null ? ttlCleanupExpr.hashCode() : 0);
+        result = 31 * result + (ttlPartIntervalExpr != null ? ttlPartIntervalExpr.hashCode() : 0);
         result = 31 * result + (archiveTypeExpr != null ? archiveTypeExpr.hashCode() : 0);
         result = 31 * result + (archiveTableSchemaExpr != null ? archiveTableSchemaExpr.hashCode() : 0);
         result = 31 * result + (archiveTableNameExpr != null ? archiveTableNameExpr.hashCode() : 0);
@@ -205,6 +223,19 @@ public class SQLTimeToLiveDefinitionExpr extends SQLExprImpl {
         if (ttlJobExpr != null) {
             sqlTimeToLiveDefinitionExpr.setTtlJobExpr(ttlJobExpr.clone());
         }
+
+        if (ttlFilterExpr != null) {
+            sqlTimeToLiveDefinitionExpr.setTtlFilterExpr(ttlFilterExpr.clone());
+        }
+
+        if (ttlCleanupExpr != null) {
+            sqlTimeToLiveDefinitionExpr.setTtlCleanupExpr(ttlCleanupExpr.clone());
+        }
+
+        if (ttlPartIntervalExpr != null) {
+            sqlTimeToLiveDefinitionExpr.setTtlPartIntervalExpr(ttlPartIntervalExpr.clone());
+        }
+
         if (archiveTypeExpr != null) {
             sqlTimeToLiveDefinitionExpr.setArchiveTypeExpr(archiveTypeExpr.clone());
         }
@@ -340,5 +371,21 @@ public class SQLTimeToLiveDefinitionExpr extends SQLExprImpl {
 
     public void setArchiveTablePostAllocateExpr(SQLExpr archiveTablePostAllocateExpr) {
         this.archiveTablePostAllocateExpr = archiveTablePostAllocateExpr;
+    }
+
+    public SQLExpr getTtlCleanupExpr() {
+        return ttlCleanupExpr;
+    }
+
+    public void setTtlCleanupExpr(SQLExpr ttlCleanupExpr) {
+        this.ttlCleanupExpr = ttlCleanupExpr;
+    }
+
+    public SQLExpr getTtlPartIntervalExpr() {
+        return ttlPartIntervalExpr;
+    }
+
+    public void setTtlPartIntervalExpr(SQLExpr ttlPartIntervalExpr) {
+        this.ttlPartIntervalExpr = ttlPartIntervalExpr;
     }
 }

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
@@ -30,6 +31,8 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToBKAJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -57,6 +60,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.logical.LogicalTableLookup;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -87,6 +91,7 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.optimizer.index.IndexUtil.getForceIndex;
+import static com.alibaba.polardbx.optimizer.index.IndexUtil.getPagingForceIndex;
 
 public abstract class AccessPathRule extends RelOptRule {
 
@@ -133,9 +138,11 @@ public abstract class AccessPathRule extends RelOptRule {
                 return false;
             }
 
-            // only match when all nodes convention are Convention.NONE
-            // because after sharding key full match group by key Agg push, we should not change logicalView (which convention will be DrdsConvention) AccessPath
             if (logicalView.getConvention() != Convention.NONE) {
+                return false;
+            }
+
+            if (logicalView.isOnePhaseAgg()) {
                 return false;
             }
 
@@ -187,6 +194,17 @@ public abstract class AccessPathRule extends RelOptRule {
                 final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsiName));
                 if (isCoveringIndex(mq, logicalView, primaryTable, gsiName)
                     && (lockMode == null || lockMode == SqlSelect.LockMode.UNDEF)) {
+                    // make sure sk not nullable, because EqualityInference doesn't support <=>
+                    // TODO: remove the limit
+                    if (CollectionUtils.isNotEmpty(getPagingForceIndex(logicalView.getIndexNode()))) {
+                        TableMeta indexMeta = CBOUtil.getTableMeta(indexTable);
+                        if (OptimizerContext.getContext(indexMeta.getSchemaName())
+                            .getRuleManager()
+                            .getSharedColumns(gsiName)
+                            .stream().anyMatch(sk -> indexMeta.getColumn(sk).isNullable())) {
+                            continue;
+                        }
+                    }
                     final IndexScanVisitor indexScanVisitor =
                         new IndexScanVisitor(primaryTable, indexTable, call.builder());
                     final LogicalIndexScan logicalIndexScan =
@@ -204,6 +222,10 @@ public abstract class AccessPathRule extends RelOptRule {
                     if (logicalView.getTableNames().size() > 1) {
                         continue;
                     }
+                    // forbid access path rule when using paging_force index
+                    if (CollectionUtils.isNotEmpty(getPagingForceIndex(logicalView.getIndexNode()))) {
+                        continue;
+                    }
 
                     // TODO: improve skyline here
                     if (plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_INDEX_SKYLINE)) {
@@ -215,6 +237,9 @@ public abstract class AccessPathRule extends RelOptRule {
                     IndexTableLookupVisitor indexTableLookupVisitor = new IndexTableLookupVisitor(primaryTable,
                         indexTable, lockMode);
                     RelNode node = plan.accept(indexTableLookupVisitor);
+                    if (!indexTableLookupVisitor.isWork()) {
+                        continue;
+                    }
                     RelNode expandNode = optimizeByTableLookupRule(node, plannerContext);
                     if (shouldPruneGsi(expandNode, mq, primaryCanUseIndex, logicalView)) {
                         continue;
@@ -231,6 +256,11 @@ public abstract class AccessPathRule extends RelOptRule {
                 if (logicalView.getTableNames().size() > 1) {
                     return;
                 }
+                // forbid access path rule when using paging_force index
+                if (CollectionUtils.isNotEmpty(getPagingForceIndex(logicalView.getIndexNode()))) {
+                    return;
+                }
+
                 // use MergeIndexRule to analyze condition
                 MergeIndexRule mergeIndexRule = new MergeIndexRule(schemaName, gsiNameList, lockMode);
                 HepProgramBuilder builder = new HepProgramBuilder();
@@ -448,7 +478,8 @@ public abstract class AccessPathRule extends RelOptRule {
 
         // force index gsi should be handled&remove in ToDrdsRelVisitor. force index only local index can be stayed
         Set<String> forceIndex = getForceIndex(indexNode);
-        if (forceIndex.size() > 0) {
+        forceIndex.addAll(getPagingForceIndex(indexNode));
+        if (!forceIndex.isEmpty()) {
             List<String> forceResult = new ArrayList<>();
             // local index strategy: return all the gsi and primary table that contains this local index
             String indexName = forceIndex.iterator().next();
@@ -569,6 +600,7 @@ public abstract class AccessPathRule extends RelOptRule {
             Set<String> useIndexNames = IndexUtil.getUseIndex(scan.getIndexNode());
             Set<String> ignoreIndexNames = IndexUtil.getIgnoreIndex(scan.getIndexNode());
             Set<String> forceIndexNames = getForceIndex(scan.getIndexNode());
+            Set<String> pagingForceIndexNames = IndexUtil.getPagingForceIndex(scan.getIndexNode());
 
             Set<String> normalizedUseIndexNames = normalizeIndexNames(useIndexNames, tableName, schemaName,
                 PlannerContext.getPlannerContext(scan).getExecutionContext());
@@ -576,6 +608,9 @@ public abstract class AccessPathRule extends RelOptRule {
                 PlannerContext.getPlannerContext(scan).getExecutionContext());
             Set<String> normalizedForceIndexNames = normalizeIndexNames(forceIndexNames, tableName, schemaName,
                 PlannerContext.getPlannerContext(scan).getExecutionContext());
+            Set<String> normalizedPagingForceIndexNames =
+                normalizeIndexNames(pagingForceIndexNames, tableName, schemaName,
+                    PlannerContext.getPlannerContext(scan).getExecutionContext());
 
             SqlNodeList normalizedIndexNode = new SqlNodeList(SqlParserPos.ZERO);
             if (!normalizedUseIndexNames.isEmpty()) {
@@ -609,6 +644,18 @@ public abstract class AccessPathRule extends RelOptRule {
                         null,
                         new SqlNodeList(
                             normalizedForceIndexNames.stream()
+                                .map(x -> SqlLiteral.createCharString(x, SqlParserPos.ZERO))
+                                .collect(Collectors.toList()),
+                            SqlParserPos.ZERO),
+                        SqlParserPos.ZERO);
+                normalizedIndexNode.add(sqlIndexHint);
+            }
+            if (!normalizedPagingForceIndexNames.isEmpty()) {
+                SqlIndexHint sqlIndexHint =
+                    new SqlIndexHint(SqlLiteral.createCharString("PAGING_FORCE INDEX", SqlParserPos.ZERO),
+                        null,
+                        new SqlNodeList(
+                            normalizedPagingForceIndexNames.stream()
                                 .map(x -> SqlLiteral.createCharString(x, SqlParserPos.ZERO))
                                 .collect(Collectors.toList()),
                             SqlParserPos.ZERO),
@@ -650,6 +697,7 @@ public abstract class AccessPathRule extends RelOptRule {
         private final RelOptTable primaryTable;
         private final RelOptTable indexTable;
         private final SqlSelect.LockMode lockMode;
+        private boolean work = false;
 
         private IndexTableLookupVisitor(RelOptTable primaryTable, RelOptTable indexTable, SqlSelect.LockMode lockMode) {
             this.primaryTable = primaryTable;
@@ -685,7 +733,15 @@ public abstract class AccessPathRule extends RelOptRule {
             final LogicalIndexScan index = new LogicalIndexScan(this.indexTable, indexTableScan, lockMode);
             index.setFlashback(scan.getFlashback());
             index.setFlashbackOperator(scan.getFlashbackOperator());
-            return RelUtils.createTableLookup(primary, index, index.getTable());
+            LogicalTableLookup logicalTableLookup = RelUtils.createTableLookup(primary, index, index.getTable());
+            if (PlannerContext.getPlannerContext(scan).getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_INDEX_SELECTION_PRUNE)) {
+                if (LogicalJoinToBKAJoinRule.buildNewCondition(logicalTableLookup.getJoin()) == null) {
+                    return super.visit(scan);
+                }
+            }
+            work = true;
+            return logicalTableLookup;
         }
 
         /**
@@ -717,6 +773,10 @@ public abstract class AccessPathRule extends RelOptRule {
             }
 
             return Pair.of(forcePart, nonForcedHints);
+        }
+
+        public boolean isWork() {
+            return work;
         }
     }
 
@@ -774,8 +834,8 @@ public abstract class AccessPathRule extends RelOptRule {
                 .filter(indexNode -> indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0)
                 // If more than one index specified, choose first one only
                 .map(indexNode -> (SqlIndexHint) ((SqlNodeList) indexNode).get(0))
-                // only support force index
-                .filter(SqlIndexHint::forceIndex)
+                // only support force/paging_force index
+                .filter(x -> x.forceIndex() || x.pagingForceIndex())
                 // Dealing with force index(`xxx`), `xxx` will decoded as string.
                 .map(indexNode -> {
                     final String indexName = GlobalIndexMeta.getIndexName(

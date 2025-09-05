@@ -46,13 +46,7 @@ import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -65,7 +59,7 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
     public AlterTableGroupModifyPartitionJobFactory(DDL ddl, AlterTableGroupModifyPartitionPreparedData preparedData,
                                                     Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                                     Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                                    Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                                    Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                                     Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                     Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                                     Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -80,7 +74,7 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
                                           ExecutionContext executionContext) {
         AlterTableGroupModifyPartitionBuilder alterTableGroupModifyPartitionBuilder =
             new AlterTableGroupModifyPartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableGroupModifyPartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableGroupModifyPartitionBuilder.getTargetTablesTopology();
@@ -202,7 +196,7 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
         EmptyTask emptyTask = new EmptyTask(schemaName);
         boolean emptyTaskAdded = false;
 
-        for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
+        for (Map.Entry<String, TreeMap<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             AlterTableGroupModifyPartitionSubTaskJobFactory subTaskJobFactory =
                 new AlterTableGroupModifyPartitionSubTaskJobFactory(ddl,
                     (AlterTableGroupModifyPartitionPreparedData) preparedData, tablesPrepareData.get(entry.getKey()),

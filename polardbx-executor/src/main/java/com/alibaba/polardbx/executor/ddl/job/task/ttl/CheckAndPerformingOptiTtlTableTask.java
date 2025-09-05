@@ -4,6 +4,8 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.exception.TtlJobRuntimeException;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.NotifyOptiTblTaskLogInfo;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.TtlLoggerUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.scheduler.TtlScheduledJobStatManager;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -14,6 +16,8 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;
 import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -28,6 +32,8 @@ import java.util.concurrent.atomic.AtomicLong;
 @Getter
 @TaskName(name = "CheckAndPerformingOptiTtlTableTask")
 public class CheckAndPerformingOptiTtlTableTask extends AbstractTtlJobTask {
+
+    private static final Logger log = LoggerFactory.getLogger(CheckAndPerformingOptiTtlTableTask.class);
 
     @JSONCreator
     public CheckAndPerformingOptiTtlTableTask(String schemaName,
@@ -631,140 +637,7 @@ public class CheckAndPerformingOptiTtlTableTask extends AbstractTtlJobTask {
         this.jobContext = jobContext;
     }
 
-    protected static class NotifyOptiTblTaskLogInfo {
-        public NotifyOptiTblTaskLogInfo() {
-        }
-
-        TtlScheduledJobStatManager.TtlJobStatInfo jobStatInfo;
-        TtlScheduledJobStatManager.GlobalTtlJobStatInfo globalStatInfo;
-
-        protected Long jobId;
-        protected Long taskId;
-        protected Long taskBeginTs;
-        protected Long taskEndTs;
-
-        protected String ttlTblSchema;
-        protected String ttlTblName;
-        protected long dataFreePercent;
-        protected long dataFreePercentLimit;
-
-        protected boolean isFinished = false;
-        protected boolean isInterrupted = false;
-        protected boolean isMaintenancePeriodOver = false;
-
-        protected boolean enableAutoCtrlOptiTblJob = true;
-        protected boolean needWaitAndMonitorOptiTblJob = false;
-        protected long waitOptiTblRunningBeginTs = 0;
-        protected long waitOptiTblTaskRunningTimeCost = 0;
-        protected long waitOptiTblTaskRunningLoopRound = 0;
-
-        protected boolean findOptiTblTaskExecuting = false;
-        protected boolean optiTblDdlComeFromTtlJob = false;
-        protected long optiTblDdlStmtJobId = 0;
-        protected String optiTblDdlStmt = "";
-        protected String newSubmittedOptiTblSql = "";
-        protected String optiTblDdlJobStateBeforeCtrl = "";
-
-        protected boolean noFoundOptiTblJobRec = false;
-        protected String continueOptiTblSql = "none";
-        protected boolean failedToRecoverDdlJob = false;
-        protected int waitFromPauseToRunningRound = 0;
-        protected long waitFromPauseToRunningTimeCost = 0;
-
-        protected String pauseOptiTblSql = "none";
-        protected long waitFromRunningToPauseTimeCost = 0;
-        protected int optiJobProgress = 0;
-
-    }
-
     protected void logTaskExecResult(NotifyOptiTblTaskLogInfo logInfo) {
-
-        try {
-
-            TtlScheduledJobStatManager.TtlJobStatInfo jobStatInfo = logInfo.jobStatInfo;
-            TtlScheduledJobStatManager.GlobalTtlJobStatInfo globalStatInfo = logInfo.globalStatInfo;
-
-            jobStatInfo.setOptimizeTableProgress(logInfo.optiJobProgress);
-
-            String logMsg = "";
-            String msgPrefix = TtlLoggerUtil.buildTaskLogRowMsgPrefix(jobId, taskId, "NotifyOptiTbl");
-            logMsg += String.format("ttlTblSchema: %s, ttlTblName: %s\n", logInfo.ttlTblSchema, logInfo.ttlTblName);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("isMaintenancePeriodOver: %s\n", logInfo.isMaintenancePeriodOver);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("dataFreePercent:%s , dataFreePercentLimit: %s\n", logInfo.dataFreePercent,
-                logInfo.dataFreePercentLimit);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("enableAutoCtrlOptiTblJob: %s\n", logInfo.enableAutoCtrlOptiTblJob);
-
-            logMsg += msgPrefix;
-            logMsg += String.format("needWaitAndMonitorOptiTblJob: %s\n", logInfo.needWaitAndMonitorOptiTblJob);
-
-            logMsg += msgPrefix;
-            logMsg +=
-                String.format("interrupted: %s, loopRound: %s, waitOptiTblTimeCost(ns): %s\n", logInfo.isInterrupted,
-                    logInfo.waitOptiTblTaskRunningLoopRound, logInfo.waitOptiTblTaskRunningTimeCost);
-
-            if (!logInfo.findOptiTblTaskExecuting) {
-                logMsg += msgPrefix;
-                logMsg += String.format("newSubmittedOtpiTblStmt: %s\n", logInfo.newSubmittedOptiTblSql);
-            } else {
-                logMsg += msgPrefix;
-                logMsg += String.format("optiTblStmtJobId: %s\n", logInfo.optiTblDdlStmtJobId);
-                logMsg += msgPrefix;
-                logMsg += String.format("optiTblStmt: %s\n", logInfo.optiTblDdlStmt);
-                logMsg += msgPrefix;
-                logMsg += String.format("optiTblFromTtlJob: %s\n", logInfo.optiTblDdlComeFromTtlJob);
-                logMsg += msgPrefix;
-                logMsg += String.format("optiTblStmtJobStateBeforeCtrl: %s\n", logInfo.optiTblDdlJobStateBeforeCtrl);
-            }
-
-            if (logInfo.needWaitAndMonitorOptiTblJob) {
-
-                logMsg += msgPrefix;
-                logMsg += String.format("noFoundOptiTblJobRec: %s\n", logInfo.noFoundOptiTblJobRec);
-                logMsg += msgPrefix;
-                logMsg += String.format("continueOptiTblSql: %s\n", logInfo.continueOptiTblSql);
-                logMsg += msgPrefix;
-                logMsg += String.format("waitFromPauseToRunningRound: %s\n", logInfo.waitFromPauseToRunningRound);
-                logMsg += msgPrefix;
-                logMsg +=
-                    String.format("waitFromPauseToRunningTimeCost(ns): %s\n", logInfo.waitFromPauseToRunningTimeCost);
-                logMsg += msgPrefix;
-                logMsg += String.format("failedToRecoverDdlJob: %s\n", logInfo.failedToRecoverDdlJob);
-
-                logMsg += msgPrefix;
-                logMsg += String.format("pauseOptiTblSql: %s\n", logInfo.pauseOptiTblSql);
-                logMsg += msgPrefix;
-                logMsg +=
-                    String.format("waitFromRunningToPauseTimeCost(ns): %s\n", logInfo.waitFromRunningToPauseTimeCost);
-
-            }
-
-            logMsg += msgPrefix;
-            logMsg += String.format("notifyOptiTblJobFinished: %s\n", logInfo.isFinished);
-
-            if (logInfo.isFinished) {
-                logMsg += msgPrefix;
-                long taskTimeCostNano = logInfo.taskEndTs - logInfo.taskBeginTs;
-                logMsg += String.format("taskTimeCost(ns): %s\n", taskTimeCostNano);
-                if (logInfo.needWaitAndMonitorOptiTblJob) {
-                    jobStatInfo.getOptimizeSqlCount().incrementAndGet();
-                    jobStatInfo.getOptimizeSqlTimeCost().addAndGet(taskTimeCostNano / 1000000); // unit: ms
-                }
-                jobStatInfo.setCurrJobEndTs(System.currentTimeMillis());
-                globalStatInfo.getTotalTtlSuccessJobCount().incrementAndGet();
-            } else {
-                logMsg += msgPrefix;
-                logMsg += String.format("taskTimeCost(ns): %s\n", System.nanoTime() - logInfo.taskBeginTs);
-            }
-
-            TtlLoggerUtil.logTaskMsg(this, this.jobContext, logMsg);
-        } catch (Throwable ex) {
-            TtlLoggerUtil.TTL_TASK_LOGGER.warn(ex);
-        }
+        logInfo.logTaskExecResult(this, this.jobContext);
     }
 }

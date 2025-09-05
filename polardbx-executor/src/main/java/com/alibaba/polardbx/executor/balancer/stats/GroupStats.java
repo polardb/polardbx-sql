@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.balancer.stats;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
@@ -27,6 +28,7 @@ import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Sets;
 
 import java.sql.Connection;

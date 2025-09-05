@@ -19,16 +19,22 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.IntegerType;
+import com.google.common.collect.Lists;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.List;
 import java.util.Random;
 import java.util.stream.IntStream;
 
@@ -190,6 +196,50 @@ public class HistogramTest {
             "{\"buckets\":[{\"ndv\":1,\"upper\":{},\"lower\":{\"$ref\":\"$.buckets[0].upper\"},\"count\":1,\"preSum\":0},{\"ndv\":1,\"upper\":{},\"lower\":{\"$ref\":\"$.buckets[1].upper\"},\"count\":2,\"preSum\":1},\n"
                 + "{\"ndv\":1,\"upper\":{},\"lower\":{\"$ref\":\"$.buckets[2].upper\"},\"count\":1,\"preSum\":3}],\"maxBucketSize\":4,\"type\":\"unsigned_int\",\"sampleRate\":1.0}";
         Assert.assertTrue(Histogram.deserializeFromJson(histogram) == null);
+    }
+
+    @Test
+    public void testSerializationAndDeserialization() {
+        int dataSize = 80000;
+        Object[] testData = new Object[dataSize];
+
+        // Define two integer objects to fill the data array.
+        Integer valueOne = 1;
+        Integer valueTwo = 2;
+
+        for (int index = 0; index < dataSize; index++) {
+            if (index < 10001) {
+                testData[index] = valueOne;
+            } else {
+                testData[index] = valueTwo;
+            }
+        }
+
+        Histogram histogram = new Histogram(8, new IntegerType(), 1);
+        histogram.buildFromData(testData);
+
+        try {
+            String serializedHistogram = Histogram.serializeToJson(histogram);
+
+            // Deserialize the JSON string back into a histogram object.
+            Histogram deserializedHistogram = Histogram.deserializeFromJson(serializedHistogram);
+
+            // Re-serialize the newly created histogram object.
+            String reSerializedHistogram = Histogram.serializeToJson(deserializedHistogram);
+
+            System.out.println("Original Serialized: " + serializedHistogram);
+            System.out.println("Re-Serialized: " + reSerializedHistogram);
+
+            // Assert that the original serialization equals the re-serialization.
+            assert serializedHistogram.equals(reSerializedHistogram);
+
+            // Ensure there are no reference loops ($ref).
+            assert !serializedHistogram.contains("$ref");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("An error occurred during serialization and deserialization", e);
+        }
     }
 
     @Test

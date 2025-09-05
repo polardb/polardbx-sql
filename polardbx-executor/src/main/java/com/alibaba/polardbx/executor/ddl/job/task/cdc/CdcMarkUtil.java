@@ -77,9 +77,7 @@ public class CdcMarkUtil {
         }
 
         parameter.put(ICdcManager.CDC_ORIGINAL_DDL, "");
-        if (isUseFkOriginalDDL(executionContext)) {
-            parameter.put(ICdcManager.CDC_ORIGINAL_DDL, executionContext.getDdlContext().getForeignKeyOriginalSql());
-        } else if (isUseOriginalDDL(executionContext)) {
+        if (isUseOriginalDDL(executionContext)) {
             // Has to remove USE_DDL_VERSION_ID flag from ExecutionContext, in case corrupt following ddl statements
             final Long ddlVersionId = getAndRemoveDdlVersionId(executionContext);
             if (isVersionIdInitialized(ddlVersionId)) {
@@ -89,6 +87,12 @@ public class CdcMarkUtil {
 
             parameter.put(ICdcManager.CDC_ORIGINAL_DDL, originalDdl);
         }
+
+        if (executionContext.getParamManager()
+            .getBoolean(ConnectionParams.TTL_MARK_DROP_PARTITION_AS_ARCHIVE_CLEANUP_FOR_CDC)) {
+            parameter.put(ICdcManager.CDC_ARCHIVE_DROP_PARTITION, "true");
+        }
+
         return parameter;
     }
 
@@ -115,6 +119,7 @@ public class CdcMarkUtil {
         return StringUtils.equalsIgnoreCase("true", useOriginalDDL);
     }
 
+    @Deprecated
     public static boolean isUseFkOriginalDDL(ExecutionContext executionContext) {
         Map<String, Object> parameter = executionContext.getExtraCmds();
         String foreignKeysDdl = (String) parameter.get(ICdcManager.FOREIGN_KEYS_DDL);

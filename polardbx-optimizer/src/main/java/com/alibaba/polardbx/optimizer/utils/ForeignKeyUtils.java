@@ -638,8 +638,8 @@ public class ForeignKeyUtils {
         return hint;
     }
 
-    public static void rewriteOriginSqlWithForeignKey(BaseDdlOperation logicalDdlPlan, ExecutionContext ec,
-                                                      String schemaName, String tableName) {
+    public static String rewriteOriginSqlWithForeignKey(BaseDdlOperation logicalDdlPlan, ExecutionContext ec,
+                                                        String schemaName, String tableName, String originalSql) {
         // rewrite origin sql for different naming behaviours in 5.7 & 8.0
         boolean createTableWithFk = logicalDdlPlan.getDdlType() == DdlType.CREATE_TABLE
             && !((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().getAddedForeignKeys().isEmpty();
@@ -655,9 +655,7 @@ public class ForeignKeyUtils {
                 == SqlKind.DROP_FOREIGN_KEY;
         if (createTableWithFk) {
             SqlCreateTable sqlCreateTable = ((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable();
-            String originalSql = sqlCreateTable.getOriginalSql();
-            String newSql = addForeignKeyConstraints(originalSql, sqlCreateTable.getAddedForeignKeys());
-            ec.getDdlContext().setForeignKeyOriginalSql(newSql);
+            return addForeignKeyConstraints(originalSql, sqlCreateTable.getAddedForeignKeys());
         } else if (alterTableAddFk) {
             final SqlAlterTable sqlTemplate = ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable();
 
@@ -679,10 +677,9 @@ public class ForeignKeyUtils {
             sqlTemplate.getAlters().add(sqlAddForeignKey);
             sqlTemplate.unparse(writer, leftPrec, rightPrec, true);
 
-            ec.getDdlContext().setForeignKeyOriginalSql(
-                ForeignKeyUtils.extractHint(ec.getOriginSql()) + writer.toSqlString().getSql());
-        } else if (alterTableDropFk) {
-            ec.getDdlContext().setForeignKeyOriginalSql(ec.getOriginSql());
+            return ForeignKeyUtils.extractHint(ec.getOriginSql()) + writer.toSqlString().getSql();
+        } else {
+            return originalSql;
         }
     }
 
@@ -697,7 +694,7 @@ public class ForeignKeyUtils {
         int fkIndex = 0;
 
         Pattern namedConstraintPattern = Pattern.compile(
-            "CONSTRAINT\\s+`?\\w*`?\\s*$",
+            "CONSTRAINT\\s+`?[^`]+`?\\s*$",
             Pattern.CASE_INSENSITIVE); // 正确转义反引号，并从字符串末尾匹配
 
         while (fkMatcher.find()) {

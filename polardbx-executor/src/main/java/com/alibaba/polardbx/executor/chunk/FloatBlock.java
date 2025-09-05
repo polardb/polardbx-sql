@@ -24,6 +24,7 @@ import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
 import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -214,8 +215,10 @@ public class FloatBlock extends AbstractBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        elementUsedBytes = Byte.BYTES * positionCount + Float.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(values));
+        estimatedSize = elementUsedBytes;
     }
 
     @Override

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.gms;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
+import com.alibaba.polardbx.gms.metadb.columnar.ColumnarSnapshotCacheManager;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.roaringbitmap.RoaringBitmap;
@@ -29,7 +30,7 @@ import java.util.List;
 /**
  * Columnar store management for columnar instance.
  */
-public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable {
+public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable, ColumnarSnapshotCacheManager {
 
     static ColumnarManager getInstance() {
         return DynamicColumnarManager.getInstance();
@@ -116,6 +117,11 @@ public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable {
     Iterator<Chunk> csvData(String csvFileName, long position);
 
     /**
+     * Get flashback csv data for given tso, and position will be determined automatically
+     */
+    Iterator<Chunk> flashbackCsvData(long tso, String csvFileName);
+
+    /**
      * Fill the given selection array according to snapshot of tso, file name and position block
      * USED FOR OLD COLUMNAR TABLE SCAN ONLY
      *
@@ -140,7 +146,13 @@ public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable {
      */
     RoaringBitmap getDeleteBitMapOf(long tso, String fileName);
 
-    public static enum ReloadType {
+    default FlashbackDeleteBitmapManager getFlashbackDeleteBitmapManager(long flashbackTso, String logicalSchema,
+                                                                         String logicalTable, String partName,
+                                                                         List<Pair<String, Long>> delPositions) {
+        return null;
+    }
+
+    enum ReloadType {
         ALL, SCHEMA_ONLY, CACHE_ONLY, SNAPSHOT_ONLY
     }
 }

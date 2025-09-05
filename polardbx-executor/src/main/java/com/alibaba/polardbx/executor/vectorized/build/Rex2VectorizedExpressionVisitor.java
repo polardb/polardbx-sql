@@ -28,9 +28,11 @@ import com.alibaba.polardbx.executor.vectorized.BuiltInFunctionVectorizedExpress
 import com.alibaba.polardbx.executor.vectorized.CaseVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.CoalesceVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.InEmptyListVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.InValuesVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.InputRefVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
+import com.alibaba.polardbx.executor.vectorized.NotInEmptyListVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionRegistry;
 import com.alibaba.polardbx.executor.vectorized.compare.FastInVectorizedExpression;
@@ -174,6 +176,10 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DRDS_TYPE_SYSTEM);
     }
 
+    public void rewriteIn(Map<Integer, Map<String, List>> rewriterParams, String currentPhyTable) {
+        expressionRewriter.rewriteIn(rewriterParams, currentPhyTable);
+    }
+
     private static boolean isSpecialFunction(RexCall call) {
         SqlKind sqlKind = call.getKind();
         return sqlKind == SqlKind.MINUS_PREFIX
@@ -314,6 +320,23 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
 
         // normal rewrite for other function.
         rewrittenCall = rewrite(rewrittenCall, false);
+
+        if (areInValueAllPruned(rewrittenCall)) {
+            // for input ref.
+            VectorizedExpression[] children = new VectorizedExpression[1];
+            RexNode rexNode = call.operands.get(0);
+            children[0] = rexNode.accept(this);
+
+            int outputIndex = addOutput(DataTypes.LongType);
+
+            if (rewrittenCall.op == TddlOperatorTable.IN) {
+                return new InEmptyListVectorizedExpression(outputIndex, children);
+            } else {
+                // must be not in.
+                return new NotInEmptyListVectorizedExpression(outputIndex, children);
+            }
+        }
+
         if (isInConstCall(rewrittenCall)) {
             Optional<VectorizedExpression> expression = createInVecExpr(rewrittenCall);
             if (expression.isPresent()) {
@@ -351,14 +374,15 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             boolean isInFilterMode = isInFilterMode(call);
             DataType<?> dataType = getOutputDataType(call);
 
-            boolean enableInAutoTypeConvert = executionContext.getParamManager()
-                .getBoolean(ConnectionParams.ENABLE_IN_VEC_AUTO_TYPE);
             VectorizedExpression[] children = new VectorizedExpression[2];
             RexNode rexNode = call.operands.get(0);
             RexNode literalNode1 = call.operands.get(1);
             children[0] = rexNode.accept(this);
+
+            // if left column is not input-ref, we can't get packed long array from block.
+            boolean isLeftInterMediate = !(children[0] instanceof InputRefVectorizedExpression);
             outputIndex = addOutput(DataTypeUtil.calciteToDrdsType(literalNode1.getType()));
-            children[1] = InValuesVectorizedExpression.from(call.operands, outputIndex, enableInAutoTypeConvert);
+            children[1] = InValuesVectorizedExpression.from(call.operands, outputIndex, isLeftInterMediate);
 
             if (!isInFilterMode) {
                 outputIndex = addOutput(dataType);
@@ -375,6 +399,17 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
         } catch (Exception e) {
             throw GeneralUtil.nestedException("Failed to create IN vectorized expression", e);
         }
+    }
+
+    private boolean areInValueAllPruned(RexCall call) {
+        if (call.op != SqlStdOperatorTable.IN &&
+            call.op != SqlStdOperatorTable.NOT_IN) {
+            return false;
+        }
+
+        return call.operands != null
+            && call.operands.size() == 1
+            && call.operands.get(0) instanceof RexInputRef;
     }
 
     /**

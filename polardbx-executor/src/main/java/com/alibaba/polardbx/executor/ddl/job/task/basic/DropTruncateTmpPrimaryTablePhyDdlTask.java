@@ -27,10 +27,12 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.rule.TableRule;
 import lombok.Getter;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Getter
 @TaskName(name = "DropTruncateTmpPrimaryTablePhyDdlTask")
@@ -52,7 +54,7 @@ public class DropTruncateTmpPrimaryTablePhyDdlTask extends BasePhyDdlTask {
             DropPartitionTableBuilder.createBuilder(schemaName, primaryTableName, false, executionContext).build() :
             DropTableBuilder.createBuilder(schemaName, primaryTableName, false, executionContext).build();
 
-        Map<String, List<List<String>>> tableTopology = builder.getTableTopology();
+        TreeMap<String, List<List<String>>> tableTopology = builder.getTableTopology();
         List<PhyDdlTableOperation> physicalPlans = builder.getPhysicalPlans();
         //generate a "drop table" physical plan
         PhysicalPlanData physicalPlanData =

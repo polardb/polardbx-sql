@@ -23,6 +23,8 @@ testCases:
       - "create table l2(x int  AUTO_INCREMENT primary key, y int) partition by LIST COLUMNS(y) (partition p1 values in ((0), (1), (2), (3)) locality = 'dn=$dn1',  partition p2 values in ((4), (5), (6), (7)) locality ='dn=$dn2', partition p3 values in ((8), (9))) locality = 'dn=$dn1'; "
       - "create table l3(x int  AUTO_INCREMENT primary key, y int) partition by LIST COLUMNS(y) (partition p1 values in ((0), (1), (2), (3)) locality = 'dn=$dn1',  partition p2 values in ((4), (5), (6), (7)) locality ='dn=$dn2', partition p3 values in ((8), (9))); "
       - "create table l4(x int  AUTO_INCREMENT primary key, y int) partition by LIST COLUMNS(y) (partition p1 values in ((0), (1), (2), (3)) locality = 'dn=$dn1',  partition p2 values in ((4), (5), (6), (7)) locality ='dn=$dn2', partition p3 values in ((8), (9))) locality = 'dn=$dn2'; "
+      - "create table o1(x int  AUTO_INCREMENT primary key, y bigint) partition by hash(y) partitions 4;"
+      - "create table o2(x int  AUTO_INCREMENT primary key, y bigint) partition by hash(y) partitions 4;"
     cleanupDDls:
       - "use polardbx;"
       - "use polardbx;"
@@ -45,6 +47,8 @@ testCases:
         - l2 table $dn1
         - l3 table ""
         - l4 table $dn2
+        - o1 table ""
+        - o2 table ""
         - test_locality_override database ""
       tableGroupMatchCheck:
         - t1 $tg0 $dn1
@@ -60,6 +64,7 @@ testCases:
         - l1,l2 $tg11 $dn1
         - l3 $tg12 ""
         - l4 $tg13 $dn2
+        - o1,o2 $tg14 ""
       # second pass;
       # auto generate create table, tablegroup.
       partitionLocalityCheck:
@@ -107,6 +112,7 @@ testCases:
       - "alter tablegroup $tg12 set locality = 'dn=$dn2'; "
       - "alter tablegroup $tg12 set partitions p1 locality = ''; "
       - "alter tablegroup $tg13 set locality = '';"
+      - "alter tablegroup $tg14 set partitions p1 locality = 'dn=$dn2';"
     cleanupDDls:
       - "use polardbx;"
       - "use polardbx;"
@@ -131,6 +137,8 @@ testCases:
         - l2 table $dn2
         - l3 table $dn2
         - l4 table ""
+        - o1 table ""
+        - o2 table ""
         - test_locality_override database ""
       tableGroupMatchCheck:
         - t1 $tg0 $dn2
@@ -146,6 +154,7 @@ testCases:
         - l1,l2 $tg11 $dn2
         - l3 $tg12 $dn2
         - l4 $tg13 ''
+        - o1,o2 $tg14 ''
       # second pass;
       # auto generate create table, tablegroup.
       partitionLocalityCheck:
@@ -179,6 +188,7 @@ testCases:
         - $tg12.p2 $dn2
         - $tg13.p1 $dn1
         - $tg13.p2 $dn2
+        - $tg14.p1 $dn2
       topologyCheck:
 cleanupDDls:
   - "use polardbx;"

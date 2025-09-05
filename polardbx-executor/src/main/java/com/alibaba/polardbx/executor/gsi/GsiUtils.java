@@ -16,35 +16,29 @@
 
 package com.alibaba.polardbx.executor.gsi;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
-import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.twophase.DnStats;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillObjectRecord;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillRecord;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillStatus;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
-import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
-import com.alibaba.polardbx.gms.sync.SyncScope;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -91,9 +85,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -107,9 +99,6 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -506,6 +495,9 @@ public class GsiUtils {
         }
     }
 
+    /**
+     * 1.0 废弃
+     */
     public static void buildIndexMetaByAddColumns(List<IndexRecord> indexRecords, SqlAlterTable alterTable,
                                                   String schemaName, String tableName, String indexTableName,
                                                   int seqInIndex, IndexStatus indexStatus) {
@@ -536,42 +528,14 @@ public class GsiUtils {
         }
     }
 
-    public static List<IndexRecord> buildIndexMetaByAddColumns(TableMeta primaryTableMeta,
-                                                               List<String> columnNames,
-                                                               String schemaName,
-                                                               String tableName,
-                                                               String indexTableName,
-                                                               int seqInIndex,
-                                                               IndexStatus indexStatus) {
-        final List<IndexRecord> indexRecords = new ArrayList<>();
-        final String catalog = DEFAULT_CATALOG;
-
-        for (String columnName : columnNames) {
-            indexRecords.add(indexCoveringRecord(catalog,
-                schemaName,
-                tableName,
-                indexTableName,
-                indexTableName,
-                nullable(primaryTableMeta, columnName),
-                null,
-                1,
-                indexStatus,
-                0,
-                "",
-                seqInIndex,
-                columnName));
-            seqInIndex++;
-        }
-        return indexRecords;
-    }
-
     public static List<IndexRecord> buildIndexMetaByAddColumns(List<String> columnNames,
                                                                String schemaName,
                                                                String tableName,
                                                                String indexTableName,
                                                                int seqInIndex,
                                                                IndexStatus indexStatus,
-                                                               Map<String, String> isNullable) {
+                                                               Map<String, String> isNullable,
+                                                               long version) {
         final List<IndexRecord> indexRecords = new ArrayList<>();
         final String catalog = DEFAULT_CATALOG;
 
@@ -581,40 +545,11 @@ public class GsiUtils {
                 tableName,
                 indexTableName,
                 indexTableName,
-                isNullable.get(columnName).equals("YES") ? "YES" : "",
+                "YES".equals(isNullable.get(columnName)) ? "YES" : "",
                 null,
                 1,
                 indexStatus,
-                0,
-                "",
-                seqInIndex,
-                columnName));
-            seqInIndex++;
-        }
-        return indexRecords;
-    }
-
-    public static List<IndexRecord> buildIndexMetaByAddColumns(List<String> columnNames,
-                                                               String schemaName,
-                                                               String tableName,
-                                                               String indexTableName,
-                                                               boolean nullable,
-                                                               int seqInIndex,
-                                                               IndexStatus indexStatus) {
-        final List<IndexRecord> indexRecords = new ArrayList<>();
-        final String catalog = DEFAULT_CATALOG;
-
-        for (String columnName : columnNames) {
-            indexRecords.add(indexCoveringRecord(catalog,
-                schemaName,
-                tableName,
-                indexTableName,
-                indexTableName,
-                nullable ? "YES" : "",
-                null,
-                1,
-                indexStatus,
-                0,
+                version,
                 "",
                 seqInIndex,
                 columnName));
@@ -627,11 +562,13 @@ public class GsiUtils {
                                                  TableMeta sourceTableMeta,
                                                  String indexName,
                                                  List<String> columns,
+                                                 List<Long> subParts,
                                                  List<String> covering,
                                                  boolean nonUnique,
                                                  String indexComment,
                                                  String indexType,
                                                  IndexStatus indexStatus,
+                                                 LackLocalIndexStatus lackingLocalIndex,
                                                  boolean clusteredIndex,
                                                  boolean columnarIndex,
                                                  Map<String, String> columnMapping,
@@ -656,6 +593,10 @@ public class GsiUtils {
             if (columnMapping != null && !columnMapping.isEmpty() && columnMapping.containsKey(column.toLowerCase())) {
                 oldColumn = columnMapping.get(column.toLowerCase());
             }
+            Long subPart = null;
+            if (subParts != null && subParts.size() >= seqInIndex) {
+                subPart = subParts.get(seqInIndex - 1);
+            }
             indexRecords.add(indexColumnRecord(catalog,
                 schema,
                 tableName,
@@ -671,7 +612,8 @@ public class GsiUtils {
                 seqInIndex,
                 column,
                 clusteredIndex,
-                columnarIndex));
+                columnarIndex,
+                subPart));
             seqInIndex++;
         }
 
@@ -800,7 +742,8 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             0,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     private static IndexRecord indexCoveringRecord(String catalog, String schema, String tableName, String indexName,
@@ -834,7 +777,8 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             0L,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     private static IndexRecord indexColumnRecord(String catalog, String schema, String tableName, boolean nonUnique,
@@ -878,16 +822,17 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             flag,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     private static IndexRecord indexColumnRecord(String catalog, String schema, String tableName, boolean nonUnique,
                                                  String indexName, String indexTableName, String nullable,
                                                  String indexType, int indexLocation, IndexStatus indexStatus,
                                                  long version, String indexComment, int seqInIndex,
-                                                 String columnName, boolean clusteredIndex, boolean columnarIndex) {
+                                                 String columnName, boolean clusteredIndex, boolean columnarIndex,
+                                                 Long subPart) {
         final String collation = null;
-        final Long subPart = null;
         final String packed = null;
         final String comment = "INDEX";
         long flag = 0L;
@@ -920,7 +865,8 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             flag,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     private static TableRecord buildTableRecord(TableRule tableRule, String catalog, String schema,
@@ -1191,7 +1137,7 @@ public class GsiUtils {
         return GeneralUtil.isEmpty(row) ? "" : row.entrySet()
             .stream()
             .sorted(Comparator.comparingInt(Entry::getKey))
-            .map(e -> e.getValue() == null ? "null" : String.valueOf(e.getValue().getArgs()[1]))
+            .map(e -> e.getValue() == null ? "null" : JSON.toJSONString(e.getValue().getArgs()[1]))
             .collect(Collectors.joining(","));
     }
 
@@ -1290,6 +1236,15 @@ public class GsiUtils {
             .collect(Collectors.toList());
     }
 
+    public static List<Long> columnAst2SubPart(List<SqlIndexColumnName> columnDefList) {
+        if (CollectionUtils.isEmpty(columnDefList)) {
+            return new ArrayList<>();
+        }
+        return columnDefList.stream()
+            .map(e -> null == e.getLength() ? null : (RelUtils.longValue(e.getLength())))
+            .collect(Collectors.toList());
+    }
+
     public static boolean isAddCci(SqlNode sqlNode, SqlAlterTable sqlAlterTable) {
         boolean result = false;
         if (sqlNode instanceof SqlCreateIndex) {
@@ -1302,27 +1257,32 @@ public class GsiUtils {
     }
 
     public static int getAvaliableNodeNum(String schemaName, String logicalTableName,
-                                          ExecutionContext executionContext){
+                                          ExecutionContext executionContext) {
         int maxNodeNum = 1;
         ParamManager paramManager = executionContext.getParamManager();
         Boolean enableRemote = !paramManager.getBoolean(ConnectionParams.FORBID_REMOTE_DDL_TASK);
         Boolean enableStandby = paramManager.getBoolean(ConnectionParams.ENABLE_STANDBY_BACKFILL);
-        if(enableRemote){
+        Boolean forceStandby = paramManager.getBoolean(ConnectionParams.FORCE_STANDBY_BACKFILL);
+        if (enableRemote) {
             int masterNodeNum = GmsNodeManager.getInstance().getMasterNodes().size();
             int standbyNodeNum = GmsNodeManager.getInstance().getStandbyNodes().size();
             int cnNodeNum = masterNodeNum;
-            if(!enableStandby){
+            if (forceStandby) {
+                cnNodeNum = standbyNodeNum;
+            } else if (!enableStandby) {
                 cnNodeNum = masterNodeNum - standbyNodeNum;
             }
-            if(schemaName != null && logicalTableName != null) {
+            if (schemaName != null && logicalTableName != null) {
                 Map<String, String> sourceGroupDnMap =
                     DnStats.buildGroupToDnMap(schemaName, logicalTableName, executionContext);
                 int dnNodeNum = sourceGroupDnMap.values().stream().collect(Collectors.toSet()).size();
                 maxNodeNum = Math.min(cnNodeNum, dnNodeNum);
-            }else{
+            } else {
                 maxNodeNum = cnNodeNum;
             }
         }
+        // only for local deploy mode.
+        maxNodeNum = Math.max(maxNodeNum, 1);
         return maxNodeNum;
     }
 }

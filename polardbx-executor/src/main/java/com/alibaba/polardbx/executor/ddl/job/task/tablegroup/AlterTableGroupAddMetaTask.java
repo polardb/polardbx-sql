@@ -117,14 +117,12 @@ public class AlterTableGroupAddMetaTask extends BaseDdlTask {
         OptimizerContext oc =
             Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
         TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
-        List<PartitionGroupRecord> outDataPartitionGroups = new ArrayList<>();
         if (GeneralUtil.isNotEmpty(outDataPartitionGroupIds)) {
             for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
                 if (outDataPartitionGroupIds.contains(partitionGroupRecord.getId())) {
                     relatedParts.add(partitionGroupRecord.partition_name);
                 }
             }
-            assert GeneralUtil.isNotEmpty(outDataPartitionGroups);
         }
         relatedParts.addAll(newPartitions);
         for (String relatedPart : relatedParts) {

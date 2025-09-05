@@ -22,7 +22,7 @@
         <ojalgo.version>43.0</ojalgo.version>
         <airlift.shade.version>1.0-SNAPSHOT</airlift.shade.version>
         <google.diffutils.version>4.12</google.diffutils.version>
-
+        <quartz.version>2.3.2</quartz.version>
     </properties>
     <dependencies>
         <dependency>
@@ -45,6 +45,11 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>polardbx-rpc</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.quartz-scheduler</groupId>
+            <artifactId>quartz</artifactId>
+            <version>${quartz.version}</version>
         </dependency>
         <dependency>
             <groupId>org.fusesource</groupId>

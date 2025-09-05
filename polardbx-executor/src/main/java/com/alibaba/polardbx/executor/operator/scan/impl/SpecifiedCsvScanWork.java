@@ -47,7 +47,7 @@ public class SpecifiedCsvScanWork extends CsvScanWork {
                                 int start, int end, long tsoV0, long tsoV1) {
         super(columnarManager, tso, null, csvFile, inputRefsForFilter, inputRefsForProject, executionContext, workId,
             metrics,
-            enableMetrics, lazyEvaluator, deletion, partNum, nodePartCount, useSelection, enableCompatible,
+            enableMetrics, lazyEvaluator, deletion, partNum, nodePartCount, useSelection, enableCompatible, false,
             ossColumnTransformer);
         this.start = start;
         this.end = end;

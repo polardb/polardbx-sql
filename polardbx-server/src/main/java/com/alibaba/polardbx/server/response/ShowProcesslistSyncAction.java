@@ -252,15 +252,28 @@ public class ShowProcesslistSyncAction implements ISyncAction {
         //ccl reschedule
         RescheduleTask rescheduleTask = sc.getRescheduleTask();
         if (sc.isRescheduled() && rescheduleTask != null) {
-            String ruleName = rescheduleTask.getCclRuleInfo().getCclRuleRecord().id;
-            if (isStmtExecuting) {
-                command = "Query(Rescheduling-" + ruleName + ")";
-            } else {
-                command = "SLEEP(Rescheduling-" + ruleName + ")";
-                if (this.isFull()) {
-                    info = sc.getSqlSample();
+            if (rescheduleTask.isSwitchoverReschedule()) {
+                if (isStmtExecuting) {
+                    command = "Query(Rescheduling-switchover)";
                 } else {
-                    info = TStringUtil.substring(sc.getSqlSample(), 0, 30);
+                    command = "SLEEP(Rescheduling-switchover)";
+                    if (this.isFull()) {
+                        info = sc.getSqlSample();
+                    } else {
+                        info = TStringUtil.substring(sc.getSqlSample(), 0, 30);
+                    }
+                }
+            } else {
+                String ruleName = rescheduleTask.getCclRuleInfo().getCclRuleRecord().id;
+                if (isStmtExecuting) {
+                    command = "Query(Rescheduling-" + ruleName + ")";
+                } else {
+                    command = "SLEEP(Rescheduling-" + ruleName + ")";
+                    if (this.isFull()) {
+                        info = sc.getSqlSample();
+                    } else {
+                        info = TStringUtil.substring(sc.getSqlSample(), 0, 30);
+                    }
                 }
             }
         }

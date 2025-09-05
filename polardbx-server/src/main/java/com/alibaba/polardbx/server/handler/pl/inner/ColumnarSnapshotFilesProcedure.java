@@ -130,6 +130,16 @@ public class ColumnarSnapshotFilesProcedure extends BaseInnerProcedure {
                 fileInfo.setFileType(0);
                 fileInfos.add(fileInfo);
             }
+            // 快照表csv文件获取
+            filesRecords = filesAccessor.querySnapshotCSVFileInfoByTso(purgeTso, columnarCheckPoint.checkpointTso);
+            for (FileInfoRecord fileInfoRecord : filesRecords) {
+                FileInfo fileInfo = new FileInfo();
+                fileInfo.setFileName(fileInfoRecord.fileName);
+                fileInfo.setFileLength(fileInfoRecord.extentSize);
+                fileInfo.setFileType(1);
+                fileInfos.add(fileInfo);
+            }
+
             //c、再获取追加写文件，csv文件、del文件、set文件，也需获取长度
             ColumnarAppendedFilesAccessor columnarAppendedFilesAccessor = new ColumnarAppendedFilesAccessor();
             columnarAppendedFilesAccessor.setConnection(metaDbConn);

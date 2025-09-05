@@ -48,9 +48,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ProjectSortTransitiveRule extends RelOptRule {
+
+    private boolean prune = true;
     public static final ProjectSortTransitiveRule INSTANCE =
         new ProjectSortTransitiveRule(operand(LogicalProject.class, operand(Sort.class, any())),
             "ProjectSortTransitiveRule");
+
+    public static final ProjectSortTransitiveRule NO_PRUNE =
+        new ProjectSortTransitiveRule(operand(LogicalProject.class, operand(Sort.class, any())),
+            "ProjectSortTransitiveRule", false);
 
     public static final ProjectSortTransitiveRule TABLELOOKUP =
         new ProjectSortTransitiveRule(
@@ -64,6 +70,11 @@ public class ProjectSortTransitiveRule extends RelOptRule {
 
     private ProjectSortTransitiveRule(RelOptRuleOperand op, String desc) {
         super(op, RelFactories.LOGICAL_BUILDER, desc);
+    }
+
+    private ProjectSortTransitiveRule(RelOptRuleOperand op, String desc, boolean prune) {
+        super(op, RelFactories.LOGICAL_BUILDER, desc);
+        this.prune = prune;
     }
 
     @Override
@@ -115,7 +126,7 @@ public class ProjectSortTransitiveRule extends RelOptRule {
         RelDataType bottomProjectRowType = new RelRecordType(bottomProjectRelDataTypeFieldList);
 
         // can not purge any column, bail out.
-        if (bottomProjectRowType.getFieldCount() >= sort.getInput().getRowType().getFieldCount()) {
+        if (prune && bottomProjectRowType.getFieldCount() >= sort.getInput().getRowType().getFieldCount()) {
             return;
         }
 

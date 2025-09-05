@@ -18,9 +18,13 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
@@ -200,6 +204,10 @@ public class AlterTableJobFactory extends DdlJobFactory {
             CollectionUtils.isNotEmpty(prepareData.getUpdatedColumns());
 
         List<DdlTask> alterGsiMetaTasks = new ArrayList<>();
+        if (withRenameColumn(logicalAlterTable.getNativeSql())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                "we don't support rename column in this version, you can use change column instead or upgrade to later version!");
+        }
         if (this.alterGsiTable) {
             // TODO(moyi) simplify these tasks, which could be executed batched
             if (CollectionUtils.isNotEmpty(prepareData.getDroppedColumns())) {
@@ -216,7 +224,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
                     primaryTableName,
                     logicalTableName,
                     prepareData.getAddedColumns(),
-                    prepareData.getBackfillColumns()));
+                    prepareData.getBackfillColumns(),
+                    prepareData.getIsNullableMap()));
             }
         }
 
@@ -282,6 +291,7 @@ public class AlterTableJobFactory extends DdlJobFactory {
             }
         }
 
+        DdlTask beforeUpdateMetaTask = phyDdlTask;
         DdlTask updateMetaTask = null;
         if (!this.repartition) {
             updateMetaTask = new AlterTableChangeMetaTask(
@@ -359,10 +369,12 @@ public class AlterTableJobFactory extends DdlJobFactory {
                     dropESATask,
                     tableSyncTaskAfterHiding
                 );
-                taskList.addAll(generateTwoPhaseDdlTask(ddlAlgorithmType, twoPhaseDdlId));
+                List<DdlTask> twoPhaseDdlTasks = generateTwoPhaseDdlTask(ddlAlgorithmType, twoPhaseDdlId);
+                taskList.addAll(twoPhaseDdlTasks);
                 taskList.add(updateMetaTask);
                 taskList.add(cdcDdlMarkTask);
                 taskList = taskList.stream().filter(Objects::nonNull).collect(Collectors.toList());
+                beforeUpdateMetaTask = twoPhaseDdlTasks.get(twoPhaseDdlTasks.size() - 1);
             }
         } else {
             // 1. physical DDL
@@ -403,10 +415,12 @@ public class AlterTableJobFactory extends DdlJobFactory {
                     beginAlterColumnDefaultSyncTask
                 );
 
-                taskList.addAll(generateTwoPhaseDdlTask(algorithmType, twoPhaseDdlId));
+                List<DdlTask> twoPhaseDdlTasks = generateTwoPhaseDdlTask(algorithmType, twoPhaseDdlId);
+                taskList.addAll(twoPhaseDdlTasks);
                 taskList.add(updateMetaTask);
                 taskList.add(cdcDdlMarkTask);
                 taskList = taskList.stream().filter(Objects::nonNull).collect(Collectors.toList());
+                beforeUpdateMetaTask = twoPhaseDdlTasks.get(twoPhaseDdlTasks.size() - 1);
             }
         }
         taskList.addAll(alterGsiMetaTasks);
@@ -435,6 +449,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
         executableDdlJob.labelAsTail(tableSyncTaskAfterShowing);
 
         executableDdlJob.setTableValidateTask((BaseValidateTask) validateTask);
+        executableDdlJob.setBeforeChangeMetaTask(beforeUpdateMetaTask);
+        executableDdlJob.setChangeMetaTask(updateMetaTask);
         executableDdlJob.setTableSyncTask((TableSyncTask) tableSyncTaskAfterShowing);
 
         return executableDdlJob;
@@ -569,6 +585,17 @@ public class AlterTableJobFactory extends DdlJobFactory {
         originalCreateTableSql = originalCreateTableStmt.toString();
         afterCreateTableSql = afterCreateTableStmt.toString();
         return originalCreateTableSql.equals(afterCreateTableSql);
+    }
+
+    protected Boolean withRenameColumn(String origSql) {
+        SQLAlterTableStatement alterTable = (SQLAlterTableStatement) FastsqlUtils.parseSql(origSql).get(0);
+        List<SQLAlterTableItem> alterTableItems = alterTable.getItems();
+        for (SQLAlterTableItem alterTableItem : alterTableItems) {
+            if(alterTableItem instanceof SQLAlterTableRenameColumn){
+                return true;
+            }
+        }
+        return false;
     }
 
     protected DdlAlgorithmType determineOnlineDdlAlgorithm(String origSql, Long id) {

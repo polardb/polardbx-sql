@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.mpp.deploy.Server;
@@ -16,9 +17,11 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Set;
 
 import static org.mockito.Mockito.mock;
@@ -49,6 +52,12 @@ public class ExecutilsTest {
 
     private InternalNode mockNode() {
         InternalNode node = new InternalNode("key", "cluster1", "inst1", "11.11.11.11", 1234, 12345,
+            NodeVersion.UNKNOWN, true, true, false, true);
+        return node;
+    }
+
+    private InternalNode mockNode(int idx) {
+        InternalNode node = new InternalNode("key" + idx, "cluster1", "inst" + idx, "11.11.11.11", 1234, 12345,
             NodeVersion.UNKNOWN, true, true, false, true);
         return node;
     }
@@ -155,4 +164,113 @@ public class ExecutilsTest {
 
     }
 
+    @Test
+    public void testMppLimitNodes1() {
+        HashMap<String, String> hashMap = new HashMap<>();
+        ParamManager paramManager = new ParamManager(hashMap);
+
+        int planMaxParallelism = 10;
+        final boolean columnarMode = true;
+        try (final MockedStatic<ServiceProvider> mockServiceProvider = mockStatic(ServiceProvider.class);
+            final MockedStatic<ConfigDataMode> mockConfigDataMode = mockStatic(ConfigDataMode.class);
+        ) {
+
+            ServiceProvider serviceProvider = mock(ServiceProvider.class);
+            when(ServiceProvider.getInstance()).thenReturn(serviceProvider);
+            Server server = mock(Server.class);
+            when(serviceProvider.getServer()).thenReturn(server);
+
+            InternalNodeManager nodeManager = mock(InternalNodeManager.class);
+            when(server.getNodeManager()).thenReturn(nodeManager);
+            Set<InternalNode> currentNodes = new HashSet<>();
+            for (int i = 0; i < 8; i++) {
+                currentNodes.add(mockNode(i));
+            }
+            Set<InternalNode> columnarOtherNodes = new HashSet<>();
+            for (int i = 0; i < 4; i++) {
+                columnarOtherNodes.add(mockNode(i));
+            }
+            AllNodes allNode1 = new AllNodes(currentNodes, ImmutableSet.of(mockNode()),
+                columnarOtherNodes, ImmutableSet.of(mockNode()), ImmutableSet.of(mockNode()));
+
+            when(nodeManager.getAllNodes()).thenReturn(allNode1);
+
+            int mppLimitNodes = ExecUtils.getMppLimitNodes(columnarMode, paramManager, planMaxParallelism);
+            Assert.assertEquals("MPP limit node count is not correct under columnar mode",
+                currentNodes.size(), mppLimitNodes);
+
+            when(ConfigDataMode.isMasterMode()).thenReturn(true);
+            int mppLimitNodes2 = ExecUtils.getMppLimitNodes(columnarMode, paramManager, planMaxParallelism);
+            Assert.assertEquals("MPP limit node count is not correct under columnar mode",
+                columnarOtherNodes.size(), mppLimitNodes2);
+        }
+    }
+
+    @Test
+    public void testMppLimitNodes2() {
+        HashMap<String, String> hashMap = new HashMap<>();
+        ParamManager paramManager = new ParamManager(hashMap);
+
+        paramManager.getProps().put(ConnectionProperties.POLARDBX_PARALLELISM, "4");
+        boolean columnarMode = false;
+        try (final MockedStatic<ServiceProvider> mockServiceProvider = mockStatic(ServiceProvider.class);
+            final MockedStatic<ConfigDataMode> mockConfigDataMode = mockStatic(ConfigDataMode.class);) {
+
+            ServiceProvider serviceProvider = mock(ServiceProvider.class);
+            when(ServiceProvider.getInstance()).thenReturn(serviceProvider);
+            Server server = mock(Server.class);
+            when(serviceProvider.getServer()).thenReturn(server);
+
+            InternalNodeManager nodeManager = mock(InternalNodeManager.class);
+            when(server.getNodeManager()).thenReturn(nodeManager);
+            Set<InternalNode> currentNodes = new HashSet<>();
+            for (int i = 0; i < 8; i++) {
+                currentNodes.add(mockNode(i));
+            }
+            Set<InternalNode> columnarOtherNodes = new HashSet<>();
+            for (int i = 0; i < 4; i++) {
+                columnarOtherNodes.add(mockNode(i));
+            }
+            Set<InternalNode> rowOtherNodes = new HashSet<>();
+            for (int i = 0; i < 3; i++) {
+                rowOtherNodes.add(mockNode(i));
+            }
+            AllNodes allNode1 = new AllNodes(currentNodes, rowOtherNodes,
+                columnarOtherNodes, ImmutableSet.of(mockNode()), ImmutableSet.of(mockNode()));
+
+            when(nodeManager.getAllNodes()).thenReturn(allNode1);
+            int planMaxParallelism = 10;
+            int expectNodes = planMaxParallelism / 4 + 1;
+            int mppLimitNodes = ExecUtils.getMppLimitNodes(columnarMode, paramManager, planMaxParallelism);
+            Assert.assertEquals("MPP limit node count is not correct under row mode", expectNodes, mppLimitNodes);
+
+            when(ConfigDataMode.isMasterMode()).thenReturn(true);
+            planMaxParallelism = 8;
+            expectNodes = planMaxParallelism / 4;
+            int mppLimitNodes2 = ExecUtils.getMppLimitNodes(columnarMode, paramManager, planMaxParallelism);
+            Assert.assertEquals("MPP limit node count is not correct under row mode", expectNodes, mppLimitNodes2);
+        }
+    }
+
+    @Test
+    public void testGetAllWorkerCount() {
+        Set<InternalNode> currentNodes = new HashSet<>();
+        for (int i = 0; i < 8; i++) {
+            currentNodes.add(mockNode(i));
+        }
+        Set<InternalNode> columnarOtherNodes = new HashSet<>();
+        for (int i = 0; i < 4; i++) {
+            columnarOtherNodes.add(mockNode(i));
+        }
+        Set<InternalNode> rowOtherNodes = new HashSet<>();
+        for (int i = 0; i < 3; i++) {
+            rowOtherNodes.add(mockNode(i));
+        }
+        AllNodes allNode1 = new AllNodes(currentNodes, rowOtherNodes,
+            columnarOtherNodes, ImmutableSet.of(mockNode()), ImmutableSet.of(mockNode()));
+        int workerCountAll = allNode1.getAllWorkerCount(MppScope.ALL);
+        // all nodes are workers
+        Assert.assertEquals(currentNodes.size() + columnarOtherNodes.size() + rowOtherNodes.size(),
+            workerCountAll);
+    }
 }

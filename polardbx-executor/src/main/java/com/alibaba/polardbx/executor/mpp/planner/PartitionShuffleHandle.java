@@ -50,7 +50,8 @@ public class PartitionShuffleHandle {
         @JsonProperty("remotePairWise") boolean remotePairWise,
         @JsonProperty("partitionCount") int partitionCount,
         @JsonProperty("fullPartCount") int fullPartCount,
-        @JsonProperty("prunePartitions") List<Integer> prunePartitions) {
+        @JsonProperty("prunePartitions") List<Integer> prunePartitions,
+        @JsonProperty("nodeCount") int pariWiseNodeCount) {
         this.partitionCount = partitionCount;
         this.mergeSort = mergeSort;
         this.remotePairWise = remotePairWise;
@@ -117,6 +118,7 @@ public class PartitionShuffleHandle {
         if (!(o instanceof PartitionShuffleHandle)) {
             return false;
         }
+        // did not take pairwise into account
         PartitionShuffleHandle that = (PartitionShuffleHandle) o;
         return fullPartCount == that.fullPartCount &&
             partitionCount == that.partitionCount &&
@@ -126,6 +128,7 @@ public class PartitionShuffleHandle {
 
     @Override
     public int hashCode() {
+        // did not take pairwise into account
         return Objects.hash(fullPartCount, partitionCount, partitionShuffleMode, mergeSort);
     }
 

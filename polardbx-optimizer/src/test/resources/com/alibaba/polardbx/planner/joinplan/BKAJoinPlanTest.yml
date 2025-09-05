@@ -93,7 +93,7 @@
 
   plan: |
 
-    project(id0="id0", name0="name0", create_time="create_time", id="id", name="name")
+    project(id="id0", name="name0", create_time="create_time", id0="id", name0="name")
       bkajoin(condition="name = name", type="inner")
         hashagg(group="name", id="sum(id)")
           gather(concurrent=true)

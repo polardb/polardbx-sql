@@ -31,6 +31,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class AlterTableImportTableSpaceBuilder extends DdlPhyPlanBuilder {
 
@@ -38,7 +39,7 @@ public class AlterTableImportTableSpaceBuilder extends DdlPhyPlanBuilder {
     final static String SQL_TEMPLATE_IF_NOT_EXIST = "ALTER TABLE ? IMPORT TABLESPACE IF NOT EXISTS";
 
     public AlterTableImportTableSpaceBuilder(DDL ddl, DdlPreparedData preparedData,
-                                             Map<String, List<List<String>>> tableTopology,
+                                             TreeMap<String, List<List<String>>> tableTopology,
                                              ExecutionContext executionContext) {
         super(ddl, preparedData, executionContext);
         this.tableTopology = tableTopology;
@@ -47,7 +48,7 @@ public class AlterTableImportTableSpaceBuilder extends DdlPhyPlanBuilder {
     public static AlterTableImportTableSpaceBuilder createBuilder(String schemaName,
                                                                   String logicalTableName,
                                                                   boolean ifNotExists,
-                                                                  Map<String, List<List<String>>> tableTopology,
+                                                                  TreeMap<String, List<List<String>>> tableTopology,
                                                                   ExecutionContext executionContext) {
         ReplaceTableNameWithQuestionMarkVisitor visitor =
             new ReplaceTableNameWithQuestionMarkVisitor(schemaName, executionContext);

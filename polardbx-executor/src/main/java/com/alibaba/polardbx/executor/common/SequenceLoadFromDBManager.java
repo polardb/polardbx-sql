@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -54,6 +55,7 @@ import com.alibaba.polardbx.sequence.impl.TimeBasedSequence;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import lombok.SneakyThrows;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -362,91 +364,109 @@ public class SequenceLoadFromDBManager extends AbstractSequenceManager {
         return seq;
     }
 
-    private Sequence getGroupSequence(String seqName) {
+    @SneakyThrows
+    Sequence getGroupSequence(String seqName) {
         String sql = "select name from " + SEQUENCE + " where name = ? and schema_name = ?";
-        try (Connection metaDbConn = MetaDbUtil.getConnection();
-            PreparedStatement ps = metaDbConn.prepareStatement(sql)) {
+        int retry = 100;
+        while (true) {
+            try (Connection metaDbConn = MetaDbUtil.getConnection();
+                PreparedStatement ps = metaDbConn.prepareStatement(sql)) {
 
-            ps.setString(1, seqName);
-            ps.setString(2, schemaName);
+                ps.setString(1, seqName);
+                ps.setString(2, schemaName);
 
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return buildGroupSequence(seqName);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return buildGroupSequence(seqName);
+                    }
+                    return null;
+                }
+            } catch (Exception e) {
+                boolean ignoreException = false;
+                // We should fail and throw exception in most cases because
+                // it's possible that there is already an existing group
+                // sequence, but the SELECT statement failed to execute or build
+                // failed for some reason. In such case, if we proceed with
+                // simple sequence, then newly created simple sequence may
+                // generate lots of unexpected duplicate value.
+                if (e instanceof SQLException) {
+                    SQLException ex = (SQLException) e;
+                    // MySQL Error = 1146 and MySQL SQLState = 42S02 indicate
+                    // that the target table doesn't exist. For the case, we
+                    // should proceed with SimpleSequence instead of failure.
+                    if (ex.getErrorCode() == 1146 && ex.getSQLState().equals("42S02")) {
+                        ignoreException = true;
+                    } else if (DynamicConfig.getInstance().isEnableSmoothSwitchover() && ex.getErrorCode() == 1317
+                        && --retry > 0) {
+                        // Query execution was interrupted
+                        Thread.sleep(10);
+                        continue; // retry
+                    }
+                }
+                String errMsg = "Failed to build GroupSequence '" + seqName + "'.";
+                logger.error(errMsg, e);
+                if (!ignoreException) {
+                    throw new SequenceException(e, errMsg);
                 }
                 return null;
             }
-        } catch (Exception e) {
-            boolean ignoreException = false;
-            // We should fail and throw exception in most cases because
-            // it's possible that there is already an existing group
-            // sequence, but the SELECT statement failed to execute or build
-            // failed for some reason. In such case, if we proceed with
-            // simple sequence, then newly created simple sequence may
-            // generate lots of unexpected duplicate value.
-            if (e instanceof SQLException) {
-                SQLException ex = (SQLException) e;
-                // MySQL Error = 1146 and MySQL SQLState = 42S02 indicate
-                // that the target table doesn't exist. For the case, we
-                // should proceed with SimpleSequence instead of failure.
-                if (ex.getErrorCode() == 1146 && ex.getSQLState().equals("42S02")) {
-                    ignoreException = true;
-                }
-            }
-            String errMsg = "Failed to build GroupSequence '" + seqName + "'.";
-            logger.error(errMsg, e);
-            if (!ignoreException) {
-                throw new SequenceException(e, errMsg);
-            }
-            return null;
         }
     }
 
-    private Sequence getVariousSequences(String seqName) {
+    @SneakyThrows
+    Sequence getVariousSequences(String seqName) {
         String sql = "select cycle from " + SEQUENCE_OPT + " where name = ? and schema_name = ?";
-        try (Connection metaDbConn = MetaDbUtil.getConnection();
-            PreparedStatement ps = metaDbConn.prepareStatement(sql)) {
+        int retry = 100;
+        while (true) {
+            try (Connection metaDbConn = MetaDbUtil.getConnection();
+                PreparedStatement ps = metaDbConn.prepareStatement(sql)) {
 
-            ps.setString(1, seqName);
-            ps.setString(2, schemaName);
+                ps.setString(1, seqName);
+                ps.setString(2, schemaName);
 
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    int flag = rs.getInt(1);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        int flag = rs.getInt(1);
 
-                    if ((flag & NEW_SEQ) == NEW_SEQ) {
-                        return buildNewSequence(seqName);
-                    } else if ((flag & TIME_BASED) == TIME_BASED) {
-                        return buildTimeBasedSequence(seqName);
-                    } else {
-                        return buildSimpleSequence(seqName);
+                        if ((flag & NEW_SEQ) == NEW_SEQ) {
+                            return buildNewSequence(seqName);
+                        } else if ((flag & TIME_BASED) == TIME_BASED) {
+                            return buildTimeBasedSequence(seqName);
+                        } else {
+                            return buildSimpleSequence(seqName);
+                        }
                     }
+                    return null;
+                }
+            } catch (Exception e) {
+                boolean ignoreException = false;
+                // We should fail and throw exception in most cases because
+                // it's possible that there is already an existing simple
+                // sequence, but the SELECT statement failed to execute or build
+                // failed for some reason. In such case, if we proceed with
+                // time-based sequence, then newly created time-based sequence may
+                // generate lots of unexpected values.
+                if (e instanceof SQLException) {
+                    SQLException ex = (SQLException) e;
+                    // MySQL Error = 1146 and MySQL SQLState = 42S02 indicate
+                    // that the target table doesn't exist. For the case, we
+                    // should proceed with SimpleSequence instead of failure.
+                    if (ex.getErrorCode() == 1146 && ex.getSQLState().equals("42S02")) {
+                        ignoreException = true;
+                    } else if (DynamicConfig.getInstance().isEnableSmoothSwitchover() && ex.getErrorCode() == 1317
+                        && --retry > 0) {
+                        // Query execution was interrupted
+                        Thread.sleep(10);
+                        continue; // retry
+                    }
+                }
+                String errMsg = "Failed to build SequenceOpt '" + seqName + "'.";
+                logger.error(errMsg, e);
+                if (!ignoreException) {
+                    throw new SequenceException(e, errMsg);
                 }
                 return null;
             }
-        } catch (Exception e) {
-            boolean ignoreException = false;
-            // We should fail and throw exception in most cases because
-            // it's possible that there is already an existing simple
-            // sequence, but the SELECT statement failed to execute or build
-            // failed for some reason. In such case, if we proceed with
-            // time-based sequence, then newly created time-based sequence may
-            // generate lots of unexpected values.
-            if (e instanceof SQLException) {
-                SQLException ex = (SQLException) e;
-                // MySQL Error = 1146 and MySQL SQLState = 42S02 indicate
-                // that the target table doesn't exist. For the case, we
-                // should proceed with SimpleSequence instead of failure.
-                if (ex.getErrorCode() == 1146 && ex.getSQLState().equals("42S02")) {
-                    ignoreException = true;
-                }
-            }
-            String errMsg = "Failed to build SequenceOpt '" + seqName + "'.";
-            logger.error(errMsg, e);
-            if (!ignoreException) {
-                throw new SequenceException(e, errMsg);
-            }
-            return null;
         }
     }
 
@@ -479,7 +499,7 @@ public class SequenceLoadFromDBManager extends AbstractSequenceManager {
         }
     }
 
-    private Sequence buildGroupSequence(String name) throws Exception {
+    Sequence buildGroupSequence(String name) throws Exception {
         GroupSequence seq = new CustomUnitGroupSequence();
         try {
             seq.setName(name);

@@ -16,13 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
-import org.apache.calcite.prepare.RelOptTableImpl;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.Aggregate;
@@ -160,10 +157,16 @@ public class ForceIndexVisitor extends RelShuttleImpl {
         }
 
         private boolean findTargetAgg(LogicalAggregate agg, boolean hasProject, TableScan tableScan) {
+            boolean canAddForcePrimary = false;
             for (AggregateCall call : agg.getAggCallList()) {
+                if (call.isDistinct()) {
+                    // Do not force index primary if exists distinct.
+                    return false;
+                }
                 SqlKind kind = call.getAggregation().getKind();
                 if (kind == SqlKind.COUNT || kind == SqlKind.SUM || SqlKind.AVG_AGG_FUNCTIONS.contains(kind)) {
-                    return true;
+                    canAddForcePrimary = true;
+                    continue;
                 }
 
                 // Only consider such case: agg -> (possible filter) -> table scan.
@@ -180,11 +183,12 @@ public class ForceIndexVisitor extends RelShuttleImpl {
                     final TableMeta tableMeta = RelUtils.getTableMeta(tableScan);
 
                     if (RelUtils.canOptMinMax(tableMeta, columnName)) {
-                        return true;
+                        canAddForcePrimary = true;
+                        continue;
                     }
                 }
             }
-            return false;
+            return canAddForcePrimary;
         }
     }
 }

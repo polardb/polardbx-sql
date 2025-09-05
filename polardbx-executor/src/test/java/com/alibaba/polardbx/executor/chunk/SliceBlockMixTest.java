@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.executor.operator.BaseExecTest;
@@ -41,6 +42,9 @@ public class SliceBlockMixTest extends BaseExecTest {
         dict2 = dictOf("x", "b", "c", "f");
         // "b", "x", "b", "c", "x", "c"
         dictBlock2 = sliceOfDict(dict2, 1, 0, 1, 2, 0, 2);
+
+        MemoryCountable.checkDeviation(sliceBlock1, .05d, true);
+        MemoryCountable.checkDeviation(sliceBlock2, .05d, true);
     }
 
     // case 1: slice -> dict1 -> dict2 -> slice

@@ -32,12 +32,13 @@ import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
+import com.google.common.base.Preconditions;
 import com.google.common.primitives.Longs;
 
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 获取MDL的X锁时，如果超时，会通过kill connection的方式尝试抢占锁
@@ -48,25 +49,18 @@ public class PreemptiveMdlContextStamped extends MdlContextStamped {
     private static final Logger logger = LoggerFactory.getLogger(PreemptiveMdlContextStamped.class);
 
     private final String schemaName;
-    private final long initWait;
-    private final long interval;
-    private final TimeUnit timeUnit;
+    private final PreemptiveTime preemptiveTime;
 
-    public PreemptiveMdlContextStamped(String schemaName, long initWait, long interval, TimeUnit timeUnit) {
+    public PreemptiveMdlContextStamped(String schemaName, PreemptiveTime preemptiveTime) {
         super(schemaName);
         this.schemaName = schemaName;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
     }
 
-    public PreemptiveMdlContextStamped(String schemaName, Long connId, long initWait, long interval,
-                                       TimeUnit timeUnit) {
+    public PreemptiveMdlContextStamped(String schemaName, Long connId, PreemptiveTime preemptiveTime) {
         super(connId.toString());
         this.schemaName = schemaName;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
     }
 
     @Override
@@ -76,10 +70,11 @@ public class PreemptiveMdlContextStamped extends MdlContextStamped {
             ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
             boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
             if (enablePreemptiveMdl && request.getType() == MdlType.MDL_EXCLUSIVE) {
+                    PreemptiveTime.checkIntervalAndTimeUnit(preemptiveTime);
                 scheduler = ExecutorUtil.createScheduler(1,
                     new NamedThreadFactory("Mdl-Preempt-Threads"),
                     new ThreadPoolExecutor.DiscardPolicy());
-                scheduler.scheduleWithFixedDelay(() -> preemptMdlLock(request), initWait, interval, timeUnit);
+                scheduler.scheduleWithFixedDelay(() -> preemptMdlLock(request), preemptiveTime.getInit(), preemptiveTime.getInterval(), preemptiveTime.getTimeUnit());
             }
             return super.acquireLock(request);
         } finally {

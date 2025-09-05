@@ -105,7 +105,7 @@ public class CheckCciScheduledJob extends SchedulerExecutor {
     }
 
     private String doCheckIfNecessary() throws SQLException {
-        if (!InstanceVersion.isMYSQL80() || DynamicConfig.getInstance().isSkipCheckCciScheduleJob()) {
+        if (DynamicConfig.getInstance().isSkipCheckCciScheduleJob()) {
             return null;
         }
         ExecutorContext executorContext = ExecutorContext.getContext(DEFAULT_DB_NAME);

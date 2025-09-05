@@ -31,6 +31,7 @@ import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -41,6 +42,7 @@ import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 import com.alibaba.polardbx.transaction.trx.AbstractTransaction;
 import com.alibaba.polardbx.transaction.utils.TransactionAsyncUtils;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
@@ -49,6 +51,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -268,6 +271,7 @@ public class TransactionConnectionHolder implements IConnectionHolder {
     /**
      * 物理库的读连接集合
      */
+    @Getter
     private final Map<String, List<HeldConnection>> groupHeldReadConns = new HashMap<>();
     private final Set<IConnection> connections = new HashSet<>();
 
@@ -280,6 +284,7 @@ public class TransactionConnectionHolder implements IConnectionHolder {
     private final boolean xProtoOptForAutoSp;
 
     private boolean closed = false;
+    @Getter
     protected volatile boolean killed = false;
 
     /**
@@ -636,7 +641,10 @@ public class TransactionConnectionHolder implements IConnectionHolder {
 
         MasterSlave masterSlave = ExecUtils.getMasterSlave(
             true, rw.equals(ITransaction.RW.WRITE), executionContext);
-        IConnection newConnection = ds.getConnection(masterSlave);
+        TGroupDirectConnection.threadParam.set(executionContext.getTraceId());
+        // only wait when not wait when reschedule
+        IConnection newConnection =
+            ds.getConnection(masterSlave, executionContext.isCheckSwitchoverWhenGetConnection() ? connections : null);
 
         IConnection conn = new DeferredConnection(newConnection,
             executionContext.getParamManager().getBoolean(ConnectionParams.USING_RDS_RESULT_SKIP),
@@ -905,5 +913,41 @@ public class TransactionConnectionHolder implements IConnectionHolder {
     @Override
     public Set<String> getHeldSchemas() {
         return heldSchema;
+    }
+
+    public void releaseDirtyReadConnectionIfNoWriteConnection(AsyncTaskQueue asyncQueue, final Action action) {
+        final List<Runnable> tasks = new ArrayList<>();
+
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            if (!groupWriteHeldConnCtxMap.isEmpty()) {
+                return;
+            }
+
+            for (final List<HeldConnection> conns : groupHeldReadConns.values()) {
+                final Iterator<HeldConnection> iterator = conns.iterator();
+                while (iterator.hasNext()) {
+                    final HeldConnection conn = iterator.next();
+                    if (conn.isIdle()) {
+                        try {
+                            if (conn.getRawConnection().isWrapperFor(XConnection.class)) {
+                                final XConnection xconn = conn.getRawConnection().unwrap(XConnection.class);
+                                if (xconn.getSession().getClient().getPool().isChangingLeader()) {
+                                    tasks.add(() -> action.execute(conn));
+                                    iterator.remove();
+                                }
+                            }
+                        } catch (Throwable t) {
+                            logger.error("release dirty read connection failed, connection is " + conn, t);
+                        }
+                    }
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+
+        TransactionAsyncUtils.runTasksConcurrently(asyncQueue, tasks);
     }
 }

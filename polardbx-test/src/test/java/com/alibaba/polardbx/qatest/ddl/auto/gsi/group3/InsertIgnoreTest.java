@@ -51,12 +51,6 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         return true;
     }
 
-    private static final String DISABLE_GET_DUP_USING_GSI = "DML_GET_DUP_USING_GSI=FALSE";
-    private static final String DISABLE_RETURNING = "DML_USE_RETURNING=FALSE";
-    private static final String DISABLE_SKIP_DUPLICATE_CHECK_FOR_PK = "DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE";
-    private static final String DML_EXECUTION_STRATEGY_LOGICAL = "DML_EXECUTION_STRATEGY=LOGICAL";
-    private static final String DML_WRITE_ONLY = "GSI_DEBUG=\"GsiStatus2\"";
-    private static final String DML_USE_NEW_DUP_CHECKER = "DML_USE_NEW_DUP_CHECKER=TRUE";
     private boolean supportReturning = false;
 
     private boolean useAffectedRows;
@@ -1313,11 +1307,9 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null,
             !useAffectedRows);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
 //        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), is(3));
+        checkTraceRowCount(is(3));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -1791,13 +1783,86 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
 
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
-        final List<Pair<String, String>> gsiTopology =
-            JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
-        // primary (partition pruning: 1)  +  gsi(partition pruning: 1)
-        Assert.assertThat(trace.size(), is(2));
+//        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
+//        final List<Pair<String, String>> gsiTopology =
+//            JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = true: primary (partition pruning: 1)  +  gsi(partition pruning: 1)
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = false: gsi(partition pruning: 1)
+        checkTraceRowCount(Matchers.lessThanOrEqualTo(2));
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
+    }
+
+    /**
+     * 有 PK 无 UK, 一个 GSI, 非主键拆分
+     * 每个唯一键中都包含全部拆分键，但只有索引表包含全部 UK
+     * INSERT IGNORE 转 SELECT + 去重 + INSERT
+     * 主表按照 c1 分区，GSI 按照 主键 分区
+     */
+    @Test
+    public void tableWithPkNoUkWithUgsi_notPartitionByPk_usingGsi() throws SQLException {
+        final String tableName = "test_tb_not_partition_by_pk_with_gsi";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        final String mysqlCreatTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT '2',\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT '3',\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`id`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+        final String gsiName1 = "g_id_1";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT '2',\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT '3',\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`id`),\n"
+            + "  GLOBAL INDEX " + gsiName1
+            + "(`id`) PARTITION BY HASH(`id`) PARTITIONS 3\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " partition by hash(`c1`) partitions 7";
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, mysqlCreatTable);
+
+        final String insert =
+            buildCmdExtra(DISABLE_SKIP_DUPLICATE_CHECK_FOR_PK) + "insert ignore into "
+                + tableName
+                + "(id, c1, c2, c5, c8) values"
+                + "(1, 1, 3, 'a', '2020-06-16 06:49:32'), "
+                + "(2, 2, 3, 'b', '2020-06-16 06:49:32'), "
+                + "(1, 3, 3, 'c', '2020-06-16 06:49:32')";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = false: gsi(partition pruning: 1)
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert,
+            "trace " + buildCmdExtra(DML_GET_DUP_FOR_PK_FROM_GSI) + insert, null, true);
+        checkTraceRowCount(Matchers.is(1));
+
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = true: primary (partition pruning: 1)  +  gsi(partition pruning: 1)
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert,
+            "trace " + buildCmdExtra(DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY) + insert, null, true);
+        checkTraceRowCount(Matchers.is(7));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -1928,12 +1993,11 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         // final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
         // final List<Pair<String, String>> gsiTopology = JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
-        // primary (partition pruning: 1)  +  gsi(partition pruning: 1)
-        Assert.assertThat(trace.size(), is(1 + 1));
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = true : primary (partition pruning: 1)  +  gsi(partition pruning: 1)
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = false : gsi(partition pruning: 1)
+        checkTraceRowCount(Matchers.lessThanOrEqualTo(1 + 1));
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
@@ -4536,7 +4600,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
             "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=false, TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='WRITE_ONLY')*/ alter table "
                 + realGsiName + " move partitions p1 to '" + partitionLocations.get(targetLoc) + "'";
 
-        String ignoreErr = "Please use SHOW DDL";
+        String ignoreErr = "The DDL job has been cancelled or interrupted";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sql, ignoreErrs);

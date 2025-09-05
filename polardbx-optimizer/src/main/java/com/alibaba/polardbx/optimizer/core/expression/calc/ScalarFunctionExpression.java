@@ -54,6 +54,9 @@ public class ScalarFunctionExpression extends AbstractExpression {
 //            function.setArgs(Arrays.asList(actualArgs));
             Object result = function.compute(actualArgs, ec);
             DataType returnType = function.getReturnType();
+            if(Arrays.asList(function.getFunctionNames()).contains("cartesian") || Arrays.asList(function.getFunctionNames()).contains("list")) {
+                return result;
+            }
             return returnType.convertFrom(result);
         } else {
             GeneralUtil.nestedException("invoke function of null");

@@ -44,6 +44,7 @@ import org.apache.calcite.util.Litmus;
  */
 public class SqlInOperator extends SqlBinaryOperator {
 
+    private boolean isExpand = false;
     // ~ Instance fields
     // --------------------------------------------------------
 
@@ -55,8 +56,9 @@ public class SqlInOperator extends SqlBinaryOperator {
      *
      * @param kind IN or NOT IN
      */
-    SqlInOperator(SqlKind kind){
+    SqlInOperator(SqlKind kind, boolean isExpand){
         this(kind.sql, kind);
+        this.isExpand = isExpand;
         assert kind == SqlKind.IN || kind == SqlKind.NOT_IN;
     }
 
@@ -147,6 +149,10 @@ public class SqlInOperator extends SqlBinaryOperator {
         // where (select count(*) from dept) in (select deptno from dept)
         // we should coerce the LHS to a scalar.
         return ordinal == 0;
+    }
+
+    public boolean isExpand() {
+        return isExpand;
     }
 }
 

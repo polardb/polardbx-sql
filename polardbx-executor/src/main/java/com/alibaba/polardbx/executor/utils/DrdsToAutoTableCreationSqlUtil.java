@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeImpl;
@@ -62,8 +60,10 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.sharding.utils.DrdsDefaultPartitionNumUtil;
 import com.alibaba.polardbx.repo.mysql.handler.LogicalShowTablesMyHandler;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Types;
 import java.util.ArrayList;
@@ -75,11 +75,9 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.TddlConstants.AUTO_SHARD_KEY_PREFIX;
 import static com.alibaba.polardbx.gms.metadb.limit.Limits.MAX_LENGTH_OF_IDENTIFIER_NAME;
-import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 /**
@@ -91,7 +89,8 @@ public class DrdsToAutoTableCreationSqlUtil {
 
     //ignore the 'locality' option in auto-mode db
     public static String buildCreateAutoModeDatabaseSql(String drdsSchemaName, String autoSchemaName) {
-        final String createAutoDatabaseSql = "create database if not exists " + autoSchemaName;
+        final String createAutoDatabaseSql =
+            "create database if not exists " + SqlIdentifier.surroundWithBacktick(autoSchemaName);
         final String charSetOption = " CHARSET=";
         final String collateOption = " COLLATE=";
         final String partitionMode = " PARTITION_MODE=auto";
@@ -99,10 +98,10 @@ public class DrdsToAutoTableCreationSqlUtil {
         String createSql = createAutoDatabaseSql;
         DbInfoManager dbInfoManager = DbInfoManager.getInstance();
         DbInfoRecord drdsRecord = dbInfoManager.getDbInfo(drdsSchemaName);
-        if (drdsRecord.charset != null) {
+        if (StringUtils.isNotEmpty(drdsRecord.charset)) {
             createSql += (charSetOption + drdsRecord.charset);
         }
-        if (drdsRecord.collation != null) {
+        if (StringUtils.isNotEmpty(drdsRecord.collation)) {
             createSql += (collateOption + drdsRecord.collation);
         }
         createSql += (partitionMode + ";");
@@ -111,12 +110,15 @@ public class DrdsToAutoTableCreationSqlUtil {
     }
 
     public static String convertDrdsModeCreateTableSqlToAutoModeSql(String drdsSql, boolean ifNotExists,
-                                                                    int maxPartitionsNum, int maxPartitionColumnNum) {
+                                                                    int maxPartitionsNum,
+                                                                    int maxPartitionColumnNum,
+                                                                    ExecutionContext ec) {
         final MySqlCreateTableStatement createTableStatementDrds =
             (MySqlCreateTableStatement) FastsqlUtils.parseSql(drdsSql).get(0);
 
         MySqlCreateTableStatement createTableStatementAuto
-            = convertDrdsStatementToAutoStatement(createTableStatementDrds, maxPartitionsNum, maxPartitionColumnNum);
+            = convertDrdsStatementToAutoStatement(createTableStatementDrds, maxPartitionsNum,
+            maxPartitionColumnNum, ec);
         if (ifNotExists) {
             createTableStatementAuto.setIfNotExiists(true);
         }
@@ -148,7 +150,10 @@ public class DrdsToAutoTableCreationSqlUtil {
     }
 
     public static MySqlCreateTableStatement convertDrdsStatementToAutoStatement(
-        MySqlCreateTableStatement drdsCreateTableStatement, int maxPartitionsNum, int maxPartitionColumnNum) {
+        MySqlCreateTableStatement drdsCreateTableStatement,
+        int maxPartitionsNum,
+        int maxPartitionColumnNum,
+        ExecutionContext ec) {
         String tableCharset = drdsCreateTableStatement.getOption("CHARSET") == null ? null :
             ((SQLIdentifierExpr) drdsCreateTableStatement.getOption("CHARSET")).getSimpleName();
         Map<String, Integer> columnsLengthsInBytes =
@@ -179,13 +184,13 @@ public class DrdsToAutoTableCreationSqlUtil {
             return autoModeCreateTableStatement;
         } else {
             SQLMethodInvokeExpr drdsDbPartitionBy = (SQLMethodInvokeExpr) drdsCreateTableStatement.getDbPartitionBy();
-            SQLIntegerExpr drdsDbPartiions = (SQLIntegerExpr) drdsCreateTableStatement.getDbPartitions();
+            SQLIntegerExpr drdsDbPartitions = (SQLIntegerExpr) drdsCreateTableStatement.getDbPartitions();
             SQLMethodInvokeExpr drdsTbPartitionBy =
                 (SQLMethodInvokeExpr) drdsCreateTableStatement.getTablePartitionBy();
             SQLIntegerExpr drdsTbPartitions = (SQLIntegerExpr) drdsCreateTableStatement.getTablePartitions();
             final int dbPartitionNum =
-                (drdsDbPartiions == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum() :
-                    drdsDbPartiions.getNumber().intValue();
+                (drdsDbPartitions == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum(ec) :
+                    drdsDbPartitions.getNumber().intValue();
             final int tbPartitionNum =
                 (drdsTbPartitions == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultTbPartitionNum() :
                     drdsTbPartitions.getNumber().intValue();
@@ -199,7 +204,7 @@ public class DrdsToAutoTableCreationSqlUtil {
                 || drdsDbPartitionBy == null && drdsTbPartitionBy != null) {
                 //handle gsi
                 handleAutoModeGsi(autoModeCreateTableStatement, maxPartitionsNum, maxPartitionColumnNum,
-                    columnsLengthsInBytes);
+                    columnsLengthsInBytes, ec);
 
                 SQLMethodInvokeExpr drdsPartitionBy =
                     (drdsDbPartitionBy == null) ? drdsTbPartitionBy : drdsDbPartitionBy;
@@ -251,7 +256,7 @@ public class DrdsToAutoTableCreationSqlUtil {
                 if (hasSameShardingKey) {
                     //handle gsi
                     handleAutoModeGsi(autoModeCreateTableStatement, maxPartitionsNum, maxPartitionColumnNum,
-                        columnsLengthsInBytes);
+                        columnsLengthsInBytes, ec);
 
                     SQLPartitionBy autoPartitionBy =
                         convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy,
@@ -273,7 +278,7 @@ public class DrdsToAutoTableCreationSqlUtil {
                 } else {
                     //convert origin gsi
                     handleAutoModeGsi(autoModeCreateTableStatement, maxPartitionsNum, maxPartitionColumnNum,
-                        columnsLengthsInBytes);
+                        columnsLengthsInBytes, ec);
 
                     //handle dbPartitionBy
                     SQLPartitionBy autoPartitionBy =
@@ -843,7 +848,7 @@ public class DrdsToAutoTableCreationSqlUtil {
             month.addArgument(col);
             autoSqlSubPartitionBy.addColumn(month);
             //build subpartition definition
-            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 13, 13);
+            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 12, 12);
         } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("DD")) {
             //build dayofmonth(`col`)
             autoSqlSubPartitionBy = new SQLSubPartitionByRange();
@@ -877,7 +882,8 @@ public class DrdsToAutoTableCreationSqlUtil {
     }
 
     static private void handleAutoModeGsi(MySqlCreateTableStatement autoCreateTableStatement, int maxPartitionsNum,
-                                          int maxPartitionColumnNum, Map<String, Integer> columnsLengthsInBytes) {
+                                          int maxPartitionColumnNum, Map<String, Integer> columnsLengthsInBytes,
+                                          ExecutionContext ec) {
         List<SQLTableElement> autoTableElementList = autoCreateTableStatement.getTableElementList();
         for (int i = 0; i < autoTableElementList.size(); i++) {
             SQLTableElement element = autoTableElementList.get(i);
@@ -886,7 +892,7 @@ public class DrdsToAutoTableCreationSqlUtil {
                 if (gsi.isGlobal() || gsi.isClustered()) {
                     SQLTableElement newGsi =
                         convertDrdsGsiToAutoGsi((MySqlTableIndex) element, maxPartitionsNum, maxPartitionColumnNum,
-                            columnsLengthsInBytes);
+                            columnsLengthsInBytes, ec);
                     autoTableElementList.set(i, newGsi);
                 }
             } else if (element instanceof MySqlUnique) {
@@ -894,7 +900,7 @@ public class DrdsToAutoTableCreationSqlUtil {
                 if (uniqueIndex.isGlobal() || uniqueIndex.isClustered()) {
                     SQLTableElement newGsi =
                         convertDrdsUgsiToAutoGsi((MySqlUnique) element, maxPartitionsNum, maxPartitionColumnNum,
-                            columnsLengthsInBytes);
+                            columnsLengthsInBytes, ec);
                     autoTableElementList.set(i, newGsi);
                 }
             }
@@ -968,9 +974,11 @@ public class DrdsToAutoTableCreationSqlUtil {
         return generateCgsi(newCol, partitionByWithSubStrForCol2);
     }
 
-    static private MySqlTableIndex convertDrdsGsiToAutoGsi(MySqlTableIndex drdsGsi, int maxPartitionsNum,
+    static private MySqlTableIndex convertDrdsGsiToAutoGsi(MySqlTableIndex drdsGsi,
+                                                           int maxPartitionsNum,
                                                            int maxPartitionColumnNum,
-                                                           Map<String, Integer> columnsLengthsInBytes) {
+                                                           Map<String, Integer> columnsLengthsInBytes,
+                                                           ExecutionContext ec) {
         MySqlTableIndex autoGsi = drdsGsi.clone();
         autoGsi.setDbPartitionBy(null);
         autoGsi.setTablePartitionBy(null);
@@ -983,7 +991,7 @@ public class DrdsToAutoTableCreationSqlUtil {
         final int tbPartitionNum =
             (drdsGsi.getTablePartitions() == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultTbPartitionNum() :
                 ((SQLIntegerExpr) drdsGsi.getTablePartitions()).getNumber().intValue();
-        final int drdsDbPartitionNum = DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum();
+        final int drdsDbPartitionNum = DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum(ec);
         final int drdsTbPartitionNum = min(tbPartitionNum, maxPartitionsNum / drdsDbPartitionNum);
 
         //only dbPartition by
@@ -1053,7 +1061,8 @@ public class DrdsToAutoTableCreationSqlUtil {
 
     static private MySqlUnique convertDrdsUgsiToAutoGsi(MySqlUnique drdsGsi, int maxPartitionsNum,
                                                         int maxPartitionColumnNum,
-                                                        Map<String, Integer> columnsLengthsInBytes) {
+                                                        Map<String, Integer> columnsLengthsInBytes,
+                                                        ExecutionContext ec) {
         MySqlUnique autoGsi = drdsGsi.clone();
         autoGsi.setDbPartitionBy(null);
         autoGsi.setTablePartitionBy(null);
@@ -1065,7 +1074,7 @@ public class DrdsToAutoTableCreationSqlUtil {
         final int tbPartitionNum =
             (drdsGsi.getTablePartitions() == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultTbPartitionNum() :
                 ((SQLIntegerExpr) drdsGsi.getTablePartitions()).getNumber().intValue();
-        final int drdsDbPartitionNum = DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum();
+        final int drdsDbPartitionNum = DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum(ec);
         final int drdsTbPartitionNum = min(tbPartitionNum, maxPartitionsNum / drdsDbPartitionNum);
 
         //only dbPartition by
@@ -1147,7 +1156,7 @@ public class DrdsToAutoTableCreationSqlUtil {
         needPartitionNum = min(needPartitionNum, maxPartitionBound);
         int partitionBoundStep = maxPartitionBound / needPartitionNum;
         int partitionBeginBound = (partitionBoundStep == 1 ? partitionBoundStep + 1 : partitionBoundStep);
-        while (partitionBeginBound < maxPartitionBound) {
+        while (partitionBeginBound <= maxPartitionBound) {
             SQLPartition partition = new SQLPartition();
             SQLIdentifierExpr pName = new SQLIdentifierExpr("p" + String.valueOf(partitionBeginBound));
             partition.setName(pName);
@@ -1186,7 +1195,7 @@ public class DrdsToAutoTableCreationSqlUtil {
         needPartitionNum = min(needPartitionNum, maxPartitionBound);
         int partitionBoundStep = maxPartitionBound / needPartitionNum;
         int partitionBeginBound = (partitionBoundStep == 1 ? partitionBoundStep + 1 : partitionBoundStep);
-        while (partitionBeginBound < maxPartitionBound) {
+        while (partitionBeginBound <= maxPartitionBound) {
             SQLSubPartition subPartition = new SQLSubPartition();
             SQLIdentifierExpr pName = new SQLIdentifierExpr("sp" + String.valueOf(partitionBeginBound));
             subPartition.setName(pName);

@@ -16,10 +16,10 @@ public class ForceIndexTest extends ColumnarReadBaseTestCase {
         JdbcUtil.dropTable(tddlConnection, tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
         String sql = "insert into " + tableName + " values (0, 0), (1, 1), (2, 2)";
-        JdbcUtil.executeUpdateSuccessInTrx(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccessInTsoTrx(tddlConnection, sql);
         ColumnarUtils.createColumnarIndex(tddlConnection, indexName, tableName, "a", "a", 3);
         sql = "insert into " + tableName + " values (10, 10), (11, 11), (12, 12)";
-        JdbcUtil.executeUpdateSuccessInTrx(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccessInTsoTrx(tddlConnection, sql);
 
         // simple select
         sql = "select count(a) from %s force index (%s)";
@@ -38,14 +38,12 @@ public class ForceIndexTest extends ColumnarReadBaseTestCase {
         Assert.assertTrue(success);
 
         // get tso 0
-        sql = "select tso_timestamp()";
-        rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
-        Assert.assertTrue(rs.next());
-        long tso0 = rs.getLong(1);
+        long tso0 = ColumnarUtils.columnarFlushAndGetTso(tddlConnection);
+        Assert.assertTrue("Failed to flush columnar snapshot", tso0 > 0);
 
         // insert more data
         sql = "insert into " + tableName + " values (100, 100), (111, 111), (112, 112)";
-        JdbcUtil.executeUpdateSuccessInTrx(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccessInTsoTrx(tddlConnection, sql);
 
         sql = "select count(a) from %s force index (%s)";
         success = false;
@@ -62,10 +60,8 @@ public class ForceIndexTest extends ColumnarReadBaseTestCase {
         Assert.assertTrue(success);
 
         // get tso 1
-        sql = "select tso_timestamp()";
-        rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
-        Assert.assertTrue(rs.next());
-        long tso1 = rs.getLong(1);
+        long tso1 = ColumnarUtils.columnarFlushAndGetTso(tddlConnection);
+        Assert.assertTrue("Failed to flush columnar snapshot", tso1 > 0);
 
         // insert select
         final String targetTable = "force_index_test_single_target";

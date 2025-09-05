@@ -119,7 +119,11 @@ public class PartClauseExprExec {
             return null;
         }
         if (alwaysNullValue) {
-            PartitionField nullFld = PartitionFieldBuilder.createField(DataTypes.LongType);
+            DataType partColDt = DataTypes.LongType;
+            if (partColDataType != null) {
+                partColDt = partColDataType;
+            }
+            PartitionField nullFld = PartitionFieldBuilder.createField(partColDt);
             nullFld.setNull(true);
             return nullFld;
         }

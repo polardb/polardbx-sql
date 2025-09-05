@@ -170,18 +170,20 @@ public class CorrelateExec extends AbstractExecutor {
 
     @Override
     void doClose() {
-        try {
-            left.close();
-        } catch (Exception ex) {
-            logger.error("Failed to close correlate left node", ex);
-        }
-        closed = true;
-        isFinish = true;
         forceClose();
     }
 
     @Override
     public synchronized void forceClose() {
+        try {
+            left.close();
+        } catch (Exception ex) {
+            logger.error("Failed to close correlate left node", ex);
+        } finally {
+            left = null;
+        }
+        closed = true;
+        isFinish = true;
         currentChunk = null;
         if (curSubqueryApply != null) {
             curSubqueryApply.close();

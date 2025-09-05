@@ -50,6 +50,7 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.GsiUtils;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
@@ -626,7 +627,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         if (repartitionPrepareData == null) {
             repartitionPrepareData = new RepartitionPrepareData();
         }
-        Map<String, Pair<List<String>, Boolean>> gsiInfo = new HashMap<>();
+        Map<String, GsiMetaManager.GsiIndexMetaBean> gsiInfo = new HashMap<>();
         repartitionPrepareData.setGsiInfo(gsiInfo);
 
         final GsiMetaManager.GsiMetaBean gsiMetaBean =
@@ -639,7 +640,6 @@ public class LogicalAlterTable extends LogicalTableOperation {
         for (Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> indexEntry : tableMeta.indexMap.entrySet()) {
             final String indexName = indexEntry.getKey();
             final GsiMetaManager.GsiIndexMetaBean indexDetail = indexEntry.getValue();
-            List<String> localIndex = new ArrayList<>();
 
             if (indexDetail.columnarIndex) {
                 continue;
@@ -650,12 +650,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
                     "can not alter table repartition when gsi table is not public");
             }
 
-            for (GsiMetaManager.GsiIndexColumnMetaBean indexColumn : indexDetail.indexColumns) {
-                localIndex.add(SqlIdentifier.surroundWithBacktick(indexColumn.columnName));
-            }
-
-            gsiInfo.put(TddlConstants.AUTO_LOCAL_INDEX_PREFIX + indexName,
-                new Pair<>(localIndex, indexDetail.nonUnique));
+            gsiInfo.put(TddlConstants.AUTO_LOCAL_INDEX_PREFIX + indexName, indexDetail);
         }
     }
 
@@ -1589,6 +1584,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         List<String> updatedColumns = new ArrayList<>();
         List<String> alterDefaultColumns = new ArrayList<>();
         List<String> alterDefaultNewColumns = new ArrayList<>();
+        Map<String, String> isNullableMap = new HashMap<>();
 
         // Add column for gsi with current_timestamp needs backfill
         if (CollectionUtils.isNotEmpty(addedColumns)) {
@@ -1699,8 +1695,11 @@ public class LogicalAlterTable extends LogicalTableOperation {
                             alterDefaultColumns.add(oldColumnName);
                         }
 
-                        preparedData.setKeepPartitionKeyRange(false);
-                        preparedData.setNeedRepartition(true);
+                        if (!currentTableMeta.getPartitionInfo().isSingleTable()
+                            && !currentTableMeta.getPartitionInfo().isBroadcastTable()) {
+                            preparedData.setKeepPartitionKeyRange(false);
+                            preparedData.setNeedRepartition(true);
+                        }
                         changedColumns.add(Pair.of(newColumnName, oldColumnName));
                         continue;
                     }
@@ -1917,8 +1916,11 @@ public class LogicalAlterTable extends LogicalTableOperation {
                             alterDefaultColumns.add(columnName);
                         }
 
-                        preparedData.setKeepPartitionKeyRange(false);
-                        preparedData.setNeedRepartition(true);
+                        if (!currentTableMeta.getPartitionInfo().isSingleTable()
+                            && !currentTableMeta.getPartitionInfo().isBroadcastTable()) {
+                            preparedData.setKeepPartitionKeyRange(false);
+                            preparedData.setNeedRepartition(true);
+                        }
                         updatedColumns.add(columnName);
                         continue;
                     }
@@ -2042,6 +2044,9 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 }
                 allTableColumns.add(insertIndex, newColumnName);
 
+                final SqlColumnDeclaration.ColumnNull notNull = addColumn.getColDef().getNotNull();
+                isNullableMap.put(newColumnName,
+                    (null == notNull || SqlColumnDeclaration.ColumnNull.NULL == notNull) ? "YES" : "");
                 // Primary or unique key with column added
                 SpecialIndex specialIndex = addColumn.getColDef().getSpecialIndex();
                 if (specialIndex == SpecialIndex.UNIQUE) {
@@ -2252,7 +2257,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
                             String.format("Referenced column [%s] can not be non-logical generated column.", refCol));
                     }
 
-                    if (TStringUtil.containsIgnoreCase(refColMeta.getField().getExtra(), "on update")) {
+                    if (refColMeta.isAutoUpdateColumn()) {
                         throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
                             String.format("Referenced column [%s] can not be auto update column.", refCol));
                     }
@@ -2288,6 +2293,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         preparedData.setTableRowFormat(tableRowFormat);
         preparedData.setDropFiles(dropFiles);
         preparedData.setBackfillColumns(new ArrayList<>(backfillColumns));
+        preparedData.setIsNullableMap(isNullableMap);
         return preparedData;
     }
 
@@ -2315,7 +2321,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
             SqlKind alterType = alterItem.getKind();
             if (alterType != SqlKind.MODIFY_COLUMN && alterType != SqlKind.CHANGE_COLUMN
                 && alterType != SqlKind.ADD_COLUMN && alterType != SqlKind.DROP_COLUMN) {
-                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                     "Online column modify only supports modify column or change column");
             }
         }
@@ -2348,37 +2354,37 @@ public class LogicalAlterTable extends LogicalTableOperation {
 
                 for (Map.Entry<String, Set<String>> entry : allReferencedColumns.entrySet()) {
                     if (entry.getValue().contains(columnName)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                             String.format("Can not modify column [%s] referenced by a generated column [%s].",
                                 columnName, entry.getKey()));
                     }
                 }
 
                 if (modifyColumn.getColDef().isGeneratedAlwaysLogical()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Column [%s] can not be modified to a generated column", columnName));
                 }
 
                 if (generatedColumns.contains(columnName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Can not modify generated column [%s]", columnName));
                 }
 
                 if (modifyColumn.getColDef().getSpecialIndex() != null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support modify the column with unique key or primary key when using online modify column");
                 }
 
                 if (modifyColumn.getAfterColumn() != null) {
                     String afterColumn = modifyColumn.getAfterColumn().getLastName();
                     if (afterColumn.equalsIgnoreCase(columnName)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                             "Do not support insert after the same column");
                     }
                 }
 
                 if (modifyColumn.getColDef().isAutoIncrement() && !hasSequence(schemaName, tableName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, String.format(
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN, String.format(
                         "Missing sequence for auto increment column. Please try to execute this command first: \"CREATE SEQUENCE `AUTO_SEQ_%s`\"",
                         tableName));
                 }
@@ -2390,37 +2396,37 @@ public class LogicalAlterTable extends LogicalTableOperation {
 
                 for (Map.Entry<String, Set<String>> entry : allReferencedColumns.entrySet()) {
                     if (entry.getValue().contains(columnName)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                             String.format("Can not change column [%s] referenced by a generated column [%s].",
                                 columnName, entry.getKey()));
                     }
                 }
 
                 if (changeColumn.getColDef().isGeneratedAlwaysLogical()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Column [%s] can not be changed to a generated column", columnName));
                 }
 
                 if (changeColumn.getColDef().getSpecialIndex() != null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support change the column with unique key or primary key when using online modify column");
                 }
 
                 if (generatedColumns.contains(columnName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Can not change generated column [%s]", columnName));
                 }
 
                 if (changeColumn.getAfterColumn() != null) {
                     String afterColumn = changeColumn.getAfterColumn().getLastName();
                     if (afterColumn.equalsIgnoreCase(columnName)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                             "Do not support insert after the same column");
                     }
                 }
 
                 if (changeColumn.getColDef().isAutoIncrement() && !hasSequence(schemaName, tableName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, String.format(
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN, String.format(
                         "Missing sequence for auto increment column. Please try to execute this command first: \"CREATE SEQUENCE `AUTO_SEQ_%s`\"",
                         tableName));
                 }
@@ -2435,7 +2441,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
                             SqlParserPos.ZERO);
                     sqlAlterTable.getAlters().set(i, modifyColumn);
                 } else if (tableColumns.isPrimaryKey(columnName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Online modify primary key name is not supported");
                 } else {
                     changeWithSameName = false;
@@ -2444,24 +2450,24 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 SqlAddColumn sqlAddColumn = (SqlAddColumn) alterItem;
                 columnName = sqlAddColumn.getColName().getLastName();
                 if (tableMeta.getColumn(columnName) != null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support add the column which is already existed when using online modify column");
                 }
                 if (sqlAddColumn.getColDef().getNotNull() != null && sqlAddColumn.getColDef().getDefaultVal() == null
                     && SQLMode.isStrictMode(ec.getSqlModeFlags())) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support add the column which is not null and have no default value when using online modify column");
                 }
                 if (sqlAddColumn.getColDef().getSpecialIndex() != null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support add the column with unique key or primary key when using online modify column");
                 }
                 if (sqlAddColumn.getColDef().getGeneratedAlwaysExpr() != null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support add the column with generated expr when using online modify column");
                 }
                 if (sqlAddColumn.getColDef().isAutoIncrement() && !hasSequence(schemaName, tableName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, String.format(
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN, String.format(
                         "Missing sequence for auto increment column. Please try to execute this command first: \"CREATE SEQUENCE `AUTO_SEQ_%s`\"",
                         tableName));
                 }
@@ -2470,37 +2476,38 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 SqlDropColumn sqlDropColumn = (SqlDropColumn) alterItem;
                 columnName = sqlDropColumn.getColName().getLastName();
                 if (tableMeta.getColumn(columnName) == null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Can't DROP '%s'; check that column/key exists", columnName));
                 }
                 if (tableColumns.isPrimaryKey(columnName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Do not support drop primary key[%s])", columnName));
                 }
                 if (tableColumns.isShardingKey(columnName) || tableColumns.isGsiShardingKey(columnName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Do not support drop sharding key[%s])", columnName));
                 }
                 continue;
             } else {
-                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                     "Online modify column only supports modify / change column");
             }
 
             final ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
             if (columnMeta == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Modify unknown column '" + columnName + "'");
+                throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
+                    "Modify unknown column '" + columnName + "'");
             }
 
             if (tableColumns.isShardingKey(columnName) || tableColumns.isGsiShardingKey(columnName)) {
                 if (!changeWithSameName) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support change the column name of sharding key");
                 }
 
                 if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                             "Do not support change sharding key column type on drds mode database");
                     }
                 }
@@ -2514,7 +2521,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         }
 
         if (!needOmc) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+            throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                 "It seems that you do not alter column type, try to turn off ALGORITHM=OMC for better practice");
         }
 
@@ -2561,20 +2568,21 @@ public class LogicalAlterTable extends LogicalTableOperation {
 
             final ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
             if (columnMeta == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Modify unknown column '" + columnName + "'");
+                throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
+                    "Modify unknown column '" + columnName + "'");
             }
 
             // modify partition key
             if (tableColumns.isShardingKey(columnName) || tableColumns.isGsiShardingKey(columnName)) {
                 if (!changeWithSameName) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         "Do not support change the column name of sharding key");
                 }
 
                 if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     if (!paramManager.getBoolean(ConnectionParams.ENABLE_ALTER_SHARD_KEY)
                         && !paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                             "Do not support change sharding key column type on drds mode database");
                     }
                     return false;
@@ -2582,7 +2590,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
 
                 if (specificationSet.stream().anyMatch(ALTER_COLUMN_NAME_OR_TYPE::contains)) {
                     if (!paramManager.getBoolean(ConnectionParams.ALLOW_ALTER_MODIFY_SK)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                             "Do not support change the column type of partition key");
                     }
                     needOmc = true;

@@ -37,6 +37,7 @@ import org.apache.orc.DoubleColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
@@ -128,12 +129,12 @@ class FloatColumnProvider implements ColumnProvider<Float> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        ByteBuffer bytes = row.getBytes(columnId);
         blockBuilder.writeFloat(convertFromBinaryToFloat(dataType, bytes));
     }
 
-    private float convertFromBinaryToFloat(DataType dataType, byte[] bytes) {
-        int result = ColumnProvider.intFromByte(bytes, bytes.length);
+    private float convertFromBinaryToFloat(DataType dataType, ByteBuffer bytes) {
+        int result = ColumnProvider.intFromByte(bytes);
         return Float.intBitsToFloat(result);
     }
 

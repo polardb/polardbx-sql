@@ -3,16 +3,9 @@ package com.alibaba.polardbx.executor.ddl.job.task.ttl;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;
 import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
-import lombok.Data;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
 
-/**
- * @author chenghui.lch
- */
-@Data
 public class TtlJobContext {
 
     /**
@@ -27,7 +20,8 @@ public class TtlJobContext {
     protected String currentDateTime;
 
     /**
-     * The formated currrent datetime
+     * The formated current datetime which is formated by the timeUnit defined by ttl_expr,
+     * it is just using for computing the cleanupUpperBound
      * <pre>
      * For example,
      *   current time is 2024-06-26 11:04:56
@@ -37,7 +31,22 @@ public class TtlJobContext {
      *   if the ttlTimeUnit is HOUR, so the formated current datetime str is : 2024-06-26 11:00:00;
      * </pre>
      */
-    protected String formatedCurrentDateTime;
+    protected String currentDateTimeFormatedByTtlExprUnit;
+
+    /**
+     * The formated current datetime which is formated by the timeUnit defined by ttl_part_interval,
+     * it is just using for computing the newBoundValues
+     * of new prebuild partitions of partition-level-based ttl-tbl and the archive cci
+     * <pre>
+     * For example,
+     *   current time is 2024-06-26 11:04:56
+     *    if the ttlTimeUnit is YEAR, so the formated current datetime str is : 2024-01-01 00:00:00;
+     *   if the ttlTimeUnit is MONTH, so the formated current datetime str is : 2024-06-01 00:00:00;
+     *   if the ttlTimeUnit is DAY, so the formated current datetime str is : 2024-06-26 00:00:00;
+     *   if the ttlTimeUnit is HOUR, so the formated current datetime str is : 2024-06-26 11:00:00;
+     * </pre>
+     */
+    protected String currentDateTimeFormatedByArcPartUnit;
 
     /**
      * The upper bound string of the expired data to be cleanup
@@ -163,9 +172,35 @@ public class TtlJobContext {
     protected String arcTmpTblAddPartsSql;
 
     /**
-     * The auto add missing parts sql of archived table
+     * The auto drop expired parts sql of cci archived table
      */
-    protected String arcTblAddPartsSql;
+    protected String arcTmpTblDropPartsSql;
+
+//    /**
+//     * The auto add missing parts sql of cci archived table
+//     */
+//    protected String arcTblAddPartsSql;
+
+    /**
+     * The auto add new parts sql of ttl table
+     */
+    protected String ttlTblAddPartsSql;
+
+    /**
+     * The maxBoundVal (ignore maxvalue part) of ttlTbl after adding new parts
+     * during archiving by partition/subpartition
+     */
+    protected String ttlTblNewMaxBoundValAfterAddingNewParts;
+
+    /**
+     * The count of new added parts on ttl-tbl
+     */
+    protected Integer newAddedPartsCount = 0;
+
+    /**
+     * The auto drop expired parts sql of ttl table
+     */
+    protected String ttlTblDropPartsSql;
 
     /**
      * Label if need to add missing parts for ttl-tmp table
@@ -173,17 +208,27 @@ public class TtlJobContext {
     protected Boolean needAddPartsForArcTmpTbl = false;
 
     /**
+     * Label if need to add new parts for ttl table
+     */
+    protected Boolean needAddPartsForTtlTbl = false;
+
+    /**
+     * Label if need to drop expired parts for ttl table
+     */
+    protected Boolean needDropPartsForTtlTbl = false;
+
+    /**
      * Label if a archive task of some partition of curr oss table is running
      */
     protected Boolean partitionArchivingRunning = false;
 
     /**
-     * The table rows of the whole arc-tmp table
+     * The table rows of the whole arc-cci table
      */
     protected Long arcTmpTableRows;
 
     /**
-     * The data length of the whole arc-tmp table before running
+     * The data length of the whole arc cci table before running
      */
     protected Long arcTmpDataLengthBeforeRunning;
 
@@ -192,11 +237,6 @@ public class TtlJobContext {
      * between ttlColMinValPartPosition and ttlColCleanupUpperBoundPartPosition
      */
     protected Boolean needChangeReusingState = false;
-
-    /**
-     * New submitted the ready-state / reready-state parts to do oss archiving
-     */
-    protected List<String> newSubmittedArcParts = new ArrayList<>();
 
     /**
      * Label if current arcTmpTable if stop cleaning up the expired data right now
@@ -260,5 +300,357 @@ public class TtlJobContext {
         ttlJobContext.setDmlBatchSize(TtlConfigUtil.getTtlJobDefaultBatchSize());
         ttlJobContext.setUseArcTrans(TtlConfigUtil.isUseArchiveTransPolicy());
         return ttlJobContext;
+    }
+
+    public TtlDefinitionInfo getTtlInfo() {
+        return ttlInfo;
+    }
+
+    public void setTtlInfo(TtlDefinitionInfo ttlInfo) {
+        this.ttlInfo = ttlInfo;
+    }
+
+    public String getCurrentDateTime() {
+        return currentDateTime;
+    }
+
+    public void setCurrentDateTime(String currentDateTime) {
+        this.currentDateTime = currentDateTime;
+    }
+
+    public String getCurrentDateTimeFormatedByTtlExprUnit() {
+        return currentDateTimeFormatedByTtlExprUnit;
+    }
+
+    public void setCurrentDateTimeFormatedByTtlExprUnit(String currentDateTimeFormatedByTtlExprUnit) {
+        this.currentDateTimeFormatedByTtlExprUnit = currentDateTimeFormatedByTtlExprUnit;
+    }
+
+    public String getCurrentDateTimeFormatedByArcPartUnit() {
+        return currentDateTimeFormatedByArcPartUnit;
+    }
+
+    public void setCurrentDateTimeFormatedByArcPartUnit(String currentDateTimeFormatedByArcPartUnit) {
+        this.currentDateTimeFormatedByArcPartUnit = currentDateTimeFormatedByArcPartUnit;
+    }
+
+    public String getCleanUpUpperBound() {
+        return cleanUpUpperBound;
+    }
+
+    public void setCleanUpUpperBound(String cleanUpUpperBound) {
+        this.cleanUpUpperBound = cleanUpUpperBound;
+    }
+
+    public String getCleanUpLowerBound() {
+        return cleanUpLowerBound;
+    }
+
+    public void setCleanUpLowerBound(String cleanUpLowerBound) {
+        this.cleanUpLowerBound = cleanUpLowerBound;
+    }
+
+    public String getTtlColMinValue() {
+        return ttlColMinValue;
+    }
+
+    public void setTtlColMinValue(String ttlColMinValue) {
+        this.ttlColMinValue = ttlColMinValue;
+    }
+
+    public Boolean getTtlColMinValueIsNull() {
+        return ttlColMinValueIsNull;
+    }
+
+    public void setTtlColMinValueIsNull(Boolean ttlColMinValueIsNull) {
+        this.ttlColMinValueIsNull = ttlColMinValueIsNull;
+    }
+
+    public Boolean getTtlColMinValueIsZero() {
+        return ttlColMinValueIsZero;
+    }
+
+    public void setTtlColMinValueIsZero(Boolean ttlColMinValueIsZero) {
+        this.ttlColMinValueIsZero = ttlColMinValueIsZero;
+    }
+
+    public Boolean getTtlTblIsEmpty() {
+        return ttlTblIsEmpty;
+    }
+
+    public void setTtlTblIsEmpty(Boolean ttlTblIsEmpty) {
+        this.ttlTblIsEmpty = ttlTblIsEmpty;
+    }
+
+    public String getTtlColIndexName() {
+        return ttlColIndexName;
+    }
+
+    public void setTtlColIndexName(String ttlColIndexName) {
+        this.ttlColIndexName = ttlColIndexName;
+    }
+
+    public String getTtlColForceIndexExpr() {
+        return ttlColForceIndexExpr;
+    }
+
+    public void setTtlColForceIndexExpr(String ttlColForceIndexExpr) {
+        this.ttlColForceIndexExpr = ttlColForceIndexExpr;
+    }
+
+    public int getDmlBatchSize() {
+        return dmlBatchSize;
+    }
+
+    public void setDmlBatchSize(int dmlBatchSize) {
+        this.dmlBatchSize = dmlBatchSize;
+    }
+
+    public Integer getPartPositionForTtlColMinVal() {
+        return partPositionForTtlColMinVal;
+    }
+
+    public void setPartPositionForTtlColMinVal(Integer partPositionForTtlColMinVal) {
+        this.partPositionForTtlColMinVal = partPositionForTtlColMinVal;
+    }
+
+    public String getPartNameForTtlColMinVal() {
+        return partNameForTtlColMinVal;
+    }
+
+    public void setPartNameForTtlColMinVal(String partNameForTtlColMinVal) {
+        this.partNameForTtlColMinVal = partNameForTtlColMinVal;
+    }
+
+    public String getPreviousPartBoundOfTtlColMinVal() {
+        return previousPartBoundOfTtlColMinVal;
+    }
+
+    public void setPreviousPartBoundOfTtlColMinVal(String previousPartBoundOfTtlColMinVal) {
+        this.previousPartBoundOfTtlColMinVal = previousPartBoundOfTtlColMinVal;
+    }
+
+    public Integer getPartPositionForCleanupLowerBound() {
+        return partPositionForCleanupLowerBound;
+    }
+
+    public void setPartPositionForCleanupLowerBound(Integer partPositionForCleanupLowerBound) {
+        this.partPositionForCleanupLowerBound = partPositionForCleanupLowerBound;
+    }
+
+    public String getPartNameForCleanupLowerBound() {
+        return partNameForCleanupLowerBound;
+    }
+
+    public void setPartNameForCleanupLowerBound(String partNameForCleanupLowerBound) {
+        this.partNameForCleanupLowerBound = partNameForCleanupLowerBound;
+    }
+
+    public Integer getPartPositionForCleanupUpperBound() {
+        return partPositionForCleanupUpperBound;
+    }
+
+    public void setPartPositionForCleanupUpperBound(Integer partPositionForCleanupUpperBound) {
+        this.partPositionForCleanupUpperBound = partPositionForCleanupUpperBound;
+    }
+
+    public String getPartNameForCleanupUpperBound() {
+        return partNameForCleanupUpperBound;
+    }
+
+    public void setPartNameForCleanupUpperBound(String partNameForCleanupUpperBound) {
+        this.partNameForCleanupUpperBound = partNameForCleanupUpperBound;
+    }
+
+    public Boolean getNeedChangeTtlTmpTblState() {
+        return needChangeTtlTmpTblState;
+    }
+
+    public void setNeedChangeTtlTmpTblState(Boolean needChangeTtlTmpTblState) {
+        this.needChangeTtlTmpTblState = needChangeTtlTmpTblState;
+    }
+
+    public String getArcTmpTblAddPartsSql() {
+        return arcTmpTblAddPartsSql;
+    }
+
+    public void setArcTmpTblAddPartsSql(String arcTmpTblAddPartsSql) {
+        this.arcTmpTblAddPartsSql = arcTmpTblAddPartsSql;
+    }
+
+    public String getArcTmpTblDropPartsSql() {
+        return arcTmpTblDropPartsSql;
+    }
+
+    public void setArcTmpTblDropPartsSql(String arcTmpTblDropPartsSql) {
+        this.arcTmpTblDropPartsSql = arcTmpTblDropPartsSql;
+    }
+
+    public String getTtlTblAddPartsSql() {
+        return ttlTblAddPartsSql;
+    }
+
+    public void setTtlTblAddPartsSql(String ttlTblAddPartsSql) {
+        this.ttlTblAddPartsSql = ttlTblAddPartsSql;
+    }
+
+    public String getTtlTblDropPartsSql() {
+        return ttlTblDropPartsSql;
+    }
+
+    public void setTtlTblDropPartsSql(String ttlTblDropPartsSql) {
+        this.ttlTblDropPartsSql = ttlTblDropPartsSql;
+    }
+
+    public Boolean getNeedAddPartsForArcTmpTbl() {
+        return needAddPartsForArcTmpTbl;
+    }
+
+    public void setNeedAddPartsForArcTmpTbl(Boolean needAddPartsForArcTmpTbl) {
+        this.needAddPartsForArcTmpTbl = needAddPartsForArcTmpTbl;
+    }
+
+    public Boolean getNeedAddPartsForTtlTbl() {
+        return needAddPartsForTtlTbl;
+    }
+
+    public void setNeedAddPartsForTtlTbl(Boolean needAddPartsForTtlTbl) {
+        this.needAddPartsForTtlTbl = needAddPartsForTtlTbl;
+    }
+
+    public Boolean getNeedDropPartsForTtlTbl() {
+        return needDropPartsForTtlTbl;
+    }
+
+    public void setNeedDropPartsForTtlTbl(Boolean needDropPartsForTtlTbl) {
+        this.needDropPartsForTtlTbl = needDropPartsForTtlTbl;
+    }
+
+    public Boolean getPartitionArchivingRunning() {
+        return partitionArchivingRunning;
+    }
+
+    public void setPartitionArchivingRunning(Boolean partitionArchivingRunning) {
+        this.partitionArchivingRunning = partitionArchivingRunning;
+    }
+
+    public Long getArcTmpTableRows() {
+        return arcTmpTableRows;
+    }
+
+    public void setArcTmpTableRows(Long arcTmpTableRows) {
+        this.arcTmpTableRows = arcTmpTableRows;
+    }
+
+    public Long getArcTmpDataLengthBeforeRunning() {
+        return arcTmpDataLengthBeforeRunning;
+    }
+
+    public void setArcTmpDataLengthBeforeRunning(Long arcTmpDataLengthBeforeRunning) {
+        this.arcTmpDataLengthBeforeRunning = arcTmpDataLengthBeforeRunning;
+    }
+
+    public Boolean getNeedChangeReusingState() {
+        return needChangeReusingState;
+    }
+
+    public void setNeedChangeReusingState(Boolean needChangeReusingState) {
+        this.needChangeReusingState = needChangeReusingState;
+    }
+
+    public Boolean getStopCleaningUpExpiredDataNow() {
+        return stopCleaningUpExpiredDataNow;
+    }
+
+    public void setStopCleaningUpExpiredDataNow(Boolean stopCleaningUpExpiredDataNow) {
+        this.stopCleaningUpExpiredDataNow = stopCleaningUpExpiredDataNow;
+    }
+
+    public Boolean getNeedPerformOptiTable() {
+        return needPerformOptiTable;
+    }
+
+    public void setNeedPerformOptiTable(Boolean needPerformOptiTable) {
+        this.needPerformOptiTable = needPerformOptiTable;
+    }
+
+    public Long getNewOptiTableDdlJobId() {
+        return newOptiTableDdlJobId;
+    }
+
+    public void setNewOptiTableDdlJobId(Long newOptiTableDdlJobId) {
+        this.newOptiTableDdlJobId = newOptiTableDdlJobId;
+    }
+
+    public Long getDataFreeOfTtlTblPrim() {
+        return dataFreeOfTtlTblPrim;
+    }
+
+    public void setDataFreeOfTtlTblPrim(Long dataFreeOfTtlTblPrim) {
+        this.dataFreeOfTtlTblPrim = dataFreeOfTtlTblPrim;
+    }
+
+    public Long getTtlTblPrimDataLength() {
+        return ttlTblPrimDataLength;
+    }
+
+    public void setTtlTblPrimDataLength(Long ttlTblPrimDataLength) {
+        this.ttlTblPrimDataLength = ttlTblPrimDataLength;
+    }
+
+    public BigDecimal getDataFreePercentOfTtlTblPrim() {
+        return dataFreePercentOfTtlTblPrim;
+    }
+
+    public void setDataFreePercentOfTtlTblPrim(BigDecimal dataFreePercentOfTtlTblPrim) {
+        this.dataFreePercentOfTtlTblPrim = dataFreePercentOfTtlTblPrim;
+    }
+
+    public Long getDataFreePercentAvgOfTtlTbl() {
+        return dataFreePercentAvgOfTtlTbl;
+    }
+
+    public void setDataFreePercentAvgOfTtlTbl(Long dataFreePercentAvgOfTtlTbl) {
+        this.dataFreePercentAvgOfTtlTbl = dataFreePercentAvgOfTtlTbl;
+    }
+
+    public Long getRowLengthAvgOfTtlTbl() {
+        return rowLengthAvgOfTtlTbl;
+    }
+
+    public void setRowLengthAvgOfTtlTbl(Long rowLengthAvgOfTtlTbl) {
+        this.rowLengthAvgOfTtlTbl = rowLengthAvgOfTtlTbl;
+    }
+
+    public String getCreateColumnarIndexSqlForArcTbl() {
+        return createColumnarIndexSqlForArcTbl;
+    }
+
+    public void setCreateColumnarIndexSqlForArcTbl(String createColumnarIndexSqlForArcTbl) {
+        this.createColumnarIndexSqlForArcTbl = createColumnarIndexSqlForArcTbl;
+    }
+
+    public Boolean getUseArcTrans() {
+        return useArcTrans;
+    }
+
+    public void setUseArcTrans(Boolean useArcTrans) {
+        this.useArcTrans = useArcTrans;
+    }
+
+    public String getTtlTblNewMaxBoundValAfterAddingNewParts() {
+        return ttlTblNewMaxBoundValAfterAddingNewParts;
+    }
+
+    public void setTtlTblNewMaxBoundValAfterAddingNewParts(String ttlTblNewMaxBoundValAfterAddingNewParts) {
+        this.ttlTblNewMaxBoundValAfterAddingNewParts = ttlTblNewMaxBoundValAfterAddingNewParts;
+    }
+
+    public Integer getNewAddedPartsCount() {
+        return newAddedPartsCount;
+    }
+
+    public void setNewAddedPartsCount(Integer newAddedPartsCount) {
+        this.newAddedPartsCount = newAddedPartsCount;
     }
 }

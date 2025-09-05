@@ -556,6 +556,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         List<ParameterContext> results = new ArrayList<>();
         Map<Integer, ParameterContext> currentParams = getPruneParams(group, tables);
         int tableIndex = -1;
+        int applyInValueIndex = -1;
         for (DynamicParamInfo dynamicParamInfo : dynamicParamList) {
             if (dynamicParamInfo instanceof IndexedDynamicParamInfo) {
                 int i = ((IndexedDynamicParamInfo) dynamicParamInfo).getParamIndex();
@@ -575,6 +576,11 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     // do nothing
                 } else if (i == PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
                     // do nothing
+                } else if (i == PlannerUtils.APPLY_IN_VALUES_PARAM_INDEX) {
+                    // do nothing
+                    applyInValueIndex += 1;
+                    results.add(
+                        new ParameterContext(ParameterMethod.setDelegateInValue, new Object[] {applyInValueIndex, null}));
                 } else {
                     if (currentParams != null) {
                         results.add(currentParams.get(i + 1));

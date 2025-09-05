@@ -58,4 +58,14 @@ public class MockUtils {
             throw new RuntimeException(e);
         }
     }
+
+    public static Object getInternalState(Object target, String fieldName) {
+        try {
+            Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

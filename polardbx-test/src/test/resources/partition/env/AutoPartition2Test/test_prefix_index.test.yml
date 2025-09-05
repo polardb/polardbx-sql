@@ -1,0 +1,13 @@
+drop table if exists prefix_index_test_t1;
+
+create table prefix_index_test_t1(a int primary key, b text, c int, index(c,b(10)), unique key(c,b(20)));
+
+show full create table prefix_index_test_t1;
+
+alter table prefix_index_test_t1 partitions 4;
+
+show full create table prefix_index_test_t1;
+
+alter table prefix_index_test_t1 partition by key(c);
+
+show full create table prefix_index_test_t1;

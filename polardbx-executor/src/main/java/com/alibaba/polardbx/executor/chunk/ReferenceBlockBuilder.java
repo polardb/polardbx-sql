@@ -16,17 +16,15 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
-import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
-
 import java.util.Objects;
 
 public abstract class ReferenceBlockBuilder<T> extends AbstractBlockBuilder {
 
-    public final ReferenceArrayList<T> values;
+    public final MemoryCountableReferenceArrayList<T> values;
 
     public ReferenceBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new ReferenceArrayList<>(capacity);
+        this.values = new MemoryCountableReferenceArrayList<>(capacity);
     }
 
     public void writeReference(T value) {

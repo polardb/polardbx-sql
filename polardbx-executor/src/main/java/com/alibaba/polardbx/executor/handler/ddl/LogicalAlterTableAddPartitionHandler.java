@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableAddPartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
@@ -45,6 +46,8 @@ public class LogicalAlterTableAddPartitionHandler extends LogicalCommonDdlHandle
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        executionContext.getParamManager().getProps()
+                .put(ConnectionProperties.ENABLE_PREEMPTIVE_MDL, Boolean.FALSE.toString());
         LogicalAlterTableAddPartition logicalAlterTableAddPatition =
             (LogicalAlterTableAddPartition) logicalDdlPlan;
         logicalAlterTableAddPatition.preparedData(executionContext);

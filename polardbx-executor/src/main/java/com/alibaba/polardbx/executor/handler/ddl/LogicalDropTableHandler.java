@@ -78,6 +78,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_RECYCLEBIN_EXECUTE;
+
 public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
 
     public LogicalDropTableHandler(IRepository repo) {
@@ -108,6 +110,16 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
                 logicalDropTable.getTableName(), executionContext);
         }
 
+        boolean enableBin = executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_RECYCLEBIN);
+        boolean crossDb = !targetSchemaName.equalsIgnoreCase(executionContext.getSchemaName());
+
+        if (enableBin && crossDb) {
+            throw new TddlRuntimeException(ERR_RECYCLEBIN_EXECUTE,
+                "drop table across db is not supported in recycle bin;"
+                    + "use the same db or use hint /*TDDL:ENABLE_RECYCLEBIN=false*/ "
+                    + "to disable recycle bin");
+        }
+
         logicalDropTable.prepareData();
 
         if (logicalDropTable.ifExists()) {
@@ -133,17 +145,35 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         CheckOSSArchiveUtil.checkWithoutOSS(logicalDropTable.getSchemaName(), logicalDropTable.getTableName());
         if (!isNewPartDb) {
             if (logicalDropTable.isWithGsi()) {
+                if (enableBin) {
+                    throw new TddlRuntimeException(ERR_RECYCLEBIN_EXECUTE,
+                        "drop table with gsi is not supported in recycle bin;"
+                            + "use hint /*TDDL:ENABLE_RECYCLEBIN=false*/ "
+                            + "to disable recycle bin");
+                }
                 return buildDropTableWithGsiJob(logicalDropTable, executionContext);
             } else {
                 if (isAvailableForRecycleBin(logicalDropTable.getTableName(), executionContext) &&
                     !logicalDropTable.isPurge()) {
                     return handleRecycleBin(logicalDropTable, executionContext);
                 } else {
+                    if (enableBin && !logicalDropTable.isPurge()) {
+                        throw new TddlRuntimeException(ERR_RECYCLEBIN_EXECUTE,
+                            "drop table with gsi or foreign constraint is not supported in recycle bin;"
+                                + "use hint /*TDDL:ENABLE_RECYCLEBIN=false*/ "
+                                + "to disable recycle bin");
+                    }
                     return buildDropTableJob(logicalDropTable, executionContext);
                 }
             }
         } else {
             if (logicalDropTable.isWithGsi()) {
+                if (enableBin) {
+                    throw new TddlRuntimeException(ERR_RECYCLEBIN_EXECUTE,
+                        "drop table with gsi is not supported in recycle bin;"
+                            + "use hint /*TDDL:ENABLE_RECYCLEBIN=false*/ "
+                            + "to disable recycle bin");
+                }
                 return buildDropPartitionTableWithGsiJob(logicalDropTable, executionContext);
             } else {
                 Engine engine = OptimizerContext.getContext(logicalDropTable.getSchemaName()).getLatestSchemaManager()
@@ -166,6 +196,12 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
                         !logicalDropTable.isPurge()) {
                         return handleRecycleBin(logicalDropTable, executionContext);
                     } else {
+                        if (enableBin && !logicalDropTable.isPurge()) {
+                            throw new TddlRuntimeException(ERR_RECYCLEBIN_EXECUTE,
+                                "drop table with gsi or foreign constraint is not supported in recycle bin;"
+                                    + "use hint /*TDDL:ENABLE_RECYCLEBIN=false*/ "
+                                    + "to disable recycle bin");
+                        }
                         return buildDropPartitionTableJob(logicalDropTable, executionContext);
                     }
                 }
@@ -173,12 +209,15 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         }
     }
 
-    private static void tryForbidDropTableOperationIfNeed(ExecutionContext executionContext, String targetSchemaName, String targetTableName) {
+    private static void tryForbidDropTableOperationIfNeed(ExecutionContext executionContext, String targetSchemaName,
+                                                          String targetTableName) {
         boolean allowDropTblOp =
             TtlUtil.checkIfAllowedDropTableOperation(targetSchemaName, targetTableName, executionContext);
         if (!allowDropTblOp) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                String.format("Forbid to drop the ttl-defined table `%s`.`%s` with archive cci, please use the hint /*TDDL:cmd_extra(TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false)*/ to drop this table", targetSchemaName,
+                String.format(
+                    "Forbid to drop the ttl-defined table `%s`.`%s` with archive cci, please use the hint /*TDDL:cmd_extra(TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false)*/ to drop this table",
+                    targetSchemaName,
                     targetTableName));
         }
     }
@@ -405,7 +444,7 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
                 TtlArchiveKind.UNDEFINED);
         String modifyTtlUnbindArcTblSqlForRollback =
             TtlTaskSqlBuilder.buildModifyTtlSqlForBindArcTbl(ttlTblSchema, ttlTblName, currArcTblSchema, currArcTblName,
-                TtlArchiveKind.COLUMNAR);
+                TtlArchiveKind.ROW);
         SubJobTask modifyTtlForUnbindArcTblSubTask =
             new SubJobTask(ttlTblSchema, modifyTtlUnbindArcTblSql, modifyTtlUnbindArcTblSqlForRollback);
         modifyTtlForUnbindArcTblSubTask.setParentAcquireResource(true);

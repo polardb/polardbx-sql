@@ -3,7 +3,9 @@ package com.alibaba.polardbx.optimizer.utils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfo;
@@ -23,6 +25,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_EXECUTOR;
@@ -58,6 +61,7 @@ public class PartitionUtils {
                 return true;
             }
         } else {
+            // NOTE: The 'sorted' mentioned here refers to the order of the level-one partition key.
             // sub-partitions are used
             // Check if every partition has only one subpartition after pruning
             // Check if all partitions are sorted
@@ -133,10 +137,14 @@ public class PartitionUtils {
      * @return Partition number. Returns -1 if the corresponding partition is not found.
      */
     public static int calcPartition(String logicalSchema, String logicalTableName, String physicalSchema,
-                                    String physicalTableName) {
+                                    String physicalTableName, ExecutionContext ec) {
         // Retrieves the partition information for the specified logical table
-        PartitionInfo partInfo =
-            OptimizerContext.getContext(logicalSchema).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+        PartitionInfo partInfo;
+        if (isInvalidPartitionInfo(ec, logicalSchema, logicalTableName)) {
+            partInfo = getPartitionInfoFromOptimizerContext(logicalSchema, logicalTableName);
+        } else {
+            partInfo = getPartitionInfoFromEC(ec, logicalSchema, logicalTableName);
+        }
 
         // Obtains the list of partition specifications
         List<PartitionSpec> partitionSpecs = partInfo.getPartitionBy().getPhysicalPartitions();
@@ -149,6 +157,36 @@ public class PartitionUtils {
 
         // Adjusts and returns the found partition number, subtracting 1 to start counting from 0
         return partition - 1;
+    }
+
+    private static boolean isInvalidPartitionInfo(ExecutionContext ec, String logicalSchema, String logicalTableName) {
+        return ec == null ||
+            ec.getSchemaManager(logicalSchema) == null ||
+            ec.getSchemaManager(logicalSchema).getTable(logicalTableName) == null ||
+            ec.getSchemaManager(logicalSchema).getTable(logicalTableName).getPartitionInfo() == null;
+    }
+
+    private static PartitionInfo getPartitionInfoFromOptimizerContext(String logicalSchema, String logicalTableName) {
+        return OptimizerContext.getContext(logicalSchema).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+    }
+
+    private static PartitionInfo getPartitionInfoFromEC(ExecutionContext ec, String logicalSchema,
+                                                        String logicalTableName) {
+        return ec.getSchemaManager(logicalSchema).getTable(logicalTableName).getPartitionInfo();
+    }
+
+    /**
+     * @return <partition number, <physical schema, physical table name>>
+     */
+    public static Pair<Integer, Pair<String, String>> calcPartition(PartitionInfo partInfo, String partName) {
+
+        Optional<PartitionSpec> partitionSpec =
+            partInfo.getPartitionBy().getPartitions().stream()
+                .filter(part -> part.getName().equalsIgnoreCase(partName)).findFirst();
+        int partition = partitionSpec.map(PartSpecBase::getPosition).map(Long::intValue).orElse(-1);
+        String phySchema = partitionSpec.map(part -> part.getLocation().getGroupKey()).orElse(null);
+        String phyTableName = partitionSpec.map(part -> part.getLocation().getPhyTableName()).orElse(null);
+        return Pair.of(partition - 1, Pair.of(phySchema, phyTableName));
     }
 
     public static boolean checkPrunedPartitionMonotonic(@NotNull LogicalView logicalView,

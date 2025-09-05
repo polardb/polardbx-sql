@@ -240,8 +240,6 @@ public class IndexUtil {
             }
         }
 
-        String schema = PlannerContext.getPlannerContext(join).getSchemaName();
-
         PriorityQueue<Index> priorityQueue = new PriorityQueue<>(new Comparator<Index>() {
             @Override
             public int compare(Index o1, Index o2) {
@@ -286,7 +284,7 @@ public class IndexUtil {
                     boolean isNeedTrace = pc.isNeedStatisticTrace();
                     StatisticResult statisticResult =
                         StatisticManager.getInstance()
-                            .getCardinality(schema, tableMeta.getTableName(), columnMeta.getName(), true, isNeedTrace);
+                            .getCardinality(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(), true, isNeedTrace);
                     if (isNeedTrace) {
                         pc.recordStatisticTrace(statisticResult.getTrace());
                     }
@@ -480,6 +478,7 @@ public class IndexUtil {
         Set<String> useNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> ignoreNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> forceNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> pagingForceNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
         if (indexNode != null && indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0) {
             for (SqlNode subNode : ((SqlNodeList) indexNode).getList()) {
@@ -503,6 +502,10 @@ public class IndexUtil {
                             } else if (indexHint.forceIndex() && indexHintType == IndexHintType.FORCE_INDEX) {
                                 // force index hint
                                 forceNameSet.add(indexName);
+                            } else if (indexHint.pagingForceIndex()
+                                && indexHintType == IndexHintType.PAGING_FORCE_INDEX) {
+                                // force index hint
+                                pagingForceNameSet.add(indexName);
                             }
                         }
                     }
@@ -516,6 +519,8 @@ public class IndexUtil {
             return ignoreNameSet;
         case FORCE_INDEX:
             return forceNameSet;
+        case PAGING_FORCE_INDEX:
+            return pagingForceNameSet;
         default:
             return new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         }
@@ -533,9 +538,14 @@ public class IndexUtil {
         return getIndex(indexNode, IndexHintType.FORCE_INDEX);
     }
 
+    public static Set<String> getPagingForceIndex(SqlNode indexNode) {
+        return getIndex(indexNode, IndexHintType.PAGING_FORCE_INDEX);
+    }
+
     public enum IndexHintType {
         USE_INDEX,
         IGNORE_INDEX,
         FORCE_INDEX,
+        PAGING_FORCE_INDEX,
     }
 }

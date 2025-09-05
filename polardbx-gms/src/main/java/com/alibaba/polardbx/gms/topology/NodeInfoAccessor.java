@@ -48,6 +48,11 @@ public class NodeInfoAccessor extends AbstractAccessor {
         "select " + ALL_COLUMNS + " from " + NODE_INFO_TABLE
             + WHERE_GMT_MODIFIED_AND_MASTER;
 
+    private static final String SELECT_NODE_INFO_BY_GMT_MODIFIED_AND_LEADER =
+        "select " + ALL_COLUMNS + " from " + NODE_INFO_TABLE
+            + " WHERE gmt_modified > subtime(now(), ?) "
+            + "and role & " + NodeStatusManager.ROLE_LEADER + " = " + NodeStatusManager.ROLE_LEADER;
+
     public List<NodeInfoRecord> queryLatestActive() {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, "0:2:0");
@@ -61,5 +66,14 @@ public class NodeInfoAccessor extends AbstractAccessor {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, "0:2:0");
         return query(SELECT_NODE_INFO_BY_GMT_MODIFIED_AND_MASTER, NODE_INFO_TABLE, NodeInfoRecord.class, params);
+    }
+
+    /**
+     * 获取主实例的 Leader 节点
+     */
+    public List<NodeInfoRecord> queryLatestLeaderActive() {
+        Map<Integer, ParameterContext> params = new HashMap<>(1);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, "0:2:0");
+        return query(SELECT_NODE_INFO_BY_GMT_MODIFIED_AND_LEADER, NODE_INFO_TABLE, NodeInfoRecord.class, params);
     }
 }

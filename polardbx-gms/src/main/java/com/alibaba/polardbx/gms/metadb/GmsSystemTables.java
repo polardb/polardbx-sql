@@ -116,6 +116,7 @@ public class GmsSystemTables {
      */
     public static final String BACKFILL_OBJECTS = "backfill_objects";
     public static final String BACKFILL_SAMPLE_ROWS = "backfill_sample_rows";
+    public static final String REBALANCE_EXTERNAL_SOLUTION = "rebalance_external_solution";
     public static final String BACKFILL_SAMPLE_ROWS_ARCHIVE = "backfill_sample_rows_archive";
     public static final String PHYSICAL_BACKFILL_OBJECTS = "physical_backfill_objects";
 
@@ -318,6 +319,7 @@ public class GmsSystemTables {
         register(BACKFILL_OBJECTS);
         register(BACKFILL_SAMPLE_ROWS);
         register(BACKFILL_SAMPLE_ROWS_ARCHIVE);
+        register(REBALANCE_EXTERNAL_SOLUTION);
         register(FILE_STORAGE_BACKFILL_OBJECTS);
         register(CHANGESET_OBJECT);
         register(BASELINE_INFO);

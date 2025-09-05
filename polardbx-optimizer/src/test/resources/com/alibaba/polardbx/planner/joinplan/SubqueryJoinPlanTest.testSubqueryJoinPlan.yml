@@ -52,7 +52,7 @@
 
   plan: |
 
-    project(id0="id0", name0="name0", create_time0="create_time0", id="id", name="name", create_time="create_time")
+    project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time")
       bkajoin(condition="id = id", type="inner")
         mergesort(sort="id asc", offset=0, fetch=10)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id` limit 10")
@@ -75,7 +75,7 @@
   plan: |
 
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb0`.`id` as `id0`, `test_hash_tb0`.`name`, `test_hash_tb0`.`create_time`, `t`.`count(*)`, `t`.`id` from (select `id`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` group by `id`) as `t` inner join `test_hash_tb` as `test_hash_tb0` on (`t`.`id` = `test_hash_tb0`.`id`)")
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `t`.`count(*)`, `t`.`id` as `id0` from `test_hash_tb` as `test_hash_tb` inner join (select `id`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb0` group by `id`) as `t` on (`test_hash_tb`.`id` = `t`.`id`)")
 
 -
   sql: |

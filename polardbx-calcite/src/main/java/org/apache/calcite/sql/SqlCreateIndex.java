@@ -16,7 +16,9 @@
 
 package org.apache.calcite.sql;
 
-import com.alibaba.polardbx.common.ColumnarTableOptions;
+import com.alibaba.polardbx.common.ColumnarOptions;
+import com.alibaba.polardbx.common.columnar.ColumnarOption;
+import com.alibaba.polardbx.common.properties.ColumnarConfig;
 import com.alibaba.polardbx.common.ColumnarOptions;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
@@ -38,6 +40,7 @@ import org.apache.calcite.sql.util.SqlString;
 import org.apache.calcite.util.ImmutableNullableList;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -89,6 +92,9 @@ public class SqlCreateIndex extends SqlCreate {
     private SqlCreateTable primaryTableNode;
     private final boolean withImplicitTableGroup;
     private boolean visible = true;
+    /**
+     * May be uppercase or lowercase, defined by user input.
+     */
     private final Map<String, String> columnarOptions;
 
     private SqlCreateIndex(SqlParserPos pos,
@@ -974,11 +980,40 @@ public class SqlCreateIndex extends SqlCreate {
      * columnar index options
      */
     public Map<String, String> getColumnarOptions() {
-        Map<String, String> options = columnarOptions;
+        // Origin map may be uppercase or lowercase, defined by user input.
+        Map<String, String> options = new HashMap<>();
+        for (Map.Entry<String, String> kv : columnarOptions.entrySet()) {
+            // Normalize key and value.
+            String key = kv.getKey();
+            String value = kv.getValue();
+            ColumnarOption option;
+            if (null != (option = ColumnarConfig.get(key.toUpperCase()))) {
+                switch (option.getCaseSensitive()) {
+                case LOWERCASE_KEY:
+                    key = key.toLowerCase();
+                    break;
+                case LOWERCASE_KEY_LOWERCASE_VALUE:
+                    key = key.toLowerCase();
+                    value = value.toLowerCase();
+                    break;
+                case UPPERCASE_KEY:
+                    key = key.toUpperCase();
+                    break;
+                case UPPERCASE_KEY_UPPERCASE_VALUE:
+                    key = key.toUpperCase();
+                    value = value.toUpperCase();
+                    break;
+                case DEFAULT:
+                default:
+                }
+            }
+            options.put(key, value);
+        }
+
         // Normalize dict columns.
         String dictColumnStr = options.get(ColumnarOptions.DICTIONARY_COLUMNS);
         if (null != dictColumnStr) {
-            dictColumnStr = SQLUtils.splitNamesByComma(dictColumnStr.toLowerCase()).stream()
+            dictColumnStr = SQLUtils.splitNamesByComma(dictColumnStr).stream()
                 .map(SqlIdentifier::surroundWithBacktick)
                 .collect(Collectors.joining(","));
             options.put(ColumnarOptions.DICTIONARY_COLUMNS, dictColumnStr);

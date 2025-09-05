@@ -13,3 +13,4 @@ test_convert_drds_mmdd
 test_convert_drds_broadcast_single_hybrid
 test_convert_sequence
 test_auto_shard_key
+test_convert_db_with_empty_collation

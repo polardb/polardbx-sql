@@ -176,7 +176,7 @@ public class ReloadHandler {
                 Pattern subR;
                 Matcher subM;
 
-                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+CACHE";
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+CACHE[;]*";
                 subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
                 subM = subR.matcher(stmt);
                 if (subM.matches()) {
@@ -188,7 +188,7 @@ public class ReloadHandler {
                     return true;
                 }
 
-                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+SNAPSHOT";
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+SNAPSHOT[;]*";
                 subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
                 subM = subR.matcher(stmt);
                 if (subM.matches()) {
@@ -200,7 +200,7 @@ public class ReloadHandler {
                     return true;
                 }
 
-                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+SCHEMA";
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+SCHEMA[;]*";
                 subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
                 subM = subR.matcher(stmt);
                 if (subM.matches()) {
@@ -212,7 +212,7 @@ public class ReloadHandler {
                     return true;
                 }
 
-                subPattern = "RELOAD[\\s]+COLUMNARMANAGER";
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[;]*";
                 subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
                 subM = subR.matcher(stmt);
                 if (subM.matches()) {

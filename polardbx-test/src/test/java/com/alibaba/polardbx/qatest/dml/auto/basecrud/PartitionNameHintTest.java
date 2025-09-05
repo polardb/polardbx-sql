@@ -18,6 +18,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -1005,7 +1006,174 @@ public class PartitionNameHintTest extends BaseTestCase {
     }
 
     @Test
-    public void testDirectHint() throws SQLException {
+    public void testOldDirectHint() throws SQLException {
+        // drds db test
+        try (Connection c = getPolardbxConnection()) {
+            c.createStatement().execute("use " + SHARD_DB_NAME);
+            c.createStatement().execute("CREATE TABLE if not exists `multi_db_multi_tbl` (\n"
+                + "\t`id` bigint NOT NULL AUTO_INCREMENT BY GROUP,\n"
+                + "\t`bid` int DEFAULT NULL,\n"
+                + "\t`name` varchar(30) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+                + "\tPRIMARY KEY (`id`),\n"
+                + "\tKEY `auto_shard_key_bid` USING BTREE (`bid`)\n"
+                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci  dbpartition by hash(`id`) tbpartition by hash(`bid`) tbpartitions 3");
+
+            c.createStatement().execute("CREATE TABLE if not exists `multi_db` (\n"
+                + "\t`id` bigint NOT NULL AUTO_INCREMENT BY GROUP,\n"
+                + "\t`bid` int DEFAULT NULL,\n"
+                + "\t`name` varchar(30) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+                + "\tPRIMARY KEY (`id`),\n"
+                + "\tKEY `auto_shard_key_bid` USING BTREE (`bid`)\n"
+                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci  dbpartition by hash(`id`)");
+
+            ResultSet rs = c.createStatement().executeQuery("show topology from multi_db");
+            Map<String, Set<String>> topologyForMultiDb = new HashMap<>();
+            while (rs.next()) {
+                if (topologyForMultiDb.containsKey(rs.getString("GROUP_NAME"))) {
+                    topologyForMultiDb.get(rs.getString("GROUP_NAME")).add(rs.getString("TABLE_NAME"));
+                } else {
+                    Set<String> set = new HashSet<>();
+                    set.add(rs.getString("TABLE_NAME"));
+                    topologyForMultiDb.put(rs.getString("GROUP_NAME"), set);
+                }
+            }
+            rs.close();
+
+            Map<String, Set<String>> topologyForMultiDbMultiTb = new HashMap<>();
+            rs = c.createStatement().executeQuery("show topology from multi_db_multi_tbl");
+            while (rs.next()) {
+                if (topologyForMultiDbMultiTb.containsKey(rs.getString("GROUP_NAME"))) {
+                    topologyForMultiDbMultiTb.get(rs.getString("GROUP_NAME")).add(rs.getString("TABLE_NAME"));
+                } else {
+                    Set<String> set = new HashSet<>();
+                    set.add(rs.getString("TABLE_NAME"));
+                    topologyForMultiDbMultiTb.put(rs.getString("GROUP_NAME"), set);
+                }
+            }
+
+            String sql =
+                "explain analyze /*+TDDL({'type':'direct','vtab':'%s','dbid':'%s','realtabs':[%s]})*/ select count(1) from %s";
+
+            // test direct hint with single group&&single table
+            String tableName = "multi_db";
+            Set<String> multiGroups = new HashSet<>();
+            String testSql;
+            String tableNamePhysical = null;
+            for (Map.Entry<String, Set<String>> entry : topologyForMultiDb.entrySet()) {
+                testSql = String.format(sql, tableName, entry.getKey(), "'" + entry.getValue().iterator().next() + "'",
+                    tableName);
+                tableNamePhysical = entry.getValue().iterator().next();
+                c.createStatement().executeQuery(testSql);
+                if (multiGroups.size() < 2) {
+                    multiGroups.add(entry.getKey());
+                }
+            }
+
+            // test direct hint with multi group
+            assert tableNamePhysical != null && multiGroups.size() == 2;
+            testSql =
+                String.format(sql, tableName, String.join(",", multiGroups), "'" + tableNamePhysical + "'",
+                    tableName);
+            c.createStatement().executeQuery(testSql);
+
+            // test direct hint with single group&&multi table
+            tableName = "multi_db_multi_tbl";
+            for (Map.Entry<String, Set<String>> entry : topologyForMultiDbMultiTb.entrySet()) {
+                testSql =
+                    String.format(sql, tableName, entry.getKey(), "'" + String.join("','", entry.getValue()) + "'",
+                        tableName);
+                tableNamePhysical = entry.getValue().iterator().next();
+                c.createStatement().executeQuery(testSql);
+                if (multiGroups.size() < 2) {
+                    multiGroups.add(entry.getKey());
+                }
+            }
+
+            // test direct hint with multi group && single physical table
+            assert tableNamePhysical != null && multiGroups.size() == 2;
+            testSql =
+                String.format(sql, tableName, String.join(",", multiGroups), "'" + tableNamePhysical + "'",
+                    tableName);
+            c.createStatement().executeQuery(testSql);
+        }
+
+        // test auto table
+        try (Connection c = getPolardbxConnection()) {
+            c.createStatement().execute("use " + AUTO_DB_NAME);
+            c.createStatement().execute("CREATE TABLE if not exists key_tbl(\n"
+                + " id bigint not null auto_increment,\n"
+                + " bid int,\n"
+                + " name varchar(30),\n"
+                + " birthday datetime not null,\n"
+                + " primary key(id)\n"
+                + ")\n"
+                + "PARTITION BY KEY(name, id)\n"
+                + "PARTITIONS 8;");
+
+            c.createStatement().execute("CREATE TABLE if not exists hash_tbl(\n"
+                + " id bigint not null auto_increment,\n"
+                + " bid int,\n"
+                + " name varchar(30),\n"
+                + " birthday datetime not null,\n"
+                + " primary key(id)\n"
+                + ")\n"
+                + "partition by hash(id)\n"
+                + "partitions 8;");
+
+            ResultSet rs = c.createStatement().executeQuery("show topology from key_tbl");
+            Map<String, Set<String>> topologyForMultiDb = new HashMap<>();
+            while (rs.next()) {
+                if (topologyForMultiDb.containsKey(rs.getString("GROUP_NAME"))) {
+                    topologyForMultiDb.get(rs.getString("GROUP_NAME")).add(rs.getString("TABLE_NAME"));
+                } else {
+                    Set<String> set = new HashSet<>();
+                    set.add(rs.getString("TABLE_NAME"));
+                    topologyForMultiDb.put(rs.getString("GROUP_NAME"), set);
+                }
+            }
+            rs.close();
+
+            Map<String, Set<String>> topologyForMultiDbMultiTb = new HashMap<>();
+            rs = c.createStatement().executeQuery("show topology from hash_tbl");
+            while (rs.next()) {
+                if (topologyForMultiDbMultiTb.containsKey(rs.getString("GROUP_NAME"))) {
+                    topologyForMultiDbMultiTb.get(rs.getString("GROUP_NAME")).add(rs.getString("TABLE_NAME"));
+                } else {
+                    Set<String> set = new HashSet<>();
+                    set.add(rs.getString("TABLE_NAME"));
+                    topologyForMultiDbMultiTb.put(rs.getString("GROUP_NAME"), set);
+                }
+            }
+
+            String sql =
+                "explain analyze /*+TDDL({'type':'direct','vtab':'%s','dbid':'%s','realtabs':[%s]})*/ select count(1) from %s";
+
+            // test direct hint with single group&&single table
+            String tableName = "key_tbl";
+            Set<String> multiGroups = new HashSet<>();
+            String testSql;
+            for (Map.Entry<String, Set<String>> entry : topologyForMultiDb.entrySet()) {
+                testSql = String.format(sql, tableName, entry.getKey(), "'" + entry.getValue().iterator().next() + "'",
+                    tableName);
+                c.createStatement().executeQuery(testSql);
+                if (multiGroups.size() < 2) {
+                    multiGroups.add(entry.getKey());
+                }
+            }
+
+            // test direct hint with single group&&multi table
+            tableName = "hash_tbl";
+            for (Map.Entry<String, Set<String>> entry : topologyForMultiDbMultiTb.entrySet()) {
+                testSql =
+                    String.format(sql, tableName, entry.getKey(), "'" + String.join("','", entry.getValue()) + "'",
+                        tableName);
+                c.createStatement().executeQuery(testSql);
+            }
+        }
+    }
+
+    @Test
+    public void testDirectHintForAutoDB() throws SQLException {
         Connection c = null;
         try {
             c = getPolardbxConnection();

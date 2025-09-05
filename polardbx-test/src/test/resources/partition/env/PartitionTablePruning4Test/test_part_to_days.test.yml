@@ -1,0 +1,33 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table dt_t2(
+a int,
+b int,
+c datetime(3)
+)
+partition by range(to_days(c))
+(
+partition p1 values less than (to_days('2022-02-03 00:00:00.000')),
+partition p2 values less than (to_days('2022-02-04 00:00:01.000')),
+partition p3 values less than (to_days('2022-02-05 00:00:02.000')),
+partition p4 values less than (to_days('2022-02-06 00:00:03.000')),
+partition p5 values less than (to_days('2022-02-07 00:00:04.000')),
+partition pm values less than (maxvalue)
+);
+
+show create table dt_t2;
+
+insert into dt_t2 values(1, 1, '2022-02-03 00:00:01.499');
+insert into dt_t2 values(2, 2, '2022-02-04 00:00:01.501');
+insert into dt_t2 values(3, 3, '2022-02-05 00:00:02.001');
+
+select * from dt_t2 where c = '2022-02-03 00:00:01.499';
+select * from dt_t2 where c = '2022-02-05 00:00:02.001';
+select * from dt_t2 where c between '2022-02-03 00:00:01.499' and '2022-02-05 00:00:02.001' order by c;
+select * from dt_t2 where c = '2022-02-05 00:00:02.001';
+
+explain  select * from dt_t2 where c = '2022-02-03 00:00:01.499';
+explain  select * from dt_t2 where c = '2022-02-05 00:00:02.001';
+explain  select * from dt_t2 where c between '2022-02-03 00:00:01.499' and '2022-02-05 00:00:02.001' order by c;
+explain  select * from dt_t2 where c = '2022-02-05 00:00:02.001';
+

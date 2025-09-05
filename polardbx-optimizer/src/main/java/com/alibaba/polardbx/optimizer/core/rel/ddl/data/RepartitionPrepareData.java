@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -54,20 +55,24 @@ public class RepartitionPrepareData extends DdlPreparedData {
     /**
      * change gsi to local index when alter table single/broadcast
      * key: global index name
-     * value: Pair<index columns name, gsi nonUnique>
      */
-    private Map<String, Pair<List<String>, Boolean>> gsiInfo;
+    private Map<String, GsiMetaManager.GsiIndexMetaBean> gsiInfo;
 
     private String primaryTableDefinition;
 
     /**
      * optimize repartition for key partition table
      */
-    private List<String> changeShardColumnsOnly;
+    private List<String> expandShardColumnsOnly;
 
     private Pair<String, String> addLocalIndexSql;
 
     private Pair<String, String> dropLocalIndexSql;
+
+    /**
+     * optimize repartition for single table
+     */
+    private Boolean singleTableToPartitions1 = false;
 
     /**
      * change foreign key to physical or logical when repartition

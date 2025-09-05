@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job.wrapper;
 
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropColumnarIndexTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CciSchemaEvolutionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.DropColumnarTableRemoveMetaTask;
@@ -49,5 +50,5 @@ public class ExecutableDdlJob4DropColumnarIndex extends ExecutableDdlJob {
 
     private CciSchemaEvolutionTask cciSchemaEvolutionTask;
 
-    private TableSyncTask finalSyncTask;
+    private TablesSyncTask finalSyncTask;
 }

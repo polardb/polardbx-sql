@@ -1,0 +1,48 @@
+DROP DATABASE IF EXISTS prefix_index_test_db
+CREATE DATABASE prefix_index_test_db MODE 'drds'
+USE prefix_index_test_db
+DROP TABLE IF EXISTS prefix_index_test_t1
+CREATE TABLE prefix_index_test_t1 (
+	a int PRIMARY KEY,
+	b text,
+	c int,
+	GLOBAL INDEX(a, c, b(10)) DBPARTITION BY hash(a),
+	UNIQUE GLOBAL INDEX (a, c, b(20)) DBPARTITION BY hash(a)
+)
+DBPARTITION BY hash(a)
+SHOW FULL CREATE TABLE prefix_index_test_t1
+Table,Create Table
+prefix_index_test_t1,CREATE TABLE `prefix_index_test_t1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX `a`(`a`, `c`, `b`(10)) DBPARTITION BY HASH(`a`),
+	UNIQUE GLOBAL KEY `a_2` (`a`, `c`, `b`(20)) DBPARTITION BY HASH(`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`a`)
+ALTER TABLE prefix_index_test_t1
+	DBPARTITION BY hash(c)
+SHOW FULL CREATE TABLE prefix_index_test_t1
+Table,Create Table
+prefix_index_test_t1,CREATE TABLE `prefix_index_test_t1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	GLOBAL INDEX `a`(`a`, `c`, `b`(10)) DBPARTITION BY HASH(`a`),
+	UNIQUE GLOBAL KEY `a_2` (`a`, `c`, `b`(20)) DBPARTITION BY HASH(`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`c`)
+ALTER TABLE prefix_index_test_t1
+	SINGLE
+SHOW FULL CREATE TABLE prefix_index_test_t1
+Table,Create Table
+prefix_index_test_t1,CREATE TABLE `prefix_index_test_t1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `_local_a_2` USING BTREE (`a`, `c`, `b`(20)),
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_local_a` USING BTREE (`a`, `c`, `b`(10))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

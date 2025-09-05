@@ -83,14 +83,14 @@ public class MergeTableGroupChangeTablesMetaTask extends BaseDdlTask {
 
             boolean firstPart = true;
 
-            assert partitionGroupRecords.size() == partitionInfo.getPartitionBy().getPartitions().size();
-            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+            for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPhysicalPartitions()) {
                 PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
                     .filter(o -> o.partition_name.equalsIgnoreCase(partitionSpec.getName())).findFirst()
                     .orElse(null);
                 tablePartitionAccessor.updateGroupIdById(partitionGroupRecord.id, partitionSpec.getId());
                 if (firstPart) {
-                    tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
+                    tablePartitionAccessor.updateGroupIdById(tableGroupId,
+                        partitionInfo.getPartitionBy().getNthPartition(1).getParentId());
                 }
                 firstPart = false;
             }

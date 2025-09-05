@@ -33,6 +33,7 @@ import org.apache.calcite.sql.SqlNode;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class AlterTableSplitPartitionSubTaskJobFactory extends AlterTableGroupSubTaskJobFactory {
 
@@ -41,7 +42,7 @@ public class AlterTableSplitPartitionSubTaskJobFactory extends AlterTableGroupSu
     public AlterTableSplitPartitionSubTaskJobFactory(DDL ddl, AlterTableSplitPartitionPreparedData parentPrepareData,
                                                      AlterTableGroupItemPreparedData preparedData,
                                                      List<PhyDdlTableOperation> phyDdlTableOperations,
-                                                     Map<String, List<List<String>>> tableTopology,
+                                                     TreeMap<String, List<List<String>>> tableTopology,
                                                      Map<String, Set<String>> targetTableTopology,
                                                      Map<String, Set<String>> sourceTableTopology,
                                                      Map<String, Pair<String, String>> orderedTargetTableLocations,

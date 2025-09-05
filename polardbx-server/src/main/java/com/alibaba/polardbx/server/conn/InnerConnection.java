@@ -24,7 +24,6 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -40,6 +39,7 @@ import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlManager;
 import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
@@ -577,6 +577,7 @@ public class InnerConnection implements IInnerConnection {
                     if (connection.getExecutionContext().getDdlContext() != null) {
                         connection.getExecutionContext().getDdlContext().setClientConnectionResetAsTrue();
                     }
+                    DbTopologyManager.killDdlQueryByConnId(connection.getId());
                 }
                 CobarServer.getInstance().getKillExecutor().execute(() -> {
                     CobarServer.getInstance().getServerExecutor().closeByTraceId(traceId);

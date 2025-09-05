@@ -130,14 +130,18 @@ public class TopologyHandler extends AbstractLifecycle {
         return connProperties;
     }
 
-    private void reloadStorageManager() {
+    private void reloadStorageManager(boolean destroy) {
         if (executorContext == null) {
             return;
         }
         final StorageInfoManager storageInfoManager = executorContext.getStorageInfoManager();
 
         if (null != storageInfoManager) {
-            storageInfoManager.destroy();
+            if (destroy) {
+                storageInfoManager.destroy();
+            } else {
+                storageInfoManager.reload();
+            }
         }
     }
 
@@ -158,7 +162,7 @@ public class TopologyHandler extends AbstractLifecycle {
         synchronized (executorMap) {
             Matrix matrix = initMatrix();
             mergeMatrix(matrix);
-            reloadStorageManager();
+            reloadStorageManager(false);
         }
     }
 
@@ -171,7 +175,7 @@ public class TopologyHandler extends AbstractLifecycle {
             Matrix matrix = initMatrix();
             mergeMatrix(matrix);
         }
-        reloadStorageManager();
+        reloadStorageManager(true);
 
         // reload all XClient & XSession
         XConnectionManager.getInstance().reload();

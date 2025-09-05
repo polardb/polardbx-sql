@@ -1,0 +1,23 @@
+## DISABLE_FAST_SQL_PARSER
+
+
+create table myttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+partition by key(a) partitions 8
+local partition by range(b)
+STARTWITH '2021-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 6;
+
+
+create table myoss_t1
+like myttl_t1 engine = 'local_disk'
+archive_mode = 'ttl';
+
+show create table myttl_t1;
+
+alter table myttl_t1 add column c int not null;

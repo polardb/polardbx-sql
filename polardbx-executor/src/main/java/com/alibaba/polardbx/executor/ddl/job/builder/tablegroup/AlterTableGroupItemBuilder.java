@@ -103,8 +103,10 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
                                 && subPartBy.isUseSubPartTemplate() && subPartitionSpec.getTemplateName()
                                 .equalsIgnoreCase(oldPartitionName))) {
                                 PartitionLocation location = subPartitionSpec.getLocation();
-                                sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                                    .add(location.getPhyTableName());
+                                if(!sourcePhyTables.containsKey(location.getGroupKey())) {
+                                    sourcePhyTables.put(location.getGroupKey(), new HashSet<>());
+                                }
+                                sourcePhyTables.get(location.getGroupKey()).add(location.getPhyTableName());
                                 found = true;
                                 break;
                             }
@@ -115,13 +117,17 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
                         if (partitionSpec.isLogical()) {
                             for (PartitionSpec subPart : partitionSpec.getSubPartitions()) {
                                 PartitionLocation location = subPart.getLocation();
-                                sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                                    .add(location.getPhyTableName());
+                                if(!sourcePhyTables.containsKey(location.getGroupKey())) {
+                                    sourcePhyTables.put(location.getGroupKey(), new HashSet<>());
+                                }
+                                sourcePhyTables.get(location.getGroupKey()).add(location.getPhyTableName());
                             }
                         } else {
                             PartitionLocation location = partitionSpec.getLocation();
-                            sourcePhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                                .add(location.getPhyTableName());
+                            if(!sourcePhyTables.containsKey(location.getGroupKey())) {
+                                sourcePhyTables.put(location.getGroupKey(), new HashSet<>());
+                            }
+                            sourcePhyTables.get(location.getGroupKey()).add(location.getPhyTableName());
                         }
                         found = true;
                     }
@@ -144,7 +150,7 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
 
     @Override
     protected void buildNewTableTopology(String schemaName, String tableName) {
-        tableTopology = new HashMap<>();
+        tableTopology = new TreeMap<>();
         List<PartitionGroupRecord> invisiblePartitionGroups = preparedData.getInvisiblePartitionGroups();
         int i = 0;
         for (String newPhyTableName : preparedData.getNewPhyTables()) {
@@ -153,10 +159,35 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
             String groupName = GroupInfoUtil.buildGroupNameFromPhysicalDb(partitionGroupRecord.getPhy_db());
             List<String> phyTables = new ArrayList<>();
             phyTables.add(newPhyTableName);
-            tableTopology.computeIfAbsent(groupName, o -> new ArrayList<>())
-                .add(phyTables);
-            targetPhyTables.computeIfAbsent(groupName, o -> new HashSet<>())
-                .add(newPhyTableName);
+            /**
+             * 对于hashmap：
+             * put(K key, V value)
+             * 操作流程：
+             * 插入键值对。
+             * 在插入之后检查当前元素数量是否达到了阈值（即容量乘以装载因子）。
+             * 如果达到或超过阈值，则触发扩容操作。
+             * computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction)
+             * 操作流程：
+             * 检查指定键是否存在。
+             * 如果键不存在，则调用提供的 mappingFunction 计算新值。
+             * 在插入之前检查当前元素数量是否达到了阈值。
+             * 如果达到或超过阈值，则先进行扩容操作，然后再插入新的键值对。
+             *
+             * */
+            /**
+             * 这里的tableTopology由于和com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData#paramsList
+             * 顺序上有关联关系，所以这里不用computeIfAbsent，因为tableTopology的序列化是采用put方法，和它保持一致，
+             * 让序列化前后hashmap的顺序不不变
+             * 目前改为TreeMap了，但关于HashMap的注释保留
+             * */
+            if (!tableTopology.containsKey(groupName)) {
+                tableTopology.put(groupName, new ArrayList<>());
+            }
+            tableTopology.get(groupName).add(phyTables);
+            if(!targetPhyTables.containsKey(groupName)) {
+                targetPhyTables.put(groupName, new HashSet<>());
+            }
+            targetPhyTables.get(groupName).add(newPhyTableName);
             orderedTargetTableLocations.put(partitionGroupRecord.partition_name, Pair.of(newPhyTableName, groupName));
             buildAlterPartitionReferenceTableTopology(schemaName, tableName);
         }

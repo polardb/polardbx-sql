@@ -24,11 +24,20 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement.ValuesClause;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplaceStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.metadb.encdb.EncdbRuleManager;
@@ -37,13 +46,16 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.LogicalWriteUtil;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
@@ -56,11 +68,14 @@ import com.alibaba.polardbx.optimizer.statis.XplanStat;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.UncheckedExecutionException;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -69,11 +84,13 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -83,6 +100,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static com.alibaba.polardbx.common.eventlogger.EventType.XPLAN_FEEDBACK_DISABLE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_ENCDB;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.PLAN_CACHE_SIZE;
+import static com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized.VARCHAR_CODE;
 
 /**
  * @author lingce.ldm 2017-11-22 14:38
@@ -277,7 +295,8 @@ public final class PlanCache {
                     ec,
                     executionPlan,
                     HotGsiEvolution.getInstance(),
-                    cacheKey.getTemplateId());
+                    cacheKey.getTemplateId(),
+                    false);
 
                 executionPlan.setFlashbackArea(ec.isFlashbackArea());
 
@@ -528,7 +547,7 @@ public final class PlanCache {
         }
 
         return new CacheKey(schema, sqlParameterized, versionInfo.toString(), tables, testMode, ec.isAutoCommit(),
-            ec.foreignKeyChecks());
+            ec.foreignKeyChecks(), ec);
     }
 
     /**
@@ -557,6 +576,12 @@ public final class PlanCache {
         private final String schema;
         final String parameterizedSql;
         final long typeDigest;
+        @Getter
+        final long implicitDefaultDigest;
+        @Getter
+        final boolean dmlReplaceImplicitDefault;
+        @Getter
+        final boolean dmlReplaceDynamicImplicitDefault;
 
         final String versionInfo;
 
@@ -578,18 +603,22 @@ public final class PlanCache {
             this.parameterizedSql = parameterizedSql;
             this.foreignKeyChecks = foreignKeyChecks;
             this.typeDigest = NO_TYPE_DIGEST;
+            this.implicitDefaultDigest = NO_TYPE_DIGEST;
             this.versionInfo = versionInfo;
             this.testing = testing;
             this.metas = metas;
             this.autoCommit = autoCommit;
             parameters = null;
+            this.dmlReplaceImplicitDefault = false;
+            this.dmlReplaceDynamicImplicitDefault= false;
         }
 
         public CacheKey(String schema, SqlParameterized sqlParameterized, String versionInfo, List<TableMeta> metas,
-                        boolean testing, boolean autoCommit, boolean foreignKeyChecks) {
+                        boolean testing, boolean autoCommit, boolean foreignKeyChecks, ExecutionContext ec) {
             this.schema = schema.toLowerCase(Locale.ROOT);
             this.parameterizedSql = sqlParameterized.getSql();
             this.typeDigest = sqlParameterized.getDigest();
+            this.implicitDefaultDigest = ImplicitDefaultDigestGenerator.of(sqlParameterized, metas, ec).computeDigest();
             this.versionInfo = versionInfo;
             this.testing = testing;
             this.metas = metas;
@@ -601,6 +630,8 @@ public final class PlanCache {
                 parameters = null;
             }
             this.foreignKeyChecks = foreignKeyChecks;
+            this.dmlReplaceImplicitDefault = ec.dmlReplaceImplicitDefault();
+            this.dmlReplaceDynamicImplicitDefault = ec.dmlReplaceDynamicImplicitDefault();
         }
 
         @Override
@@ -616,16 +647,22 @@ public final class PlanCache {
                 parameterizedSql.equals(cacheKey.parameterizedSql) &&
                 (typeDigest == cacheKey.typeDigest || typeDigest == NO_TYPE_DIGEST
                     || cacheKey.typeDigest == NO_TYPE_DIGEST) &&
+                ((!dmlReplaceImplicitDefault && !dmlReplaceDynamicImplicitDefault)
+                    || implicitDefaultDigest == cacheKey.implicitDefaultDigest
+                    || implicitDefaultDigest == NO_TYPE_DIGEST
+                    || cacheKey.implicitDefaultDigest == NO_TYPE_DIGEST) &&
                 versionInfo.equals(cacheKey.versionInfo) &&
                 autoCommit == cacheKey.autoCommit &&
                 schema.equals(cacheKey.schema) &&
-                foreignKeyChecks == cacheKey.foreignKeyChecks;
+                foreignKeyChecks == cacheKey.foreignKeyChecks
+                && this.dmlReplaceImplicitDefault == cacheKey.dmlReplaceImplicitDefault
+                && this.dmlReplaceDynamicImplicitDefault == cacheKey.dmlReplaceDynamicImplicitDefault;
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(schema, parameterizedSql, typeDigest, versionInfo, testing, autoCommit,
-                foreignKeyChecks);
+            return Objects.hash(schema, parameterizedSql, typeDigest, implicitDefaultDigest, versionInfo, testing,
+                autoCommit, foreignKeyChecks, dmlReplaceImplicitDefault, dmlReplaceDynamicImplicitDefault);
         }
 
         public List<TableMeta> getTableMetas() {
@@ -664,6 +701,208 @@ public final class PlanCache {
         }
     }
 
+    @RequiredArgsConstructor
+    public abstract static class ImplicitDefaultDigestGenerator {
+        @Getter
+        protected final SqlParameterized sqlParameterized;
+        @Getter
+        protected final List<TableMeta> metas;
+        @Getter
+        protected final ExecutionContext ec;
+
+        public boolean enablePlanTypeDigest() {
+            return DynamicConfig.getInstance().enablePlanTypeDigest();
+        }
+
+        public static ImplicitDefaultDigestGenerator of(SqlParameterized sqlParameterized, List<TableMeta> metas,
+                                                        ExecutionContext ec) {
+            final SQLStatement stmt = sqlParameterized.getStmt();
+            if (stmt instanceof MySqlInsertStatement || stmt instanceof SQLReplaceStatement) {
+                return new InsertImplicitDefaultDigestGenerator(sqlParameterized, metas, ec);
+            } else {
+                return new DefaultImplicitDefaultDigestGenerator(sqlParameterized, metas, ec);
+            }
+        }
+
+        abstract long computeDigest();
+    }
+
+    public static class DefaultImplicitDefaultDigestGenerator extends ImplicitDefaultDigestGenerator {
+        public DefaultImplicitDefaultDigestGenerator(SqlParameterized sqlParameterized, List<TableMeta> metas,
+                                                     ExecutionContext ec) {
+            super(sqlParameterized, metas, ec);
+        }
+
+        @Override
+        long computeDigest() {
+            return 0L;
+        }
+    }
+
+    /**
+     * Make sure insert/replace statement which set string column with implicit default value with hex string,
+     * has a plan different from insert/replace statement which set that column with string.
+     */
+    public static class InsertImplicitDefaultDigestGenerator extends DefaultImplicitDefaultDigestGenerator {
+
+        public InsertImplicitDefaultDigestGenerator(SqlParameterized sqlParameterized, List<TableMeta> metas,
+                                                    ExecutionContext ec) {
+            super(sqlParameterized, metas, ec);
+            Preconditions.checkNotNull(ec);
+        }
+
+        @Override
+        public long computeDigest() {
+            final SQLStatement stmt = sqlParameterized.getStmt();
+            final List<Object> params = sqlParameterized.getParameters();
+
+            if (!ec.dmlReplaceImplicitDefault() && !ec.dmlReplaceDynamicImplicitDefault()) {
+                return super.computeDigest();
+            }
+
+            if (!SqlParameterized.insertWithoutParamsInFunction(stmt)) {
+                // Type digest already computed
+                return super.computeDigest();
+            }
+
+            if (GeneralUtil.isEmpty(params)) {
+                // No need to compute digest for implicit default column
+                return super.computeDigest();
+            }
+
+            TableMeta targetTableMeta = null;
+            if (metas.size() == 1) {
+                targetTableMeta = metas.get(0);
+            }
+
+            if (stmt instanceof MySqlInsertStatement) {
+                final MySqlInsertStatement insertStmt = (MySqlInsertStatement) stmt;
+                final List<SQLExpr> columns = insertStmt.getColumns();
+                final List<ValuesClause> valuesList = insertStmt.getValuesList();
+                final SQLExprTableSource t = insertStmt.getTableSource();
+
+                return doComputeDigest(targetTableMeta, t, columns, valuesList, params);
+            } else if (stmt instanceof SQLReplaceStatement) {
+                final SQLReplaceStatement replaceStmt = (SQLReplaceStatement) stmt;
+                final List<SQLExpr> columns = replaceStmt.getColumns();
+                final List<ValuesClause> valuesList = replaceStmt.getValuesList();
+                final SQLExprTableSource t = replaceStmt.getTableSource();
+
+                return doComputeDigest(targetTableMeta, t, columns, valuesList, params);
+            }
+
+            return 0L;
+        }
+
+        private long doComputeDigest(TableMeta targetTableMeta, SQLExprTableSource t, List<SQLExpr> columns,
+                                     List<ValuesClause> valuesList, List<Object> params) {
+            long digest = 0L;
+
+            // Get target table meta
+            if (targetTableMeta == null) {
+                targetTableMeta = ec
+                    .getSchemaManager(SQLUtils.normalizeNoTrim(t.getSchema()))
+                    .getTableWithNull(SQLUtils.normalizeNoTrim(t.getTableName()));
+
+                if (targetTableMeta == null) {
+                    // Cannot compute digest
+                    return digest;
+                }
+            }
+
+            // Get insert target column meta
+            boolean validStmt = true;
+            final List<ColumnMeta> columnMetas = new ArrayList<>();
+            if (columns == null || columns.isEmpty()) {
+                columnMetas.addAll(targetTableMeta.getAllColumns());
+            } else {
+                for (SQLExpr column : columns) {
+                    if (!(column instanceof SQLIdentifierExpr)) {
+                        validStmt = false;
+                        break;
+                    }
+
+                    final String columnName = SQLUtils.normalizeNoTrim(((SQLIdentifierExpr) column).getName());
+                    final ColumnMeta columnMeta = targetTableMeta.getColumn(columnName);
+
+                    if (null == columnMeta) {
+                        validStmt = false;
+                        break;
+                    }
+
+                    columnMetas.add(columnMeta);
+                }
+            }
+
+            if (!validStmt) {
+                return digest;
+            }
+
+            // Get index of string type column with implicit default and inserted with hex string param
+            final Set<String> hexImplicitDefaultStringColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            final List<Map<Integer, Object>> hexParamMaps = new ArrayList<>();
+            int paramIndex = 0;
+            for (int j = 0; j < valuesList.size(); j++) {
+                final ValuesClause valuesClause = valuesList.get(j);
+                final Map<Integer, Object> hexParamMap = new HashMap<>();
+
+                for (int i = 0; i < valuesClause.getValues().size(); i++) {
+                    if (paramIndex >= params.size()) {
+                        validStmt = false;
+                        break;
+                    }
+
+                    // The parameter is a byte array or a hex string
+                    if (params.get(paramIndex) instanceof byte[]) {
+                        final ColumnMeta columnMeta = columnMetas.get(i);
+
+                        if (columnMeta.withImplicitDefault(true)
+                            && DataTypeUtil.isStringType(columnMeta.getDataType())) {
+                            hexImplicitDefaultStringColumns.add(columnMeta.getName());
+                            hexParamMap.put(paramIndex, params.get(paramIndex));
+                        }
+                    }
+
+                    paramIndex++;
+                }
+
+                hexParamMaps.add(hexParamMap);
+            }
+
+            if (!validStmt) {
+                return digest;
+            }
+
+            if (!hexImplicitDefaultStringColumns.isEmpty()) {
+                final Set<String> literalColumnNames = LogicalWriteUtil.literalColumnNames(
+                    targetTableMeta.getSchemaName(),
+                    targetTableMeta.getTableName(),
+                    ec);
+
+                if (literalColumnNames.stream().anyMatch(hexImplicitDefaultStringColumns::contains)) {
+                    for (int valueIndex = 0; valueIndex < hexParamMaps.size(); valueIndex++) {
+                        final Map<Integer, Object> hexParamMap = hexParamMaps.get(valueIndex);
+
+                        for (int columnIndex = 0; columnIndex < columnMetas.size(); columnIndex++) {
+                            if (!literalColumnNames.contains(columnMetas.get(columnIndex).getName())) {
+                                continue;
+                            }
+
+                            int typeCode = VARCHAR_CODE;
+                            if (hexParamMap.containsKey(columnIndex)) {
+                                typeCode = SqlParameterized.getTypeCode(hexParamMap.get(columnIndex));
+                            }
+
+                            // digest = Objects.hash(digest, valueIndex, columnIndex, typeCode);
+                            digest = 63 * digest + typeCode;
+                        }
+                    }
+                }
+            }
+            return digest;
+        }
+    }
+
     /**
      * Only SQL that can be pushed down to a single db should build a final
      * plan. Here we just check some simple conditions, BuildFinalPlanVisitor
@@ -671,6 +910,14 @@ public final class PlanCache {
      */
     private static boolean needBuildFinalPlan(RelNode plan, PlannerContext plannerContext) {
         if (plannerContext.isExplain()) {
+            return false;
+        }
+
+        if (plannerContext.isHasAutoPagination()) {
+            return false;
+        }
+
+        if (plannerContext.isHasPagingForce()) {
             return false;
         }
 

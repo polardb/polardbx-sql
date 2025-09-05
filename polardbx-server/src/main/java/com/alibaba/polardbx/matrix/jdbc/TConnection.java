@@ -23,8 +23,10 @@ import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
+import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
+import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
@@ -36,6 +38,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.ConcurrentHashSet;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.MergeHashMap;
@@ -60,16 +63,21 @@ import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.utils.GroupHintParser;
 import com.alibaba.polardbx.matrix.jdbc.utils.ByteStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.utils.ExceptionUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
+import com.alibaba.polardbx.optimizer.ccl.common.RescheduleTask;
+import com.alibaba.polardbx.optimizer.ccl.exception.CclRescheduleException;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
@@ -83,6 +91,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.planner.Xplanner.PartitionGather;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
@@ -105,7 +114,14 @@ import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.InventoryMode;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils.TableProperties;
 import com.alibaba.polardbx.repo.mysql.cursor.ResultSetCursor;
+import com.alibaba.polardbx.rpc.compatible.XDataSource;
+import com.alibaba.polardbx.rpc.perf.SwitchoverPerfCollection;
+import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.rpc.pool.XConnectionManager;
+import com.alibaba.polardbx.server.SwitchoverManager;
 import com.alibaba.polardbx.server.lock.LockingFunctionManager;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
@@ -129,7 +145,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
-import java.util.BitSet;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -608,6 +624,120 @@ public class TConnection implements ITConnection {
         }
     }
 
+    public boolean mayBlockByChangingLeader(final Map<String, Map<String, Boolean>> groups,
+                                            final Set<SwitchoverPerfCollection> perfCollections) {
+        // check any one in groups are changing in progress
+        boolean mayBlockByChangingLeader = false;
+        for (final Map.Entry<String, Map<String, Boolean>> schemaEntry : groups.entrySet()) {
+            final String schema = schemaEntry.getKey();
+            final ExecutorContext executor = ExecutorContext.getContext(schema);
+            if (executor != null) {
+                for (final Map.Entry<String, Boolean> groupEntry : schemaEntry.getValue().entrySet()) {
+                    final String group = groupEntry.getKey();
+                    final boolean isWrite = groupEntry.getValue();
+                    final IGroupExecutor groupExecutor = executor.getTopologyHandler().get(group);
+                    if (groupExecutor != null) {
+                        final TGroupDataSource ds = (TGroupDataSource) groupExecutor.getDataSource();
+                        final MasterSlave masterSlave =
+                            ExecUtils.getMasterSlave(OptimizerUtils.useExplicitTransaction(executionContext),
+                                isWrite, executionContext);
+                        final Pair<Boolean, XDataSource> changingLeader =
+                            ds.getConfigManager().getGroupDataSourceHolder().isChangingLeader(masterSlave);
+                        if (changingLeader.getKey()) {
+                            mayBlockByChangingLeader = true;
+                            synchronized (perfCollections) {
+                                perfCollections.add(changingLeader.getValue().getSwitchoverPerfCollector());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // check connection which already hold
+        if (mayBlockByChangingLeader) {
+            final ITransaction transaction = executionContext.getTransaction();
+            final IConnectionHolder connectionHolder =
+                null == transaction ? null : transaction.getConnectionHolder();
+            final Collection<IConnection> connections =
+                null == connectionHolder ? null : connectionHolder.getAllConnection();
+            if (connections != null && connections.stream().anyMatch(c -> {
+                try {
+                    return c.isWrapperFor(XConnection.class) && c.unwrap(XConnection.class).getSession()
+                        .getClient().getPool().isChangingLeader();
+                } catch (Throwable t) {
+                    logger.error("check connections failed", t);
+                    return true;
+                }
+            })) {
+                // abort if any of allocated connections is changing leader
+                mayBlockByChangingLeader = false;
+            }
+        }
+
+        return mayBlockByChangingLeader;
+    }
+
+    public void rescheduleIfSwitchover(ExecutionPlan plan, ExecutionContext executionContext) {
+        if (DynamicConfig.getInstance().isEnableSmoothSwitchover() && XConnectionManager.getInstance()
+            .isAnyOneChangingLeader()) {
+            // Note: Only check meta db connection when actually use it.
+
+            // never reschedule multi-stmt
+            if (!executionContext.isMultiStmtHasMore()) {
+                // gather partition info
+                final PartitionGather gather = new PartitionGather(executionContext);
+                gather.go(plan.getPlan());
+
+                // check any one in groups are changing in progress
+                if (mayBlockByChangingLeader(gather.getTargetGroups(),
+                    executionContext.getSwitchoverPerfCollections())) {
+                    final long now = System.currentTimeMillis();
+                    final long timeout = DynamicConfig.getInstance().getSwitchoverTimeoutMillis();
+                    final long first = executionContext.getFirstSwitchoverWaitTime();
+                    // only reschedule when not timeout
+                    if (0 == first || now - first < timeout) {
+                        // use CCL reschedule task
+                        throw new CclRescheduleException(
+                            "The query should be rescheduled. Leader changing in progress.",
+                            (reschedulable) -> {
+                                RescheduleTask rescheduleTask = new RescheduleTask();
+                                rescheduleTask.setReschedulable(reschedulable);
+                                rescheduleTask.setWaitStartTs(System.currentTimeMillis());
+                                rescheduleTask.setSwitchoverReschedule(true);
+                                rescheduleTask.setActivation(new AtomicBoolean(false));
+                                reschedulable.setRescheduled(true, rescheduleTask);
+                                SwitchoverManager.rescheduleTaskQueue.offer(rescheduleTask);
+                            });
+                    }
+                }
+            }
+
+            // always check when get connection(we may make mistake when auto inc column is a partition key)
+            executionContext.setCheckSwitchoverWhenGetConnection(true);
+            final long firstSwitchoverWaitTime = executionContext.getFirstSwitchoverWaitTime();
+            if (firstSwitchoverWaitTime != 0) {
+                // clear time
+                executionContext.setFirstSwitchoverWaitTime(0);
+                // log wait
+                final long waitMs = System.currentTimeMillis() - firstSwitchoverWaitTime;
+                logger.warn(executionContext.getTraceId() + " reschedule switchover wait " + waitMs + " ms");
+                // clear collection set
+                final Set<SwitchoverPerfCollection> switchoverPerfCollections =
+                    executionContext.getSwitchoverPerfCollections();
+                synchronized (switchoverPerfCollections) {
+                    for (final SwitchoverPerfCollection perfCollection : switchoverPerfCollections) {
+                        perfCollection.recordWait(false, waitMs);
+                    }
+                    switchoverPerfCollections.clear();
+                }
+            }
+        } else {
+            executionContext.setCheckSwitchoverWhenGetConnection(false);
+        }
+    }
+
     /**
      * Separate execute(sql, ec) into two parts: plan and execute. If it's
      * writing into broadcast table and has no transaction, a new transaction
@@ -624,9 +754,7 @@ public class TConnection implements ITConnection {
 
         final Parameters originParams = executionContext.getParams().clone();
         ExecutionPlan plan = Planner.getInstance().plan(sql, executionContext);
-        if (!executionContext.isFlashbackArea()) {
-            executionContext.setFlashbackArea(plan.isFlashbackArea());
-        }
+        executionContext.setFlashbackArea(plan.isFlashbackArea());
 
         databaseReadOnlyCheck(plan);
         instanceReadOnlyCheck();
@@ -753,7 +881,7 @@ public class TConnection implements ITConnection {
             }
         }
 
-        if (trx instanceof ReadOnlyTsoTransaction && plan.getPlanProperties().get(MODIFY_TABLE)) {
+        if (trx instanceof ReadOnlyTsoTransaction && plan.getPlanProperties().contains(MODIFY_TABLE)) {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS_CANNOT_EXECUTE_IN_RO_TRX);
         }
 
@@ -767,7 +895,7 @@ public class TConnection implements ITConnection {
 
         changeParameterTypeByTableMetadata(executionContext, plan);
 
-        if (!executionContext.isExecutingPreparedStmt()) {
+        if (!executionContext.isExecutingPreparedStmt() || PolarPrivilegeUtils.checkPrivilegeForPreparedStmt()) {
             PolarPrivilegeUtils.checkPrivilege(plan, executionContext);
             PolarPrivilegeUtils.checkLBACColumnAccess(plan, executionContext);
         }
@@ -777,6 +905,9 @@ public class TConnection implements ITConnection {
         if (executionContext.getCclContext() == null) {
             CclManager.getService().begin(executionContext);
         }
+
+        // reschedule if switchover is in progress
+        rescheduleIfSwitchover(plan, executionContext);
 
         ResultCursor resultCursor = executor.execute(plan, executionContext);
         updateTableStatistic(plan, resultCursor, executionContext);
@@ -977,31 +1108,31 @@ public class TConnection implements ITConnection {
      *
      * @return is transaction policy updated
      */
-    private boolean updateTransactionAndConcurrentPolicyForDml(ExecutionPlan plan, ExecutionContext ec) {
-        if (isAutoCommit && ec.isForbidAutoCommitTrx() && plan.is(DML_STATEMENT)) {
+    protected boolean updateTransactionAndConcurrentPolicyForDml(ExecutionPlan plan, ExecutionContext ec) {
+        if (isAutoCommit() && ec.isForbidAutoCommitTrx() && plan.is(DML_STATEMENT)) {
             // Init a non-autocommit trx for DML.
             ITransaction trx = forceInitTransaction(ec, false, true);
             ec.setTransaction(trx);
             return true;
         }
 
-        final BitSet properties = plan.getPlanProperties();
-        final boolean currentModifyBroadcast = properties.get(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
+        final ConcurrentHashSet<Integer> properties = plan.getPlanProperties();
+        final boolean currentModifyBroadcast = properties.contains(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
 
         boolean modifyBroadcastTable = currentModifyBroadcast;
-        boolean modifyGsiTable = properties.get(ExecutionPlanProperties.MODIFY_GSI_TABLE);
-        boolean modifyShardingColumn = properties.get(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
-        boolean modifyScaleOutGroup = properties.get(ExecutionPlanProperties.MODIFY_SCALE_OUT_GROUP);
-        boolean modifyCrossDb = properties.get(ExecutionPlanProperties.MODIFY_CROSS_DB);
-        boolean modifyForeignKey = properties.get(ExecutionPlanProperties.MODIFY_FOREIGN_KEY);
+        boolean modifyGsiTable = properties.contains(ExecutionPlanProperties.MODIFY_GSI_TABLE);
+        boolean modifyShardingColumn = properties.contains(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
+        boolean modifyScaleOutGroup = properties.contains(ExecutionPlanProperties.MODIFY_SCALE_OUT_GROUP);
+        boolean modifyCrossDb = properties.contains(ExecutionPlanProperties.MODIFY_CROSS_DB);
+        boolean modifyForeignKey = properties.contains(ExecutionPlanProperties.MODIFY_FOREIGN_KEY);
         boolean dmlWithTransaction = ec.getParamManager().getBoolean(ConnectionParams.COMPLEX_DML_WITH_TRX);
-        boolean modifyReplicateTable = plan.getPlanProperties().get(ExecutionPlanProperties.REPLICATE_TABLE);
+        boolean modifyReplicateTable = plan.getPlanProperties().contains(ExecutionPlanProperties.REPLICATE_TABLE);
         if (currentModifyBroadcast && !modifyGsiTable) {
             ec.getExtraCmds().put(ConnectionProperties.FIRST_THEN_CONCURRENT_POLICY, true);
 
         }
-        boolean modifyTable = properties.get(ExecutionPlanProperties.MODIFY_TABLE);
-        boolean selectWithLock = properties.get(ExecutionPlanProperties.SELECT_WITH_LOCK);
+        boolean modifyTable = properties.contains(ExecutionPlanProperties.MODIFY_TABLE);
+        boolean selectWithLock = properties.contains(ExecutionPlanProperties.SELECT_WITH_LOCK);
         boolean isSelect = plan.getAst().getKind() == SqlKind.SELECT;
 
         ExecutionStrategy executionStrategy = ExecutionStrategy.fromHint(ec);
@@ -1010,10 +1141,19 @@ public class TConnection implements ITConnection {
         final boolean currentReadOnly = ec.isReadOnly();
 
         boolean readOnlyUpdated = false;
-        if (!currentReadOnly && isAutoCommit && trxPolicy == ITransactionPolicy.TSO && !(modifyTable || selectWithLock)
+        if (!currentReadOnly && isAutoCommit() && trxPolicy == ITransactionPolicy.TSO && !(modifyTable
+            || selectWithLock)
             && isSelect) {
             readOnlyUpdated = true;
             ec.setReadOnly(true);
+        }
+
+        // select with lock
+        if (isAutoCommit() && ec.isForbidAutoCommitTrx() && !ec.isReadCsvOnly() && isSelect) {
+            // Init a non-autocommit trx for non-readonly trx.
+            ITransaction trx = forceInitTransaction(ec, false, true);
+            ec.setTransaction(trx);
+            return true;
         }
 
         ec.setModifyBroadcastTable(modifyBroadcastTable);
@@ -1321,6 +1461,8 @@ public class TConnection implements ITConnection {
         DdlContext ddlContext = null;
         boolean usingHint = false;
         String partitionHint = null;
+        long firstSwitchoverWaitTime = 0;
+        Set<SwitchoverPerfCollection> collections = null;
 
         if (this.executionContext != null) {
             privilegeContext = this.executionContext.getPrivilegeContext();
@@ -1336,6 +1478,8 @@ public class TConnection implements ITConnection {
             ddlContext = this.executionContext.getDdlContext();
             usingHint = this.executionContext.isUseHint();
             partitionHint = this.executionContext.getPartitionHint();
+            firstSwitchoverWaitTime = this.executionContext.getFirstSwitchoverWaitTime();
+            collections = this.executionContext.getSwitchoverPerfCollections();
         }
         if (privilegeContext == null) {
             privilegeContext = new PrivilegeContext();
@@ -1403,6 +1547,10 @@ public class TConnection implements ITConnection {
         }
 
         this.executionContext.setNeedAutoSavepoint(false);
+        this.executionContext.setFirstSwitchoverWaitTime(firstSwitchoverWaitTime);
+        if (collections != null && this.executionContext.getSwitchoverPerfCollections() != collections) {
+            this.executionContext.getSwitchoverPerfCollections().addAll(collections);
+        }
         return this.executionContext;
     }
 
@@ -1455,6 +1603,10 @@ public class TConnection implements ITConnection {
         if (this.executionContext != null) {
             this.executionContext.setAutoCommit(autoCommit);
         }
+    }
+
+    boolean isAutoCommit() {
+        return isAutoCommit;
     }
 
     public void commit() throws SQLException {
@@ -1829,7 +1981,7 @@ public class TConnection implements ITConnection {
             if (trxPolicy == null) {
                 trxPolicy = loadTrxPolicy(executionContext);
             }
-            if (shareReadView == ShareReadViewPolicy.DEFAULT) {
+            if (shareReadView == ShareReadViewPolicy.DEFAULT || shareReadView == ShareReadViewPolicy.ON) {
                 loadShareReadView(executionContext);
             }
             if (groupParallelism == null) {
@@ -1865,8 +2017,8 @@ public class TConnection implements ITConnection {
         return forceInitTransaction(executionContext, isColumnarRead, false);
     }
 
-    private ITransaction forceInitTransaction(ExecutionContext executionContext, boolean isColumnarRead,
-                                              boolean isForbidAutocommitTrx) {
+    ITransaction forceInitTransaction(ExecutionContext executionContext, boolean isColumnarRead,
+                                      boolean isForbidAutocommitTrx) {
         lock.lock();
 
         try {
@@ -2085,6 +2237,14 @@ public class TConnection implements ITConnection {
     @Override
     public Map<String, Object> getConnectionVariables() {
         return connectionVariables;
+    }
+
+    @Override
+    public void setTrxId(long id) {
+        ExecutionContext executionContext = this.getExecutionContext();
+        if (null != executionContext) {
+            executionContext.setTxId(id);
+        }
     }
 
     public void setUserDefVariables(Map<String, Object> userDefVariables) {

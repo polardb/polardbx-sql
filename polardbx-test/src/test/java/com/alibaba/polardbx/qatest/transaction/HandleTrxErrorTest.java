@@ -40,6 +40,7 @@ public class HandleTrxErrorTest extends CrudBasedLockTestCase {
     @Test
     public void testHandleStatementErrorFail()
         throws SQLException, ExecutionException, InterruptedException, TimeoutException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global ENABLE_CLOSE_CONNECTION_WHEN_TRX_FATAL = false");
         final Connection conn = this.getPolardbxConnection();
         final String tableName = "thsef";
         // 1. Create a table with 2 entries: (0, 0), (1, 1)
@@ -97,6 +98,7 @@ public class HandleTrxErrorTest extends CrudBasedLockTestCase {
     @Test
     public void testHandleStatementErrorFail2()
         throws SQLException, ExecutionException, InterruptedException, TimeoutException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global ENABLE_CLOSE_CONNECTION_WHEN_TRX_FATAL = false");
         final Connection conn = this.getPolardbxConnection();
         final String tableName = "thsef2";
         // 1. Create a table with 2 entries: (0, 0), (1, 1)

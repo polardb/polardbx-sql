@@ -1,0 +1,43 @@
+drop table if exists r_key_t1;
+drop table if exists r_list_t2;
+drop table if exists r_rang_t3;
+
+create table r_key_t1(a int, b int, c int, primary key(a)) partition by key(a) partitions 3;
+
+insert into r_key_t1 values (1, 1, 1),(2, 2, 2),(3, 3, 3);
+
+alter table r_key_t1 partition by key(a) partitions 1;
+
+show create table r_key_t1;
+
+select * from r_key_t1 order by a;
+
+
+create table r_list_t2(a int, b int, c int, primary key(a)) 
+PARTITION BY LIST (a) (PARTITION r0 VALUES IN (1, 5, 9, 13, 17),
+PARTITION r1 VALUES IN (2, 6, 10, 14, 18, 22),
+PARTITION r2 VALUES IN (3, 7, 11, 15, 19, 23),
+PARTITION r3 VALUES IN (4, 8, 12, 16, 20, 24));
+
+insert into r_list_t2 values (1, 1, 1),(2, 2, 2),(3, 3, 3);
+
+alter table r_list_t2 partition by key(b) partitions 1;
+
+show create table r_list_t2;
+
+select * from r_list_t2 order by a;
+
+
+create table r_rang_t3(a int, b int, c int, primary key(a)) 
+PARTITION BY RANGE (a) 
+(PARTITION p0 VALUES LESS THAN (5),
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p5 VALUES LESS THAN MAXVALUE);
+
+insert into r_rang_t3 values (1, 1, 1),(2, 2, 2),(3, 3, 3);
+
+alter table r_rang_t3 partition by key(a, b) partitions 1;
+
+show create table r_rang_t3;
+
+select * from r_rang_t3 order by a;

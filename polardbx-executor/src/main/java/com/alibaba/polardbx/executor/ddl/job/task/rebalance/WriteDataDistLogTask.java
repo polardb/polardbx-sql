@@ -18,8 +18,8 @@ package com.alibaba.polardbx.executor.ddl.job.task.rebalance;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
+import com.alibaba.polardbx.executor.balancer.action.EventLogger;
 import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
@@ -47,7 +47,7 @@ public class WriteDataDistLogTask extends BaseValidateTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
 
-        BalanceStats stats = collectBalanceStatsOfDatabase(schemaName);
+        BalanceStats stats = collectBalanceStatsOfDatabase(schemaName, executionContext);
         Map<String, Map<String, PartitionGroupStat>> tgStats = new HashMap();
         stats.getTableGroupStats().stream().map(o -> o.getTableGroupConfig().getTableGroupRecord().getTg_name())
             .forEach(

@@ -46,6 +46,7 @@ public abstract class DdlJobFactory {
         ExecutableDdlJob executableDdlJob = doCreate();
         excludeResources(executableDdlJob.getExcludeResources());
         sharedResources(executableDdlJob.getSharedResources());
+        executableDdlJob.setDdlJobFactoryName(this.getClass().getSimpleName());
 
         //this is a quite interesting injection
         FailPoint.inject(FP_HIJACK_DDL_JOB, (k, v) -> {

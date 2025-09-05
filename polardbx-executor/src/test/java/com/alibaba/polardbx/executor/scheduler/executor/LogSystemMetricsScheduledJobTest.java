@@ -2,20 +2,30 @@ package com.alibaba.polardbx.executor.scheduler.executor;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.sync.MetricSyncAction;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarDuplicatesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
+
+import java.util.Collections;
 
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.FAILED;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.QUEUED;
@@ -23,6 +33,7 @@ import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.RUNNI
 import static com.alibaba.polardbx.common.utils.Assert.assertTrue;
 import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -144,5 +155,52 @@ public class LogSystemMetricsScheduledJobTest {
                 ScheduledJobsManager.casStateWithFinishTime(anyLong(), anyLong(), any(), any(), anyLong(), anyString()))
             .thenAnswer((Answer<Boolean>) invocation -> null);
         assert job.execute();
+    }
+
+    @Test
+    public void testColumnarStatus() {
+        final long newTso = 123L;
+        try (final MockedStatic<MetaDbUtil> mockMetaDbUtil = Mockito.mockStatic(MetaDbUtil.class);
+            final MockedStatic<ColumnarTransactionUtils> columnarTransactionUtilsMockedStatic = Mockito.mockStatic(
+                ColumnarTransactionUtils.class);
+            final MockedConstruction<ColumnarTableMappingAccessor> accessorMockedConstruction = Mockito.mockConstruction(
+                ColumnarTableMappingAccessor.class, (mock, context) -> Mockito.when(mock.queryByStatus(anyString()))
+                    .thenAnswer(invocation -> Collections.singletonList(
+                        new ColumnarTableMappingRecord("db", "table", "index", 1L, "PUBLIC")))
+            );
+            final MockedConstruction<ColumnarDuplicatesAccessor> duplicatesAccessorMockedConstruction = Mockito.mockConstruction(
+                ColumnarDuplicatesAccessor.class,
+                (mock, context) -> Mockito.when(mock.countDuplicates(anyLong())).thenAnswer(invocation -> 0L))) {
+            mockMetaDbUtil.when(MetaDbUtil::getConnection).thenReturn(null);
+            columnarTransactionUtilsMockedStatic.when(ColumnarTransactionUtils::getLatestTsoFromGms).thenReturn(newTso);
+            columnarTransactionUtilsMockedStatic.when(
+                    () -> ColumnarTransactionUtils.queryColumnarIndexStatus(anyLong(), anyList()))
+                .thenAnswer(invocation -> {
+                    final ColumnarTransactionUtils.ColumnarIndexStatusRow row =
+                        new ColumnarTransactionUtils.ColumnarIndexStatusRow();
+                    row.tso = 123;
+                    row.tableSchema = "db";
+                    row.tableName = "table";
+                    row.indexName = "index";
+                    row.indexId = 0;
+                    row.partitionNum = 1;
+                    row.status = "PUBLIC";
+                    row.csvRows = 123;
+                    row.csvFileNum = 12;
+                    row.csvFileSize = 1230;
+                    row.orcRows = 234;
+                    row.orcFileNum = 23;
+                    row.orcFileSize = 2340;
+                    row.delRows = 345;
+                    row.delFileNum = 34;
+                    row.delFileSize = 3450;
+                    return ImmutableList.of(row, row);
+                });
+
+            final String s = String.join("#", LogSystemMetricsScheduledJob.columnarStatus());
+            Assert.assertEquals(
+                "123|db|table|index|0|123|234|345|12|23|34|1230|2340|3450|PUBLIC|0#123|db|table|index|0|123|234|345|12|23|34|1230|2340|3450|PUBLIC|0",
+                s);
+        }
     }
 }

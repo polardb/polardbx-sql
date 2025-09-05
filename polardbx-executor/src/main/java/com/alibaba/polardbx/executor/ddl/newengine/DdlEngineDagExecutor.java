@@ -69,9 +69,11 @@ import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
+import com.alibaba.polardbx.optimizer.context.DdlEventLogJson;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
+import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEngineShowResultsHandler;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.base.Joiner;
@@ -81,6 +83,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
@@ -133,6 +136,7 @@ public class DdlEngineDagExecutor {
 
     private static final String ERROR_MSG = "Failed to execute the DDL task. Caused by: %s";
     private String errorMessage;
+    private String errorTaskName;
 
     private final ExecutionContext executionContext;
     private final DdlJob ddlJob;
@@ -252,6 +256,7 @@ public class DdlEngineDagExecutor {
 
             // Handle the terminated states.
             switch (ddlContext.getState()) {
+            case RUNNING:
             case ROLLBACK_PAUSED:
             case PAUSED:
                 onTerminated();
@@ -299,6 +304,7 @@ public class DdlEngineDagExecutor {
 
             // Handle the terminated states.
             switch (ddlContext.getState()) {
+            case RUNNING:
             case ROLLBACK_PAUSED:
             case PAUSED:
                 onTerminated();
@@ -349,6 +355,11 @@ public class DdlEngineDagExecutor {
         while (true) {
             if (hasFailureOnState(DdlState.RUNNING)) {
                 if (waitForAllTasksToStop(50L, TimeUnit.MILLISECONDS)) {
+                    // Build a response for failure.
+                    Response response = buildResponse(ResponseType.ERROR, errorMessage);
+                    // Save the response as the DDL result for show.
+                    ddlJobManager.saveResult(ddlContext.getJobId(), response);
+
                     LOGGER.info(String.format("JobId:[%s], all tasks stopped", ddlContext.getJobId()));
                     return;
                 } else {
@@ -389,6 +400,11 @@ public class DdlEngineDagExecutor {
         while (true) {
             if (hasFailureOnState(DdlState.ROLLBACK_RUNNING)) {
                 if (waitForAllTasksToStop(50L, TimeUnit.MILLISECONDS)) {
+                    // Build a response for failure.
+                    Response response = buildResponse(ResponseType.ERROR, errorMessage);
+                    // Save the response as the DDL result for show.
+                    ddlJobManager.saveResult(ddlContext.getJobId(), response);
+
                     LOGGER.info(String.format("JobId:[%s], all tasks stoped", ddlContext.getJobId()));
                     return;
                 } else {
@@ -426,6 +442,11 @@ public class DdlEngineDagExecutor {
         while (true) {
             if (hasFailureOnState(DdlState.ROLLBACK_TO_READY)) {
                 if (waitForAllTasksToStop(50L, TimeUnit.MILLISECONDS)) {
+                    // Build a response for failure.
+                    Response response = buildResponse(ResponseType.ERROR, errorMessage);
+                    // Save the response as the DDL result for show.
+                    ddlJobManager.saveResult(ddlContext.getJobId(), response);
+
                     LOGGER.info(String.format("JobId:[%s], all tasks stoped", ddlContext.getJobId()));
                     return;
                 } else {
@@ -492,13 +513,10 @@ public class DdlEngineDagExecutor {
         LOGGER.warn(String.format("execute DDL JOB error, JobId: [%s], final DDL State:[%s], task graph:\n%s\n",
             ddlContext.getJobId(), ddlContext.getState(), ddlJob.visualizeTasks()));
         LOGGER.info(String.format("Task Execution Sequence:\n%s", genTaskExecutionSequence()));
-        EventLogger.log(EventType.DDL_PAUSED, String.format(
-            "execute DDL JOB error, schemaName:[%s], JobId:[%s], State:[%s], errorMessage:[%s]",
-            ddlContext.getSchemaName(),
-            ddlContext.getJobId(),
-            ddlContext.getState().name(),
-            errorMessage
-        ));
+        String eventLogMsg =
+            TStringUtil.isEmpty(errorMessage) ? "The DDL job has been cancelled or interrupted" : errorMessage;
+        DdlEventLogJson ddlEventLogJson = DdlEventLogJson.create(ddlContext, errorTaskName, eventLogMsg);
+        EventLogger.log(EventType.DDL_PAUSED_NEW, DdlEventLogJson.toJson(ddlEventLogJson));
         // Build a response for failure.
         Response response = buildResponse(ResponseType.ERROR, errorMessage);
 
@@ -525,6 +543,7 @@ public class DdlEngineDagExecutor {
         saveDagToTrace();
         // Build a response.
         Response response;
+        DdlEventLogJson ddlEventLogJson = DdlEventLogJson.create(ddlContext);
         if (ddlContext.getState() == DdlState.ROLLBACK_COMPLETED) {
             if (ddlContext.isUsingWarning()) {
                 response = buildResponse(ResponseType.WARNING, "");
@@ -533,10 +552,19 @@ public class DdlEngineDagExecutor {
                 // Still should report the original error.
                 response = buildResponse(ResponseType.ERROR, errorMessage);
             }
+            String eventLogMsg =
+                TStringUtil.isEmpty(errorMessage) ? "The DDL job has been cancelled or interrupted" : errorMessage;
+            ddlEventLogJson.setErrorMessage(eventLogMsg);
+            ddlEventLogJson.setTaskName(errorTaskName);
+            EventLogger.log(EventType.DDL_ROLLBACK_COMPLETED, DdlEventLogJson.toJson(ddlEventLogJson));
         } else {
             response = buildResponse(ResponseType.SUCCESS, "SUCCESS");
+            EventLogger.log(EventType.DDL_COMPLETED, DdlEventLogJson.toJson(ddlEventLogJson));
         }
         response.setTracer(executionContext.getTracer());
+        response.setDdlStmt(executionContext.getDdlContext().getDdlStmt());
+        response.setStartTime(beginTs.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        response.setEndTime(DdlEngineShowResultsHandler.convertTimeMillisToDate(System.currentTimeMillis()));
 
         // Save the result in memory as the last result.
         saveLastResult(response);
@@ -610,13 +638,12 @@ public class DdlEngineDagExecutor {
             String logInfo;
             try {
                 logInfo =
-                    String.format("schedule task %d %s for job %d %s, task info %s, semaphore %d", task.getTaskId(),
-                        task.getName(), getJobId(), getDdlStmt(), task.executionInfo(), semaphore.availablePermits());
+                    String.format("schedule task %d %s for job %d, semaphore %d", task.getTaskId(),
+                        task.getName(), getJobId(), semaphore.availablePermits());
                 LOGGER.info(logInfo);
                 semaphore.acquire();
-                logInfo = String.format("now scheduled! schedule task %d %s for job %d %s, task info %s, semaphore %d",
-                    task.getTaskId(), task.getName(), getJobId(), getDdlStmt(), task.executionInfo(),
-                    semaphore.availablePermits());
+                logInfo = String.format("now scheduled! schedule task %d %s for job %d, semaphore %d",
+                    task.getTaskId(), task.getName(), getJobId(), semaphore.availablePermits());
                 task.setScheduled(true);
                 LOGGER.info(logInfo);
             } catch (InterruptedException e) {
@@ -759,11 +786,13 @@ public class DdlEngineDagExecutor {
                                 String.format("fail to execute task:[%s], try pause DDL JOB:[%s]", task.getName(),
                                     ddlContext.getJobId()));
                             errorMessage = errMsg;
+                            errorTaskName = task.getName();
                             updateDdlState(DdlState.RUNNING, DdlState.PAUSED);
                             return false;
                         }
                     case ROLLBACK:
                         errorMessage = String.format(ERROR_MSG, e.getMessage());
+                        errorTaskName = task.getName();
                         DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, errorMessage, e);
                         DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER,
                             String.format("fail to execute task:[%s], try rollback DDL JOB:[%s]", task.getName(),
@@ -787,6 +816,7 @@ public class DdlEngineDagExecutor {
                                 String.format("fail to execute task:[%s], try rollback DDL JOB:[%s]", task.getName(),
                                     ddlContext.getJobId()));
                             errorMessage = errMsg;
+                            errorTaskName = task.getName();
                             if (!allowRollback()) {
                                 updateDdlState(DdlState.RUNNING, DdlState.PAUSED);
                                 return false;
@@ -797,6 +827,7 @@ public class DdlEngineDagExecutor {
                     case PAUSE:
                     default:
                         errorMessage = String.format(ERROR_MSG, e.getMessage());
+                        errorTaskName = task.getName();
                         DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, errorMessage, e);
                         DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER,
                             String.format("fail to execute task:[%s], try pause DDL JOB:[%s]", task.getName(),
@@ -862,6 +893,7 @@ public class DdlEngineDagExecutor {
                             "fail to rollback taskName:[%s], taskId:[%s], jobId:[%s]",
                             task.getName(), task.getTaskId(), task.getJobId()));
                         errorMessage = errMsg;
+                        errorTaskName = task.getName();
                         updateDdlState(DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_PAUSED);
                         return false;
                     }
@@ -912,6 +944,7 @@ public class DdlEngineDagExecutor {
                             "fail to rollback taskName:[%s], taskId:[%s], jobId:[%s]",
                             task.getName(), task.getTaskId(), task.getJobId()));
                         errorMessage = errMsg;
+                        errorTaskName = task.getName();
                         updateDdlState(DdlState.ROLLBACK_TO_READY, DdlState.ROLLBACK_PAUSED);
                         return false;
                     }

@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableRemoveMetaTask
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateGsiExistenceTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
+import com.alibaba.polardbx.executor.ddl.job.validator.TtlValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -89,7 +90,7 @@ public class DropGsiJobFactory extends DdlJobFactory {
         validateTask.doValidate(schemaName, primaryTableName, indexTableName, executionContext);
 
         if (TtlConfigUtil.isUseGsiInsteadOfCciForCreateColumnarArcTbl(executionContext)) {
-            GsiValidator.validateIfDroppingCciOfArcTableOfTtlTable(schemaName, primaryTableName, indexTableName,
+            TtlValidator.validateIfDroppingCciOfArcTableOfTtlTable(schemaName, primaryTableName, indexTableName,
                 executionContext);
         }
 

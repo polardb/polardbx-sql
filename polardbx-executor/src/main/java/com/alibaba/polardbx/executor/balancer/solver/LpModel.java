@@ -17,8 +17,12 @@
 package com.alibaba.polardbx.executor.balancer.solver;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class LpModel {
@@ -112,6 +116,177 @@ public class LpModel {
             this.solverTime = 60;
         }
     }
+
+//    public void setVariableForMergeMap(int M, int N, int[] X, double Weight[], double lamda1, double lamda2,
+//                                       TreeMap<String, Set<Integer>> mergeMap, int[] storedPartitionNum,
+//                                       double[] storedPartitionSize) {
+//        this.mu = 1 - lamda1;
+//        this.M = M;
+//        List<String> keys = mergeMap.keySet().stream().collect(Collectors.toList());
+//        Map<Integer, String> indexKeyMap = new HashMap<>();
+//        for (int i = 0; i < keys.size(); i++) {
+//            String key = keys.get(i);
+//            for (Integer index : mergeMap.get(key)) {
+//                indexKeyMap.put(index, key);
+//            }
+//        }
+//        this.N = keys.size();
+//        int keyNum = keys.size();
+//        LpVariable[][] vars = new LpVariable[keyNum][M];
+//        double avgWeight = Arrays.stream(Weight).sum() / M;
+//        avgWeight += Arrays.stream(storedPartitionSize).sum() / M;
+//        int storedN = Arrays.stream(storedPartitionNum).sum();
+//        int minN = (int) Math.floor((keys.size() + storedN) / (M * 1.0));
+//        int maxN = (int) Math.ceil((keys.size() + storedN) / (M * 1.0));
+//
+//        for (int i = 0; i < keyNum; i++) {
+//            for (int j = 0; j < M; j++) {
+//                String key = keys.get(i);
+//                double scale = 0;
+//                for (Integer index : mergeMap.get(key)) {
+//                    int moveScale = (X[index] == j) ? 0 : 1;
+//                    scale += (Weight[index] + 1) * moveScale;
+//                }
+//                vars[i][j] = new LpVariable()
+//                    .lb(0.0)
+//                    .ub(1.0)
+//                    .isInteger((char) 1)
+//                    .name("x_" + i + "_" + j)
+//                    .objective(scale);
+//                lpSolver.addVariable(vars[i][j]);
+//            }
+//        }
+//
+//        // constraint: every subject must be assigned exactly once
+//        for (int j = 0; j < M; j++) {
+//            LpExpression wMin = new LpExpression();
+//            LpExpression wMax = new LpExpression();
+//            LpExpression nMin = new LpExpression();
+//            LpExpression nMax = new LpExpression();
+//            for (int k = 0; k < keys.size(); k++) {
+//                String key = keys.get(k);
+//                nMin.add(vars[k][j]);
+//                nMax.add(vars[k][j]);
+//                double weight = 0;
+//                for (Integer index : mergeMap.get(key)) {
+//                    weight += Weight[index];
+//                }
+//                wMax.add(weight, vars[k][j]);
+//                wMin.add(weight, vars[k][j]);
+//            }
+//            wMin.add(storedPartitionSize[j]);
+//            wMax.add(storedPartitionSize[j]);
+//            nMin.add(storedPartitionNum[j]);
+//            nMax.add(storedPartitionNum[j]);
+//            wMin.geq(lamda1 * avgWeight).name(String.format("wMin_%d", j));
+//            wMax.leq(lamda2 * avgWeight).name(String.format("wMax_%d", j));
+//            nMin.geq(minN).name(String.format("nMin_%d", j));
+//            nMax.leq(maxN).name(String.format("nMax_%d", j));
+//            lpSolver.addExpression(wMin);
+//            lpSolver.addExpression(wMax);
+//            lpSolver.addExpression(nMin);
+//            lpSolver.addExpression(nMax);
+//        }
+//        // constraint: every slot must be filled exactly once
+//        for (int i = 0; i < keyNum; i++) {
+//            LpExpression expr = new LpExpression();
+//            for (int j = 0; j < M; j++) {
+//                expr.add(vars[i][j]);
+//            }
+//            expr.eq(1.0).name("SumNum" + i);
+//            lpSolver.addExpression(expr);
+//        }
+//        if (N <= 256 && M <= 16) {
+//            this.solverTime = 30;
+//        } else if (N <= 2048 && N >= 1024 && M <= 32) {
+//            this.solverTime = 120;
+//        } else {
+//            this.solverTime = 180;
+//        }
+//
+//    }
+
+//    public void setVariable(int M, int N, int[] X, double Weight[], double lamda1, double lamda2,
+//                            TreeMap<String, Set<Integer>> mergeMap, int[] storedPartitionNum,
+//                            double[] storedPartitionSize) {
+//        // create the variables (and set up the objective coefficients)
+//        // X: N * M matrix,
+//        // Weight: N * 1 vector
+//        this.mu = 1 - lamda1;
+//        this.N = N;
+//        this.M = M;
+//        List<String> keys = mergeMap.keySet().stream().collect(Collectors.toList());
+//        Map<Integer, String> indexKeyMap = new HashMap<>();
+//        for (int i = 0; i < keys.size(); i++) {
+//            String key = keys.get(i);
+//            for (Integer index : mergeMap.get(key)) {
+//                indexKeyMap.put(index, key);
+//            }
+//        }
+//        if (this.N != keys.size()) {
+//            setVariableForMergeMap(M, N, X, Weight, lamda1, lamda2, mergeMap, storedPartitionNum, storedPartitionSize);
+//            return;
+//        }
+//        LpVariable[][] vars = new LpVariable[N][M];
+//        double avgWeight = Arrays.stream(Weight).sum() / M;
+//        avgWeight += Arrays.stream(storedPartitionSize).sum() / M;
+//        int storedN = Arrays.stream(storedPartitionNum).sum();
+//        int minN = (int) Math.floor((keys.size() + storedN) / (M * 1.0));
+//        int maxN = (int) Math.ceil((keys.size() + storedN) / (M * 1.0));
+//        for (int i = 0; i < N; i++) {
+//            for (int j = 0; j < M; j++) {
+//                int moveScale = (X[i] == j) ? 0 : 1;
+//                vars[i][j] = new LpVariable()
+//                    .lb(0.0)
+//                    .ub(1.0)
+//                    .isInteger((char) 1)
+//                    .name("x_" + i + "_" + j)
+//                    .objective((Weight[i] + 1) * moveScale);
+//                lpSolver.addVariable(vars[i][j]);
+//            }
+//        }
+//        // constraint: every subject must be assigned exactly once
+//        for (int j = 0; j < M; j++) {
+//            LpExpression wMin = new LpExpression();
+//            LpExpression wMax = new LpExpression();
+//            LpExpression nMin = new LpExpression();
+//            LpExpression nMax = new LpExpression();
+//            for (int i = 0; i < N; i++) {
+//                wMin.add(Weight[i], vars[i][j]);
+//                wMax.add(Weight[i], vars[i][j]);
+//                nMin.add(vars[i][j]);
+//                nMax.add(vars[i][j]);
+//            }
+//            wMin.add(storedPartitionSize[j]);
+//            wMax.add(storedPartitionSize[j]);
+//            wMin.geq(lamda1 * avgWeight).name(String.format("wMin_%d", j));
+//            wMax.leq(lamda2 * avgWeight).name(String.format("wMax_%d", j));
+//            nMin.add(storedPartitionNum[j]);
+//            nMax.add(storedPartitionNum[j]);
+//            nMin.geq(minN).name(String.format("nMin_%d", j));
+//            nMax.leq(maxN).name(String.format("nMax_%d", j));
+//            lpSolver.addExpression(wMin);
+//            lpSolver.addExpression(wMax);
+//            lpSolver.addExpression(nMin);
+//            lpSolver.addExpression(nMax);
+//        }
+//        // constraint: every slot must be filled exactly once
+//        for (int i = 0; i < N; i++) {
+//            LpExpression expr = new LpExpression();
+//            for (int j = 0; j < M; j++) {
+//                expr.add(vars[i][j]);
+//            }
+//            expr.eq(1.0).name("SumNum" + i);
+//            lpSolver.addExpression(expr);
+//        }
+//        if (N <= 256 && M <= 16) {
+//            this.solverTime = 30;
+//        } else if (N <= 2048 && N >= 1024 && M <= 32) {
+//            this.solverTime = 120;
+//        } else {
+//            this.solverTime = 180;
+//        }
+//    }
 
     public void setVariable(int M, int N, int[] X, double Weight[], double lamda1, double lamda2,
                             int[] drainNodeIndexes) {

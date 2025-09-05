@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -28,8 +27,6 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -44,9 +41,6 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import groovy.sql.Sql;
-import org.apache.calcite.plan.RelOptSchema;
-import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.TableScan;
@@ -72,7 +66,6 @@ import org.apache.calcite.sql.fun.SqlRowOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFamily;
-import org.jetbrains.annotations.NotNull;
 
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -122,7 +115,9 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         /**
          * 如果仅下发至单库单表,替换为 SingleTableOperation
          */
-        if (tableNames.size() == 1 && !lv.hasDynamicPruning() && !lv.unPushDown()) {
+        if (tableNames.size() == 1
+            && !lv.getPushDownOpt().couldDynamicPruning(pc.getExecutionContext())
+            && !lv.unPushDown()) {
             newNode = buildSingleTableScan(oc, lv, or, false);
         } else if (tableNames.size() > 1) {
             // ignore
@@ -184,13 +179,16 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             /**
              * lv may be LogicalView or LogicalModifyView
              */
-            if (!lv.getPushDownOpt().couldDynamicPruning() && PartitionPrunerUtils.checkIfPointSelect(
+            if (!lv.getPushDownOpt().couldDynamicPruning(pc.getExecutionContext())
+                && PartitionPrunerUtils.checkIfPointSelect(
                 lv.getRelShardInfo(pc.getExecutionContext()).getPartPruneStepInfo(), pc.getExecutionContext())) {
+                ExecutionContext exOfPlan = pc.getExecutionContext();
                 processor = ShardProcessor
                     .createPartTblShardProcessor(schemaName, tableName,
                         lv.getRelShardInfo(pc.getExecutionContext()).getPartPruneStepInfo(),
                         null,
-                        true);
+                        true,
+                        exOfPlan);
             } else {
                 return null;
             }
@@ -562,7 +560,8 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
                         logicalInsert.getBatchSize(),
                         logicalInsert.getAppendedColumnIndex(),
                         logicalInsert.getHints(),
-                        logicalInsert.getTableInfo());
+                        logicalInsert.getTableInfo(),
+                        logicalInsert.getDynamicImplicitDefaultParams());
                     // add the sequence field, or change `null` to `?`
                     sqlTemplate = logicalInsert.getSqlTemplate();
                     // fields in sqlTemplate may be reordered

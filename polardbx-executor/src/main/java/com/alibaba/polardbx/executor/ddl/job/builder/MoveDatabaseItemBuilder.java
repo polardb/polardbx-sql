@@ -36,13 +36,7 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Created by luoyanxin.
@@ -97,7 +91,7 @@ public class MoveDatabaseItemBuilder extends DdlPhyPlanBuilder {
 
     @Override
     protected void buildNewTableTopology(String schemaName, String tableName) {
-        tableTopology = new HashMap<>();
+        tableTopology = new TreeMap<>();
         for (Map.Entry<String, String> sourceTargetGroup : preparedData.getSourceTargetGroupMap().entrySet()) {
             List<String> phyTableNames =
                 ScaleOutPlanUtil
@@ -107,11 +101,20 @@ public class MoveDatabaseItemBuilder extends DdlPhyPlanBuilder {
             for (String newPhyTableName : phyTableNames) {
                 List<String> phyTables = new ArrayList<>();
                 phyTables.add(newPhyTableName);
-                tableTopology.computeIfAbsent(sourceTargetGroup.getValue(), o -> new ArrayList<>())
+                if(!tableTopology.containsKey(sourceTargetGroup.getValue())) {
+                    tableTopology.put(sourceTargetGroup.getValue(), new ArrayList<>());
+                }
+                tableTopology.get(sourceTargetGroup.getValue())
                     .add(phyTables);
-                targetPhyTables.computeIfAbsent(sourceTargetGroup.getValue(), o -> new HashSet<>())
+                if(!targetPhyTables.containsKey(sourceTargetGroup.getValue())) {
+                    targetPhyTables.put(sourceTargetGroup.getValue(), new HashSet<>());
+                }
+                targetPhyTables.get(sourceTargetGroup.getValue())
                     .add(newPhyTableName);
-                sourcePhyTables.computeIfAbsent(sourceTargetGroup.getKey(), o -> new HashSet<>())
+                if(!sourcePhyTables.containsKey(sourceTargetGroup.getKey())) {
+                    sourcePhyTables.put(sourceTargetGroup.getKey(), new HashSet<>());
+                }
+                sourcePhyTables.get(sourceTargetGroup.getKey())
                     .add(newPhyTableName);
             }
             if (defaultGroupAndPhyTable == null) {

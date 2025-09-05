@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.sync.SyncScope;
@@ -58,6 +59,7 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
 
     final String indexName;
     final List<String> columns;
+    final List<Long> subParts;
     final List<String> coverings;
     final boolean unique;
     final String indexComment;
@@ -69,12 +71,14 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
     final boolean needOnlineSchemaChange;
     final Map<String, String> columnMapping;
     final List<String> addNewColumns;
+    final LackLocalIndexStatus lackingLocalIndex;
 
     @JSONCreator
     public GsiInsertIndexMetaTask(String schemaName,
                                   String logicalTableName,
                                   String indexName,
                                   List<String> columns,
+                                  List<Long> subParts,
                                   List<String> coverings,
                                   boolean unique,
                                   String indexComment,
@@ -82,12 +86,14 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
                                   IndexStatus indexStatus,
                                   boolean clusteredIndex,
                                   final IndexVisibility visibility,
+                                  LackLocalIndexStatus lackingLocalIndex,
                                   boolean needOnlineSchemaChange,
                                   Map<String, String> columnMapping,
                                   List<String> addNewColumns) {
         super(schemaName, logicalTableName);
         this.indexName = indexName;
         this.columns = ImmutableList.copyOf(columns);
+        this.subParts = subParts;
         this.coverings = ImmutableList.copyOf(coverings);
         this.unique = unique;
         this.indexComment = indexComment == null ? "" : indexComment;
@@ -95,6 +101,7 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
         this.indexStatus = indexStatus;
         this.clusteredIndex = clusteredIndex;
         this.visibility = visibility;
+        this.lackingLocalIndex = lackingLocalIndex;
         this.needOnlineSchemaChange = needOnlineSchemaChange;
         this.columnMapping = columnMapping;
         this.addNewColumns = addNewColumns;
@@ -119,11 +126,13 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
             primaryTableMeta,
             indexName,
             columns,
+            subParts,
             coverings,
             !unique,
             indexComment,
             indexType,
             indexStatus,
+            lackingLocalIndex,
             clusteredIndex,
             false,
             columnMapping,
@@ -154,6 +163,10 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
                 IndexVisibility.VISIBLE,
                 IndexVisibility.INVISIBLE
             );
+        }
+
+        if (lackingLocalIndex.equals(LackLocalIndexStatus.LACKING)) {
+            GsiMetaChanger.updateLackingLocalIndex(metaDbConnection, schemaName, logicalTableName, indexName, lackingLocalIndex);
         }
 
         //2. insert metadata into indexes

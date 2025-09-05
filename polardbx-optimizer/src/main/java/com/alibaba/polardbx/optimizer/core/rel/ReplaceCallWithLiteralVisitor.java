@@ -135,7 +135,9 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             logicalInsert.isPushablePrimaryKeyCheck(),
             logicalInsert.isPushableForeignConstraintCheck(),
             logicalInsert.isModifyForeignKey(),
-            logicalInsert.isUkContainsAllSkAndGsiContainsAllUk());
+            logicalInsert.isUkContainsAllSkAndGsiContainsAllUk(),
+            logicalInsert.getDynamicImplicitDefaultParams(),
+            logicalInsert.getUnoptimizedDynamicImplicitDefaultParams());
         return newInsert;
     }
 

@@ -16,15 +16,25 @@
 
 package com.alibaba.polardbx.executor.columnar.pruning.index;
 
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
+
+import java.time.ZoneId;
+import java.util.TimeZone;
 
 /**
  * @author fangwu
  */
 public abstract class BaseColumnIndex implements ColumnIndex {
+    private static final ZoneId DEFAULT_TIME_ZONE = TimeZone.getTimeZone("GMT+08:00").toZoneId();
+
     private long rgNum;
 
     protected BaseColumnIndex(long rgNum) {
@@ -53,10 +63,33 @@ public abstract class BaseColumnIndex implements ColumnIndex {
             }
         } else if (DataTypeUtil.isDateType(dt)) {
             MysqlDateTime date = DataTypeUtil.toMySQLDatetime(value, dt.getSqlType());
-            if (clazz.equals(Long.class) && date != null) {
-                return clazz.cast(date.toPackedLong());
+            if (date == null) {
+                return null;
+            }
+            if (clazz.equals(Long.class)) {
+                if (DataTypeUtil.equalsSemantically(DataTypes.TimestampType, dt)) {
+                    return clazz.cast(convertToLongFromMysqlDateTime(date));
+                } else {
+                    return clazz.cast(date.toPackedLong());
+                }
             }
         }
         return null;
     }
+
+    /**
+     * 将字符串时间转成的MysqlDateTime转成MySQLTimeVal，再转成long, 与columnar写入对齐
+     */
+    public static long convertToLongFromMysqlDateTime(MysqlDateTime t) {
+        TimeParseStatus timeParseStatus = new TimeParseStatus();
+        MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(t, timeParseStatus,
+            DEFAULT_TIME_ZONE);
+        if (timeVal == null) {
+            // for error time value, set to zero.
+            timeVal = new MySQLTimeVal();
+        }
+        return XResultUtil.timeValToLong(timeVal);
+    }
+
+    public abstract long getSizeInBytes();
 }

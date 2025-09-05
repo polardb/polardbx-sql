@@ -16,15 +16,19 @@
 
 package com.alibaba.polardbx.common.datatype;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.common.utils.Pair;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.io.Serializable;
 
 import static com.alibaba.polardbx.common.datatype.DecimalRoundMod.HALF_UP;
 
-public class DecimalStructure extends DecimalTypeBase implements Serializable {
+public class DecimalStructure extends DecimalTypeBase implements Serializable, MemoryCountable {
+    private static int INSTANCE_SIZE = ClassLayout.parseClass(DecimalStructure.class).instanceSize();
 
     private Slice decimalMemorySegment;
 
@@ -44,6 +48,14 @@ public class DecimalStructure extends DecimalTypeBase implements Serializable {
         this.decimalMemorySegment = decimalMemorySegment;
     }
 
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + FastMemoryCounter.sizeOf(decimalMemorySegment);
+    }
+
+    /**
+     * Set the decimal value to 0.
+     */
     public void toZero() {
         setIntegers(1);
         setFractions(getDerivedFractions());

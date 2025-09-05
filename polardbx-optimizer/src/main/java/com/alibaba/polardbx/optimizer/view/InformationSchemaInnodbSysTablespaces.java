@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.view;
 
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelInput;
@@ -42,17 +43,37 @@ public class InformationSchemaInnodbSysTablespaces extends VirtualView {
         final RelDataTypeFactory typeFactory = getCluster().getTypeFactory();
         List<RelDataTypeFieldImpl> columns = new LinkedList<>();
         columns.add(new RelDataTypeFieldImpl("SPACE", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-        columns.add(new RelDataTypeFieldImpl("NAME", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("FLAG", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-        columns.add(new RelDataTypeFieldImpl("FILE_FORMAT", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("ROW_FORMAT", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PAGE_SIZE", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-        columns.add(new RelDataTypeFieldImpl("ZIP_PAGE_SIZE", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-        columns.add(new RelDataTypeFieldImpl("SPACE_TYPE", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("FS_BLOCK_SIZE", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-        columns.add(new RelDataTypeFieldImpl("FILE_SIZE", 0, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("ALLOCATED_SIZE", 0, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("NAME", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("FLAG", 2, typeFactory.createSqlType(SqlTypeName.INTEGER)));
+        columns.add(new RelDataTypeFieldImpl("FILE_FORMAT", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("ROW_FORMAT", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PAGE_SIZE", 5, typeFactory.createSqlType(SqlTypeName.INTEGER)));
+        columns.add(new RelDataTypeFieldImpl("ZIP_PAGE_SIZE", 6, typeFactory.createSqlType(SqlTypeName.INTEGER)));
+        columns.add(new RelDataTypeFieldImpl("SPACE_TYPE", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("FS_BLOCK_SIZE", 8, typeFactory.createSqlType(SqlTypeName.INTEGER)));
+        columns.add(new RelDataTypeFieldImpl("FILE_SIZE", 9, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("ALLOCATED_SIZE", 10, typeFactory.createSqlType(SqlTypeName.BIGINT)));
 
         return typeFactory.createStructType(columns);
+    }
+
+    @Override
+    boolean indexableColumn(int i) {
+        return i == getNameIndex();
+    }
+
+    private static final List<Integer> INDEXABLE_COLUMNS;
+
+    static {
+        INDEXABLE_COLUMNS = Lists.newArrayList(getNameIndex());
+    }
+
+    @Override
+    List<Integer> indexableColumnList() {
+        return INDEXABLE_COLUMNS;
+    }
+
+    static public int getNameIndex() {
+        return 1;
     }
 }

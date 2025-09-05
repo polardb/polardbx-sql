@@ -790,6 +790,9 @@ public interface CalciteResource {
 
     @BaseMessage("Cannot UPDATE generated column ''{0}''")
     ExInst<SqlValidatorException> updateAlwaysGenerated(String a0);
+
+    @BaseMessage("Sequence ''{0}'' not found")
+    ExInst<SqlValidatorException> sequenceNotFound(String a0);
 }
 
 //FullyQualified

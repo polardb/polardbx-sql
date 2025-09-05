@@ -117,6 +117,8 @@ public class ColumnarTableMappingAccessor extends AbstractAccessor {
 
     private static final String SELECT_TABLE_BY_STATUS = SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_STATUS;
 
+    private static final String SELECT_LIMIT_1 = SELECT_ALL_COLUMNS + FROM_TABLE + " limit 1";
+
     private static final String SELECT_TABLE_BY_SCHEMA_AND_STATUS =
         SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_SCHEMA_AND_STATUS;
 
@@ -175,7 +177,7 @@ public class ColumnarTableMappingAccessor extends AbstractAccessor {
             + FILES_TABLE
             + " as b on a.`table_schema` = b.`logical_schema_name` and a.`table_id` = b.`logical_table_name` "
             + " where a.`status` = '" + ColumnarTableStatus.PUBLIC.name()
-            + "' and b.`remove_ts` is not null and b.`remove_ts` < ? ";
+            + "' and b.`remove_ts` is not null and b.`remove_ts` < ? and ( a.`type` is null or a.`type` != 'snapshot' ) ";
 
     private static final String SELECT_PURGE_TABLE_WHICH_HAVE_PURGE_FILE_BY_TSO_AND_TYPE =
         "select DISTINCT a.`table_id`, a.`table_schema`, a.`table_name`, a.`index_name`, a.`latest_version_id`, a.`status`, a.`extra`, a.`type` "
@@ -183,7 +185,7 @@ public class ColumnarTableMappingAccessor extends AbstractAccessor {
             + FILES_TABLE
             + " as b on a.`table_schema` = b.`logical_schema_name` and a.`table_id` = b.`logical_table_name` "
             + " where a.`status` = '" + ColumnarTableStatus.PUBLIC.name()
-            + "' and b.`remove_ts` is not null and b.`remove_ts` < ? and type = ?";
+            + "' and b.`remove_ts` is not null and b.`remove_ts` < ? and a.type = ?";
 
     public int[] insert(List<ColumnarTableMappingRecord> records) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -275,6 +277,11 @@ public class ColumnarTableMappingAccessor extends AbstractAccessor {
 
     public List<ColumnarTableMappingRecord> queryAll() {
         return query(SELECT_ALL, COLUMNAR_TABLE_MAPPING_TABLE, ColumnarTableMappingRecord.class,
+            Collections.emptyMap());
+    }
+
+    public List<ColumnarTableMappingRecord> queryLimitOne() {
+        return query(SELECT_LIMIT_1, COLUMNAR_TABLE_MAPPING_TABLE, ColumnarTableMappingRecord.class,
             Collections.emptyMap());
     }
 

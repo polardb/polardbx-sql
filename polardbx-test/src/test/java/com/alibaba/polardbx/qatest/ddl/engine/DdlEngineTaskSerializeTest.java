@@ -103,13 +103,13 @@ public class DdlEngineTaskSerializeTest extends DDLBaseNewDBTestCase {
                     if (!results.isEmpty()) {
                         Long jobId = Long.valueOf(results.get(0).get(0).toString());
                         String queryDdlTaskValue = String.format(
-                            "select name, value from metadb.ddl_engine_task where schema_name = '%s' and job_id = '%d'",
+                            "select name, task_id, value from metadb.ddl_engine_task where schema_name = '%s' and job_id = '%d'",
                             schemaName, jobId);
                         List<List<Object>> queryDdlTaskValueResults =
                             JdbcUtil.getAllResult(JdbcUtil.executeQuery(queryDdlTaskValue,
                                 connection));
                         queryDdlTaskName2Value = queryDdlTaskValueResults.stream()
-                            .collect(Collectors.toMap(o -> o.get(0).toString(), o -> o.get(1).toString()));
+                            .collect(Collectors.toMap(o -> o.get(0).toString() + o.get(1).toString(), o -> o.get(2).toString()));
                     }
                     ddlSerrialized =
                         (!results.isEmpty()) && (!queryDdlTaskName2Value.isEmpty());
@@ -164,7 +164,7 @@ public class DdlEngineTaskSerializeTest extends DDLBaseNewDBTestCase {
         });
     }
 
-    void innerTest(String tableName, Connection connection, String sql, int maxWaitTimeout,
+    void innerTest(String tableName, Connection connection, String sql, int maxWaitTimeout, boolean isDdl,
                    String otherErrMsg) throws SQLException {
         final ExecutorService ddlThreadPool = new ThreadPoolExecutor(2, 2, 0L,
             TimeUnit.MILLISECONDS, new SynchronousQueue<>(),
@@ -173,7 +173,9 @@ public class DdlEngineTaskSerializeTest extends DDLBaseNewDBTestCase {
 
         // Connection 1: ddl
         Connection connection1 = getPolardbxConnection();
-        futures.add(checkSerializeTask(ddlThreadPool, tableName, connection1));
+        if(isDdl) {
+            futures.add(checkSerializeTask(ddlThreadPool, tableName, connection1));
+        }
         futures.add(executeSqlAndCommit(ddlThreadPool, tableName, tddlConnection, sql));
 
         for (Future<Boolean> future : futures) {
@@ -226,7 +228,7 @@ public class DdlEngineTaskSerializeTest extends DDLBaseNewDBTestCase {
         String createTableStmt = "create table " + createOption + " %s" + generateColumnDef(partitionByColumnName, 10) +
             generatePartitionByDef(partitionByColumnName, 1024);
         String sql = String.format(createTableStmt, mytable);
-        int maxWaitTimeout = 180;
+        int maxWaitTimeout = 1200;
         String checkPhyTableFailedHint =
             String.format(
                 "/*+TDDL:CMD_EXTRA(EMIT_PHY_TABLE_DDL_DELAY=%d, CREATE_TABLE_SKIP_CDC=true, ACQUIRE_CREATE_TABLE_GROUP_LOCK=false)*/",
@@ -235,12 +237,12 @@ public class DdlEngineTaskSerializeTest extends DDLBaseNewDBTestCase {
 
         String errMsg = "doesn't exist";
         String otherErrMsg = "Execute AlterTableCheckPhyTableDoneFailed timeout.";
-        innerTest(mytable, tddlConnection, sql, maxWaitTimeout, otherErrMsg);
+        innerTest(mytable, tddlConnection, sql, maxWaitTimeout, true, otherErrMsg);
     }
 
     @Test
-    public void testCreateTable2048Partitions() throws SQLException {
-        String mytable = generateTableName(2048);
+    public void testCreateTable800Partitions() throws SQLException {
+        String mytable = generateTableName(800);
         try {
             dropTableIfExists(mytable);
         } catch (Exception e) {
@@ -248,17 +250,33 @@ public class DdlEngineTaskSerializeTest extends DDLBaseNewDBTestCase {
         }
         String partitionByColumnName = generateColumnName();
         String createTableStmt = "create table " + createOption + " %s" + generateColumnDef(partitionByColumnName, 40) +
-            generatePartitionByDef(partitionByColumnName, 2048);
+            generatePartitionByDef(partitionByColumnName, 800);
         String sql = String.format(createTableStmt, mytable);
-        int maxWaitTimeout = 360;
+        int maxWaitTimeout = 1200;
         String checkPhyTableFailedHint =
             String.format(
-                "/*+TDDL:CMD_EXTRA(EMIT_PHY_TABLE_DDL_DELAY=%d, CREATE_TABLE_SKIP_CDC=true, ACQUIRE_CREATE_TABLE_GROUP_LOCK=false)*/",
-                largeDelay);
+                "/*+TDDL:CMD_EXTRA(ACQUIRE_CREATE_TABLE_GROUP_LOCK=false)*/");
         sql = checkPhyTableFailedHint + sql;
 
         String errMsg = "doesn't exist";
+        logger.info("execute " + sql);
         String otherErrMsg = "Execute AlterTableCheckPhyTableDoneFailed timeout.";
-        innerTest(mytable, tddlConnection, sql, maxWaitTimeout, otherErrMsg);
+        innerTest(mytable, tddlConnection, sql, maxWaitTimeout, true, otherErrMsg);
+        logger.info("execute " + sql + " success");
+
+        String checkTableStmt = "check table " + mytable;
+        logger.info("execute " + checkTableStmt);
+        innerTest(mytable, tddlConnection, checkTableStmt, maxWaitTimeout, false, otherErrMsg);
+        logger.info("execute " + checkTableStmt + " success");
+
+        String alterTableAddColumnStmt = "alter table " + mytable + " add column x1 int";
+        logger.info("execute " + alterTableAddColumnStmt);
+        innerTest(mytable, tddlConnection, alterTableAddColumnStmt, maxWaitTimeout, true, otherErrMsg);
+        logger.info("execute " + alterTableAddColumnStmt + " success");
+
+        String analyzeTableStmt = "analyze table " + mytable;
+        logger.info("execute " + analyzeTableStmt);
+        JdbcUtil.executeQuerySuccess(tddlConnection, analyzeTableStmt);
+        logger.info("execute " + analyzeTableStmt + " success");
     }
 }

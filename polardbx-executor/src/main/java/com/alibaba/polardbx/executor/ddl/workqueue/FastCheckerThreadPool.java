@@ -102,14 +102,11 @@ public class FastCheckerThreadPool {
      * 根据storageInstName分配线程池
      * pair< storageInstName, task>
      */
-    public void submitTasks(List<Pair<String, Runnable>> storageInstNameAndTasks) {
+    public void initializeExecutorsForInsts(List<String> instNames) {
         synchronized (this.executors) {
-            for (Pair<String, Runnable> instNameAndTask : storageInstNameAndTasks) {
-                String instName = instNameAndTask.getKey();
-                Runnable task = instNameAndTask.getValue();
-
+            for (String instName : instNames) {
                 if (!executors.containsKey(instName)) {
-                    int defaultThreadPoolSize = Integer.valueOf(
+                    int defaultThreadPoolSize = Integer.parseInt(
                         MetaDbInstConfigManager.getInstance().getInstProperty(
                             ConnectionProperties.FASTCHECKER_THREAD_POOL_SIZE,
                             ConnectionParams.FASTCHECKER_THREAD_POOL_SIZE.getDefault()
@@ -142,7 +139,15 @@ public class FastCheckerThreadPool {
                         executors.values()
                     ));
                 }
+            }
+        }
+    }
 
+    public void submitTasks(List<Pair<String, Runnable>> storageInstNameAndTasks) {
+        synchronized (this.executors) {
+            for (Pair<String, Runnable> instNameAndTask : storageInstNameAndTasks) {
+                String instName = instNameAndTask.getKey();
+                Runnable task = instNameAndTask.getValue();
                 ThreadPoolExecutor executor = executors.get(instName);
                 executor.execute(task);
             }

@@ -29,6 +29,7 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeVisitor;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
@@ -54,10 +55,12 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.function.SqlSequenceFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlValuesFunction;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.LastInsertId;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.RexFilter;
 import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
@@ -72,6 +75,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.primitives.UnsignedLongs;
 import io.airlift.slice.Slice;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptUtil;
@@ -120,12 +125,14 @@ import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVisitor;
 import org.apache.calcite.rex.RexVisitorImpl;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.fun.SqlQuantifyOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Util;
+import org.jetbrains.annotations.NotNull;
 
 import java.math.BigInteger;
 import java.sql.Types;
@@ -133,10 +140,12 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -252,7 +261,7 @@ public class RexUtils {
      * @param ec ExecutionContext
      * @param handlerParams Out param for sequence related values
      */
-    public static void updateParam(LogicalInsert insert, ExecutionContext ec, boolean handleDuplicateKeyUpdateList,
+    public static void updateParam(LogicalInsert insert, ExecutionContext ec, boolean isPushdownExecute,
                                    LogicalInsert.HandlerParams handlerParams) {
         if (OptimizerContext.getContext(insert.getSchemaName()).isSqlMock()) {
             return;
@@ -263,9 +272,14 @@ public class RexUtils {
 
         final LogicalDynamicValues values = RelUtils.getRelInput(insert);
 
+        // Handle dynamic implicit default
+        if (insert.withDynamicImplicitDefaultParams()) {
+            replaceDynamicImplicitDefaultParam(insert, ec);
+        }
+
         // Handle expression
         replaceExpressionWithLiteralParam(values, ec);
-        if (insert.withDuplicateKeyUpdate() && handleDuplicateKeyUpdateList) {
+        if (insert.withDuplicateKeyUpdate() && isPushdownExecute) {
             // Deterministic pushdown
             replaceExpressionForDuplicateKeyUpdate(insert, ec);
         }
@@ -414,6 +428,48 @@ public class RexUtils {
         }
     }
 
+    private static void replaceDynamicImplicitDefaultParam(LogicalInsert insert, ExecutionContext ec) {
+        for (RexCallParam rexCallParam : insert.getDynamicImplicitDefaultParams()) {
+            final RexNode rexNode = rexCallParam.getRexCall();
+
+            // Compute value only once
+            Object value = RexUtils.getValueFromRexNode(rexNode, ec, new HashMap<>());
+            if (value instanceof Slice) {
+                if (isBinaryReturnType(rexNode)) {
+                    value = ((Slice) value).getBytes();
+                } else {
+                    value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                }
+            } else if (value instanceof ByteString) {
+                value = ((ByteString) value).getBytes();
+            }
+
+            // Add value to ExecutionContext
+            final Parameters params = ec.getParams();
+            final boolean isBatch = params.isBatch();
+            if (isBatch) {
+                final List<Map<Integer, ParameterContext>> batchParams = params.getBatchParameters();
+
+                for (Map<Integer, ParameterContext> param : batchParams) {
+                    final int paramIndex = rexCallParam.getIndex();
+                    final ParameterContext newPc = new ParameterContext(ParameterMethod.setObject1, new Object[] {
+                        paramIndex + 1, value});
+
+                    param.put(paramIndex + 1, newPc);
+                }
+            } else {
+                final Map<Integer, ParameterContext> param = params.getCurrentParameter();
+
+                final int paramIndex = rexCallParam.getIndex();
+                final ParameterContext newPc = new ParameterContext(ParameterMethod.setObject1, new Object[] {
+                    paramIndex + 1, value});
+
+                param.put(paramIndex + 1, newPc);
+            }
+
+        }
+    }
+
     public static void handleDefaultExpr(TableMeta tableMeta, LogicalInsert insert, ExecutionContext ec) {
         if (tableMeta.hasDefaultExprColumn() && InstanceVersion.isMYSQL80()) {
             final Function<RexNode, Object> evalFunc = getEvalFunc(ec);
@@ -515,7 +571,7 @@ public class RexUtils {
     public static void replaceExpressionWithLiteralParam(LogicalDynamicValues values, ExecutionContext ec) {
         for (List<RexNode> tuple : values.tuples) {
             for (RexNode rex : tuple) {
-                if (!(rex instanceof RexCallParam)) {
+                if (!(rex instanceof RexCallParam) || ((RexCallParam) rex).isCommonImplicitDefault()) {
                     continue;
                 }
 
@@ -632,7 +688,8 @@ public class RexUtils {
         final RexShuttle visitor = new RexShuttle() {
             @Override
             public RexNode visitDynamicParam(RexDynamicParam dynamicParam) {
-                if (!(dynamicParam instanceof RexCallParam)) {
+                if (!(dynamicParam instanceof RexCallParam)
+                    || ((RexCallParam) dynamicParam).isCommonImplicitDefault()) {
                     return super.visitDynamicParam(dynamicParam);
                 }
 
@@ -787,7 +844,7 @@ public class RexUtils {
                 result.add(value);
             } catch (Exception e) {
                 throw new UnsupportedOperationException(
-                    "Get value from " + rex.getClass() + " is not supported");
+                    "Get value from " + rex.getClass() + " is not supported", e);
             }
         }
 
@@ -1216,6 +1273,13 @@ public class RexUtils {
         final String tableName = relNode.getLogicalTableName();
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
 
+        //0. compute dynamic implicit default
+        if (null != relNode.getUnoptimizedDynamicImplicitDefaultParams()) {
+            for (RexCallParam rexCallParam : relNode.getUnoptimizedDynamicImplicitDefaultParams()) {
+                evalRexCallParam(rexCallParam, executionContext, RexCallParam::getRexCall);
+            }
+        }
+
         //1、compute/move all the param to the newParams and update the index for each column param
         Ord.zip(oldInput.getTuples()).forEach(o -> {
             final ImmutableList<RexNode> row = o.getValue();
@@ -1282,8 +1346,12 @@ public class RexUtils {
             try {
                 newValue = Long.parseLong((String) autoIncValue);
             } catch (NumberFormatException e) {
-                // Round up for float or double type
-                newValue = (long) Math.ceil(Double.parseDouble((String) autoIncValue));
+                try {
+                    // Round up for float or double type
+                    newValue = (long) Math.ceil(Double.parseDouble((String) autoIncValue));
+                } catch (NumberFormatException e1) {
+                    newValue = 0;
+                }
             }
         }
         return newValue;
@@ -1336,6 +1404,285 @@ public class RexUtils {
         );
     }
 
+    /**
+     * if rexNode is nullable, wrap rexNode with IF_NULL(rexNode, defaultRex)
+     */
+    public static RexNode ifNullDefault(RexNode rexNode, RexNode defaultRex, RexBuilder rexBuilder) {
+        final NullableState nullableState = checkNullableState(rexNode);
+        return ifNullDefault(rexNode, defaultRex, rexBuilder, nullableState);
+    }
+
+    public static RexNode ifNullDefault(RexNode rexNode, RexNode defaultRex, RexBuilder rexBuilder,
+                                        NullableState nullableState) {
+        if (nullableState.isNull()) {
+            return defaultRex;
+        } else if (nullableState.isNotNull()) {
+            return rexNode;
+        }
+
+        if ((rexNode == defaultRex) || (TStringUtil.equalsIgnoreCase(rexNode.toString(), defaultRex.toString()))) {
+            return rexNode;
+        }
+
+        // IF(IS_NULL(col), defaultRex, col)
+        // equals to
+        // IF_NULL(col, defaultRex)
+
+        return rexBuilder.makeCall(
+            rexNode.getType(),
+            TddlOperatorTable.IFNULL,
+            ImmutableList.of(
+                rexNode,
+                defaultRex
+            )
+        );
+    }
+
+    public static Long currentTimestampScaleFinder(RexNode rex) {
+        if (!(rex instanceof RexCall)) {
+            return -1L;
+        }
+
+        final RexCall rexCall = (RexCall) rex;
+
+        if (!rexCall.getOperator().getName().equalsIgnoreCase("CURRENT_TIMESTAMP")) {
+            return -1L;
+        }
+
+        final List<RexNode> operands = rexCall.getOperands();
+
+        return operands.isEmpty() ? 0L : RexUtils.integerValue((RexLiteral) operands.get(0));
+    }
+
+    /**
+     * @return true if the function is unpushable or function is last_insert_id()
+     */
+    public static boolean isUnpushableFunction(RexCall rexCall) {
+        return !rexCall.getOperator().canPushDown()
+            || (Objects.equals(rexCall.getOperator().getName(), LastInsertId.NAME)
+            && rexCall.getOperands().isEmpty());
+    }
+
+    public static @NotNull RexCallParam wrapWithRexCallParam(RexNode rexNode, AtomicInteger paramIndex) {
+        return wrapWithRexCallParam(rexNode, paramIndex, false);
+    }
+
+    public static @NotNull RexCallParam wrapWithRexCallParam(RexNode rexNode, AtomicInteger paramIndex,
+                                                             boolean wrapRexDynamicParam) {
+        return new RexCallParam(rexNode.getType(), paramIndex.incrementAndGet(), rexNode, wrapRexDynamicParam, false);
+    }
+
+    public static NullableState checkNullableState(RexNode node) {
+        NullableState result = NullableState.BOTH;
+        if (node instanceof RexLiteral) {
+            final RexLiteral literal = (RexLiteral) node;
+            if (literal.isNull()) {
+                result = NullableState.IS_NULL;
+            } else {
+                result = NullableState.IS_NOT_NULL;
+            }
+        } else if (node.isA(SqlKind.CAST)) {
+            RexCall call = (RexCall) node;
+            result = checkNullableState(call.operands.get(0));
+        } else if (node instanceof RexCall) {
+            final RexCall rexCall = (RexCall) node;
+            if (!rexCall.getOperator().isNullable()) {
+                result = NullableState.IS_NOT_NULL;
+            } else if (rexCall.getOperator().equals(TddlOperatorTable.IFNULL)) {
+                result = checkNullableState(rexCall.operands.get(0))
+                    .ifNullDefault(checkNullableState(rexCall.operands.get(1)));
+            }
+        } else if (node instanceof RexCallParam) {
+            result = checkNullableState(((RexCallParam) node).getRexCall());
+        } else if (!node.getType().isNullable()) {
+            result = NullableState.IS_NOT_NULL;
+        }
+
+        return result;
+    }
+
+    public static void replaceParamWithHigherScale(RexCall newCall, AtomicInteger maxParamIndex,
+                                                   Map<String, RexCallParam> outMapToBeUpdated) {
+        final SqlOperator newOp = newCall.getOperator();
+        final List<RexNode> newOperands = newCall.getOperands();
+        if (newOp.getName().equalsIgnoreCase("CURRENT_TIMESTAMP")) {
+            outMapToBeUpdated.compute(newOp.getName(), (k, v) -> {
+                if (v == null) {
+                    return wrapWithRexCallParam(newCall, maxParamIndex);
+                } else if (!newOperands.isEmpty()) {
+                    final RexCall oldCall = (RexCall) v.getRexCall();
+                    final List<RexNode> oldOperands = oldCall.getOperands();
+                    if (oldOperands.isEmpty()) {
+                        return wrapWithRexCallParam(newCall, maxParamIndex);
+                    } else {
+                        final Long newScale = integerValue((RexLiteral) newOperands.get(0));
+                        final Long oldScale = integerValue((RexLiteral) oldOperands.get(0));
+
+                        if (oldScale < newScale) {
+                            return wrapWithRexCallParam(newCall, maxParamIndex);
+                        }
+                    }
+                }
+
+                return v;
+            });
+        }
+    }
+
+    public static Long integerValue(RexLiteral literal) {
+        return Long.parseLong(RexLiteralTypeUtils.getJavaObjectFromRexLiteral(literal).toString());
+    }
+
+    public enum NullableState {
+        IS_NULL, IS_NOT_NULL, BOTH;
+
+        public boolean isNull() {
+            return this == IS_NULL;
+        }
+
+        public boolean isNotNull() {
+            return this == IS_NOT_NULL;
+        }
+
+        public boolean isNullable() {
+            return EnumSet.of(IS_NULL, BOTH).contains(this);
+        }
+
+        public static final Map<NullableState, Map<NullableState, NullableState>> IF_NULL_DEFAULT_MAP = new HashMap<>();
+
+        static {
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(IS_NULL, k -> new HashMap<>()).put(IS_NULL, IS_NULL);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(IS_NULL, k -> new HashMap<>()).put(IS_NOT_NULL, IS_NOT_NULL);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(IS_NULL, k -> new HashMap<>()).put(BOTH, BOTH);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(IS_NOT_NULL, k -> new HashMap<>()).put(IS_NULL, IS_NOT_NULL);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(IS_NOT_NULL, k -> new HashMap<>()).put(IS_NOT_NULL, IS_NOT_NULL);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(IS_NOT_NULL, k -> new HashMap<>()).put(BOTH, IS_NOT_NULL);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(BOTH, k -> new HashMap<>()).put(IS_NULL, BOTH);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(BOTH, k -> new HashMap<>()).put(IS_NOT_NULL, IS_NOT_NULL);
+            IF_NULL_DEFAULT_MAP.computeIfAbsent(BOTH, k -> new HashMap<>()).put(BOTH, BOTH);
+        }
+
+        public NullableState ifNullDefault(NullableState defaultValueState) {
+            return Optional.ofNullable(IF_NULL_DEFAULT_MAP.get(this))
+                .map(m -> m.get(defaultValueState))
+                .orElse(BOTH);
+        }
+    }
+
+    /**
+     * Base interface for RexNode Decorator
+     */
+    public interface RexNodeTransformer {
+        RexNode transform();
+    }
+
+    @RequiredArgsConstructor
+    public static class BaseRexNodeTransformer implements RexNodeTransformer {
+
+        private final RexNode rexNode;
+
+        @Override
+        public RexNode transform() {
+            return rexNode;
+        }
+    }
+
+    @RequiredArgsConstructor
+    public static abstract class RexNodeDecorator implements RexNodeTransformer {
+        protected final RexNodeTransformer transformer;
+        protected final RexFilter filter;
+    }
+
+    public static class ReplaceWithScaleDecorator extends RexNodeDecorator {
+        protected final RexBuilder rexBuilder;
+        protected final RexNode replacedRex;
+        protected final Long maxScale;
+        protected final Function<RexNode, Long> scaleOpFinder;
+
+        public ReplaceWithScaleDecorator(RexNodeTransformer wrapper, RexBuilder rexBuilder, RexFilter filter,
+                                         RexNode replacedRex, Long maxScale, Function<RexNode, Long> scaleOpFinder) {
+            super(wrapper, filter);
+            this.rexBuilder = rexBuilder;
+            this.replacedRex = replacedRex;
+            this.maxScale = maxScale;
+            this.scaleOpFinder = scaleOpFinder;
+        }
+
+        @Override
+        public RexNode transform() {
+            RexNode rex = transformer.transform();
+
+            if (filter.test(rex)) {
+                final Long currentScale = scaleOpFinder.apply(rex);
+                if (currentScale >= 0L && currentScale < maxScale) {
+                    rex = rexBuilder.makeCastForConvertlet(rex.getType(), replacedRex);
+                } else {
+                    rex = replacedRex;
+                }
+            }
+
+            return rex;
+        }
+    }
+
+    /**
+     * Wrap RexNode with IF_NULL(rexNode, defaultRex)
+     */
+    public static class IfNullDefaultDecorator extends RexNodeDecorator {
+        private final RexNode defaultRex;
+        private final RexBuilder rexBuilder;
+        private final NullableState nullableState;
+
+        public IfNullDefaultDecorator(RexNodeTransformer wrapper, RexFilter filter,
+                                      RexNode defaultRex,
+                                      RexBuilder rexBuilder, NullableState nullableState) {
+            super(wrapper, filter);
+            this.defaultRex = defaultRex;
+            this.rexBuilder = rexBuilder;
+            this.nullableState = nullableState;
+        }
+
+        @Override
+        public RexNode transform() {
+            RexNode rex = transformer.transform();
+
+            if (filter.test(rex)) {
+                final NullableState nullableState =
+                    Optional.ofNullable(this.nullableState).orElse(checkNullableState(rex));
+
+                rex = ifNullDefault(rex, defaultRex, rexBuilder, nullableState);
+            }
+
+            return rex;
+        }
+    }
+
+    /**
+     * Transform RexNode to RexCallParam
+     */
+    public static class RexCallParamDecorator extends RexNodeDecorator {
+        private final AtomicInteger currentMaxParamIndex;
+        private final boolean wrapRexDynamicParam;
+
+        public RexCallParamDecorator(RexNodeTransformer wrapper, RexFilter filter, AtomicInteger currentMaxParamIndex,
+                                     boolean wrapRexDynamicParam) {
+            super(wrapper, filter);
+            this.currentMaxParamIndex = currentMaxParamIndex;
+            this.wrapRexDynamicParam = wrapRexDynamicParam;
+        }
+
+        @Override
+        public RexNode transform() {
+            RexNode rex = transformer.transform();
+
+            if (filter.test(rex) && !(rex instanceof RexCallParam)) {
+                rex = wrapWithRexCallParam(rex, currentMaxParamIndex, wrapRexDynamicParam);
+            }
+
+            return rex;
+        }
+    }
+
     public static class ParamFinder extends RexVisitorImpl {
 
         private final List<RexDynamicParam> params = new ArrayList<>();
@@ -1350,7 +1697,7 @@ public class RexUtils {
                 return result;
             }
 
-            if (rex instanceof RexDynamicParam) {
+            if (rex instanceof RexDynamicParam && !(rex instanceof RexCallParam)) {
                 result.add((RexDynamicParam) rex);
                 return result;
             }
@@ -1368,7 +1715,11 @@ public class RexUtils {
 
         @Override
         public Object visitDynamicParam(RexDynamicParam dynamicParam) {
-            params.add(dynamicParam);
+            if (dynamicParam instanceof RexCallParam) {
+                ((RexCallParam) dynamicParam).getRexCall().accept(this);
+            } else {
+                params.add(dynamicParam);
+            }
             return super.visitDynamicParam(dynamicParam);
         }
 
@@ -1379,7 +1730,10 @@ public class RexUtils {
     }
 
     public static class FindMinDynamicParam extends RexShuttle {
+        @Getter
         private int minDynamicParam = Integer.MAX_VALUE;
+        @Getter
+        private int maxDynamicParam = Integer.MIN_VALUE;
 
         public FindMinDynamicParam() {
         }
@@ -1387,6 +1741,7 @@ public class RexUtils {
         @Override
         public RexNode visitDynamicParam(RexDynamicParam call) {
             minDynamicParam = Math.min(minDynamicParam, call.getIndex());
+            maxDynamicParam = Math.max(maxDynamicParam, call.getIndex());
             if (call instanceof RexCallParam) {
                 ((RexCallParam) call).getRexCall().accept(this);
             } else {
@@ -1395,16 +1750,15 @@ public class RexUtils {
 
             return call;
         }
-
-        public int getMinDynamicParam() {
-            return minDynamicParam;
-        }
     }
 
     public static class ReplaceDynamicParam extends RexShuttle {
 
         private final int offset;
+        @Getter
         private final Map<Integer, Integer> paramMapping = new HashMap<>();
+        @Getter
+        private int maxParamIndex = Integer.MIN_VALUE;
 
         public ReplaceDynamicParam(int offset) {
             this.offset = offset;
@@ -1415,20 +1769,25 @@ public class RexUtils {
             final int curIndex = call.getIndex();
             final int newIndex = curIndex + offset;
 
+            maxParamIndex = Math.max(maxParamIndex, newIndex);
+
             if (call instanceof RexCallParam) {
-                RexNode rexCall = ((RexCallParam) call).getRexCall();
+                final RexCallParam rexCallParam = (RexCallParam) call;
+
+                RexNode rexCall = rexCallParam.getRexCall();
                 if (rexCall instanceof RexCall) {
                     rexCall = super.visitCall((RexCall) rexCall);
                 }
-                return new RexCallParam(call.getType(), newIndex, rexCall);
+
+                return new RexCallParam(call.getType(),
+                    newIndex,
+                    rexCall,
+                    rexCallParam.isWrapRexDynamicParam(),
+                    rexCallParam.isCommonImplicitDefault());
             } else {
                 paramMapping.put(curIndex, newIndex);
                 return new RexDynamicParam(call.getType(), newIndex);
             }
-        }
-
-        public Map<Integer, Integer> getParamMapping() {
-            return paramMapping;
         }
     }
 
@@ -1541,9 +1900,15 @@ public class RexUtils {
     }
 
     public static class ColumnRefFinder extends RexVisitorImpl<Boolean> {
+        private final boolean skipValuesFunction;
 
         public ColumnRefFinder() {
+            this(true);
+        }
+
+        public ColumnRefFinder(boolean skipValuesFunction) {
             super(true);
+            this.skipValuesFunction = skipValuesFunction;
         }
 
         public boolean analyze(RexNode rex) {
@@ -1557,8 +1922,39 @@ public class RexUtils {
 
         @Override
         public Boolean visitCall(RexCall call) {
-            if ("VALUES".equalsIgnoreCase(call.getOperator().getName())) {
+            if (skipValuesFunction && "VALUES".equalsIgnoreCase(call.getOperator().getName())) {
                 return false;
+            }
+
+            Boolean r = null;
+            for (RexNode operand : call.operands) {
+                r = operand.accept(this);
+
+                if (Boolean.TRUE.equals(r)) {
+                    return true;
+                }
+            }
+            return r;
+        }
+    }
+
+    public static class RexCallChecker extends RexVisitorImpl<Boolean> {
+
+        private final Predicate<RexCall> checker;
+
+        public RexCallChecker(Predicate<RexCall> checker) {
+            super(true);
+            this.checker = checker;
+        }
+
+        public boolean analyze(RexNode rex) {
+            return Boolean.TRUE.equals(rex.accept(this));
+        }
+
+        @Override
+        public Boolean visitCall(RexCall call) {
+            if (checker.test(call)) {
+                return true;
             }
 
             Boolean r = null;

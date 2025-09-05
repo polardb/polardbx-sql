@@ -67,7 +67,7 @@ public class ShowTablesTest extends ReadBaseTestCase {
         String sql = "show full tables from " + polardbxOneDB.toUpperCase() + " like '%'";
         Statement stmt = tddlConnection.createStatement();
         ResultSet rs = stmt.executeQuery(sql);
-        Assert.assertEquals(rs.getMetaData().getColumnCount(), 3);
+        Assert.assertEquals(rs.getMetaData().getColumnCount(), 4);
         Assert
             .assertEquals("TABLES_IN_" + polardbxOneDB.toUpperCase(), rs.getMetaData().getColumnName(1).toUpperCase());
         Assert.assertEquals("TABLE_TYPE", rs.getMetaData().getColumnName(2).toUpperCase());
@@ -78,7 +78,7 @@ public class ShowTablesTest extends ReadBaseTestCase {
         String sql = "show full tables from " + polardbxOneDB.toLowerCase() + " like '%'";
         Statement stmt = tddlConnection.createStatement();
         ResultSet rs = stmt.executeQuery(sql);
-        Assert.assertEquals(rs.getMetaData().getColumnCount(), 3);
+        Assert.assertEquals(rs.getMetaData().getColumnCount(), 4);
         Assert
             .assertEquals("TABLES_IN_" + polardbxOneDB.toUpperCase(), rs.getMetaData().getColumnName(1).toUpperCase());
         Assert.assertEquals("TABLE_TYPE", rs.getMetaData().getColumnName(2).toUpperCase());

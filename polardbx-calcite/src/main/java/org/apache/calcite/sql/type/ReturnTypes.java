@@ -16,26 +16,10 @@
  */
 package org.apache.calcite.sql.type;
 
-import static org.apache.calcite.sql.type.SqlTypeName.APPROX_TYPES;
-import static org.apache.calcite.sql.type.SqlTypeName.DATETIME_YEAR_TYPES;
-import static org.apache.calcite.sql.type.SqlTypeName.DECIMAL;
-import static org.apache.calcite.sql.type.SqlTypeName.INT_TYPES;
-import static org.apache.calcite.sql.type.SqlTypeName.FRACTIONAL_TYPES;
-import static org.apache.calcite.sql.type.SqlTypeName.BIGINT_UNSIGNED_TYPES;
-import static org.apache.calcite.util.Static.RESOURCE;
-
-import java.nio.charset.Charset;
-import java.util.AbstractList;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-
-import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -54,11 +38,24 @@ import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.fun.SqlCase;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.calcite.util.Glossary;
-
 import org.apache.calcite.util.Util;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.nio.charset.Charset;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.IntStream;
+
+import static org.apache.calcite.sql.type.SqlTypeName.APPROX_TYPES;
+import static org.apache.calcite.sql.type.SqlTypeName.BIGINT_UNSIGNED_TYPES;
+import static org.apache.calcite.sql.type.SqlTypeName.DATETIME_YEAR_TYPES;
+import static org.apache.calcite.sql.type.SqlTypeName.DECIMAL;
+import static org.apache.calcite.sql.type.SqlTypeName.FRACTIONAL_TYPES;
+import static org.apache.calcite.sql.type.SqlTypeName.INT_TYPES;
+import static org.apache.calcite.util.Static.RESOURCE;
 
 /**
  * A collection of return-type inference strategies.
@@ -1188,6 +1185,22 @@ public abstract class ReturnTypes {
                 }
             }
             return typeFactory.createTypeWithNullability(typeFactory.createSqlType(SqlTypeName.VARCHAR, 2000), true);
+        }
+    };
+
+    public static final SqlReturnTypeInference RETURN_INPUT_TYPE = new SqlReturnTypeInference() {
+        @Override
+        public RelDataType inferReturnType(SqlOperatorBinding opBinding) {
+            RelDataTypeFactory typeFactory = opBinding.getTypeFactory();
+            List<RelDataType> typeList = new ArrayList<>();
+            List<String> fieldNameList = new ArrayList<>();
+
+            for (int i = 0; i < opBinding.getOperandCount(); i++) {
+                typeList.add(opBinding.getOperandType(i));
+                fieldNameList.add("$" + i);
+            }
+
+            return typeFactory.createStructType(typeList, fieldNameList);
         }
     };
 

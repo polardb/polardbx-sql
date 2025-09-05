@@ -3,6 +3,7 @@ package com.alibaba.polardbx.executor.vectorized.convert;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
+import com.alibaba.polardbx.executor.chunk.DateBlock;
 import com.alibaba.polardbx.executor.chunk.DecimalBlock;
 import com.alibaba.polardbx.executor.chunk.DecimalBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.DoubleBlock;
@@ -33,6 +34,7 @@ import org.junit.runners.Parameterized;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.TimeZone;
 
 @RunWith(Parameterized.class)
 public class CastExpressionTest {
@@ -569,6 +571,32 @@ public class CastExpressionTest {
             for (int i = 0; i < positionCount; i++) {
                 int j = sel[i];
                 Assert.assertEquals(result[j].toString(), outputBlock.getDecimal(j).toString());
+            }
+        }
+    }
+
+    private void validateToDateResult(DateBlock outputBlock, String dateVal) {
+        if (!withSelection) {
+            for (int i = 0; i < positionCount; i++) {
+                Assert.assertEquals(dateVal, outputBlock.getDate(i).toString());
+            }
+        } else {
+            for (int i = 0; i < positionCount; i++) {
+                int j = sel[i];
+                Assert.assertEquals(dateVal, outputBlock.getDate(j).toString());
+            }
+        }
+    }
+
+    private void validateToDateResult(ReferenceBlock outputBlock, String dateVal) {
+        if (!withSelection) {
+            for (int i = 0; i < positionCount; i++) {
+                Assert.assertEquals(dateVal, outputBlock.getObject(i).toString());
+            }
+        } else {
+            for (int i = 0; i < positionCount; i++) {
+                int j = sel[i];
+                Assert.assertEquals(dateVal, outputBlock.getObject(j).toString());
             }
         }
     }

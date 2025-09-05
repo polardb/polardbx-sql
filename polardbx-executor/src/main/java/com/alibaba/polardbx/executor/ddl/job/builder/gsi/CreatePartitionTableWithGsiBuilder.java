@@ -41,7 +41,7 @@ public class CreatePartitionTableWithGsiBuilder {
     private final ExecutionContext executionContext;
     private CreateTableBuilder primaryTableBuilder;
 
-    private Map<String, List<List<String>>> primaryTableTopology;
+    private TreeMap<String, List<List<String>>> primaryTableTopology;
     private List<PhyDdlTableOperation> primaryTablePhysicalPlans;
 
     private Map<String, Map<String, List<List<String>>>> indexTableTopologyMap = new LinkedHashMap<>();
@@ -60,7 +60,7 @@ public class CreatePartitionTableWithGsiBuilder {
         return this;
     }
 
-    public Map<String, List<List<String>>> getPrimaryTableTopology() {
+    public TreeMap<String, List<List<String>>> getPrimaryTableTopology() {
         return primaryTableTopology;
     }
 

@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.rpc.client.XSession;
 import com.alibaba.polardbx.rpc.pool.XConnection;
@@ -166,6 +167,30 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
     }
 
     @Override
+    public void resendSnapshotTimestamp() {
+        // Update with a new snapshot seq.
+        snapshotTimestamp = nextTimestamp(t -> stat.getTsoTime += t);
+        // Send to existed connections.
+        forEachHeldConnection(new TransactionConnectionHolder.Action() {
+            @Override
+            public boolean condition(TransactionConnectionHolder.HeldConnection heldConn) {
+                // For all connections.
+                return true;
+            }
+
+            @Override
+            public void execute(TransactionConnectionHolder.HeldConnection heldConn) {
+                try {
+                    sendSnapshotSeq(heldConn.getRawConnection());
+                } catch (Throwable e) {
+                    logger.error("Send snapshot sequence failed, conn is " + heldConn.getRawConnection(), e);
+                    throw GeneralUtil.nestedException(e);
+                }
+            }
+        });
+    }
+
+    @Override
     protected void writeCommitLog(IConnection logConn) throws SQLException {
         beforeWriteCommitLog();
         useTrxLogV2 = globalTxLogManager.appendTrxLog(id, getType(), TransactionState.SUCCEED, connectionContext,
@@ -261,7 +286,11 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
             if (!executionContext.getParamManager().getBoolean(ConnectionParams.TSO_OMIT_GLOBAL_TX_LOG)
                 && isCrossGroup) {
                 long logStartTime = System.nanoTime();
-                try (IConnection logConn = dataSourceCache.get(primaryGroup).getConnection(MasterSlave.MASTER_ONLY)) {
+                // only wait when not wait when reschedule
+                TGroupDirectConnection.threadParam.set(executionContext.getTraceId());
+                try (IConnection logConn = dataSourceCache.get(primaryGroup).getConnection(MasterSlave.MASTER_ONLY,
+                    executionContext.isCheckSwitchoverWhenGetConnection() ? connectionHolder.getAllConnection() :
+                        null)) {
                     beforePrimaryCommit();
                     commitState = TransactionCommitState.UNKNOWN;
 

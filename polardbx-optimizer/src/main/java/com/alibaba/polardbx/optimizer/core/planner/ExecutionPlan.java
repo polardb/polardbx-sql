@@ -18,11 +18,8 @@ package com.alibaba.polardbx.optimizer.core.planner;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
+import com.alibaba.polardbx.common.utils.ConcurrentHashSet;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.gms.metadb.encdb.EncdbRule;
-import com.alibaba.polardbx.optimizer.core.profiler.memory.PlanMemEstimation;
-import com.alibaba.polardbx.optimizer.core.rel.GatherReferencedGsiNameRelVisitor;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.profiler.memory.PlanMemEstimation;
@@ -41,7 +38,6 @@ import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.BitSets;
 
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -82,7 +78,7 @@ public class ExecutionPlan {
     private final SqlNode ast;
     private boolean hitCache;
     private boolean isExplain;
-    private BitSet planProperties = new BitSet();
+    private ConcurrentHashSet<Integer> planProperties = new ConcurrentHashSet<>();
     private List<PrivilegeVerifyItem> privilegeVerifyItems;
     private List<String> originTableNames = new ArrayList<>();
     private List<RelUtils.TableProperties> modifiedTables;
@@ -164,7 +160,7 @@ public class ExecutionPlan {
      */
     private List<List<String[]>> originColumnNames;
 
-    public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta, BitSet planProperties) {
+    public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta, ConcurrentHashSet<Integer> planProperties) {
         this(ast, plan, columnMeta);
         this.planProperties = planProperties;
         if (this.referencedGsiNames == null) {
@@ -223,14 +219,14 @@ public class ExecutionPlan {
     }
 
     public boolean checkProperty(int prop) {
-        return getPlanProperties().get(prop);
+        return getPlanProperties().contains(prop);
     }
 
-    public BitSet getPlanProperties() {
+    public ConcurrentHashSet<Integer> getPlanProperties() {
         return planProperties;
     }
 
-    public void setPlanProperties(BitSet planProperties) {
+    public void setPlanProperties(ConcurrentHashSet planProperties) {
         this.planProperties = planProperties;
     }
 
@@ -238,7 +234,7 @@ public class ExecutionPlan {
         ExecutionPlan newExecutionPlan = new ExecutionPlan(ast, plan, this.cursorMeta, this.referencedGsiNames);
         newExecutionPlan.hitCache = this.hitCache;
         newExecutionPlan.isExplain = this.isExplain;
-        newExecutionPlan.getPlanProperties().or(this.planProperties);
+        newExecutionPlan.getPlanProperties().addAll(this.planProperties);
         newExecutionPlan.originTableNames = this.originTableNames;
         newExecutionPlan.modifiedTables = this.modifiedTables;
         newExecutionPlan.usePostPlanner = this.usePostPlanner;
@@ -290,8 +286,8 @@ public class ExecutionPlan {
         this.modifiedTables = modifiedTables;
     }
 
-    public boolean is(BitSet planProperties) {
-        return getPlanProperties().intersects(planProperties);
+    public boolean is(Set<Integer> planProperties) {
+        return getPlanProperties().stream().anyMatch(planProperties::contains);
     }
 
     public boolean isUsePostPlanner() {

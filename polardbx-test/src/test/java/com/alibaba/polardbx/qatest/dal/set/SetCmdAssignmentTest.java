@@ -206,6 +206,20 @@ public class SetCmdAssignmentTest extends DirectConnectionBaseTestCase {
     }
 
     @Test
+    public void testTransactionPolicy2() throws SQLException {
+        String variable = "TRANSACTION POLICY";
+
+        String showSql = "show variables like 'transaction_policy'";
+        try {
+            String setSql = "set " + variable + " 5";
+            setVar(setSql);
+            Assert.assertEquals("FREE", getStringValue(showSql, 2));
+        } finally {
+            this.tddlConnection.close();
+        }
+    }
+
+    @Test
     public void testTransPolicy() throws SQLException, InterruptedException {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "SET GLOBAL DISABLE_LEGACY_VARIABLE = FALSE");
         Thread.sleep(1000);

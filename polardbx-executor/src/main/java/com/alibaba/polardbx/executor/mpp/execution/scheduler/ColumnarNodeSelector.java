@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.partition.MurmurHashUtils;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -28,6 +26,7 @@ import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.google.common.collect.Multimap;
 import io.airlift.slice.XxHash64;
@@ -50,12 +49,16 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
 
     private boolean scheduleByPartition = false;
 
+    private ExecutionContext executionContext;
+
     public ColumnarNodeSelector(InternalNodeManager nodeManager, NodeTaskMap nodeTaskMap, Set<InternalNode> nodes,
                                 int limitCandidates, int maxSplitsPerNode, boolean enableOssRoundRobin,
-                                boolean randomNode, boolean enableTwoChoiceSchedule, boolean preferLocal) {
+                                RandomNodeMode randomNode, boolean enableTwoChoiceSchedule, boolean preferLocal,
+                                ExecutionContext executionContext) {
         super(nodeManager, nodeTaskMap, nodes, limitCandidates, maxSplitsPerNode, enableOssRoundRobin, randomNode,
             preferLocal);
         this.enableTwoChoiceSchedule = enableTwoChoiceSchedule;
+        this.executionContext = executionContext;
     }
 
     @Override
@@ -189,7 +192,7 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
             int partNum = ossSplit.getPartIndex();
             if (partNum < 0 && forceGenPart) {
                 partNum = PartitionUtils.calcPartition(ossSplit.getLogicalSchema(), ossSplit.getLogicalTableName(),
-                    ossSplit.getPhysicalSchema(), ossSplit.getPhyTableNameList().get(0));
+                    ossSplit.getPhysicalSchema(), ossSplit.getPhyTableNameList().get(0), executionContext);
             }
             int nodeId = partNum % candidateNodes.size();
             if (log.isDebugEnabled()) {

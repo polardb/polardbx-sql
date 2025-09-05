@@ -95,32 +95,10 @@ public abstract class LogicalJoinToBKAJoinRule extends RelOptRule {
             logicalView = call.rel(2);
         }
 
-        RexUtils.RestrictType restrictType;
-        switch (join.getJoinType()) {
-        case LEFT:
-        case INNER:
-            restrictType = RexUtils.RestrictType.RIGHT;
-            break;
-        case RIGHT:
-            restrictType = RexUtils.RestrictType.LEFT;
-            break;
-        default:
+        RexNode newCondition = LogicalJoinToBKAJoinRule.buildNewCondition(join);
+        if (newCondition == null) {
             return;
         }
-
-        RexNode newCondition =
-            JoinConditionSimplifyRule.simplifyCondition(join.getCondition(), join.getCluster().getRexBuilder());
-
-        if (!RexUtils.isBatchKeysAccessCondition(join, newCondition, join.getLeft().getRowType().getFieldCount(),
-            restrictType,
-            (Pair<RelDataType, RelDataType> relDataTypePair) -> CBOUtil.bkaTypeCheck(relDataTypePair))) {
-            return;
-        }
-
-        if (!CBOUtil.canBKAJoin(join)) {
-            return;
-        }
-
         RelNode left;
         RelNode right;
 
@@ -161,4 +139,32 @@ public abstract class LogicalJoinToBKAJoinRule extends RelOptRule {
         LogicalView inner,
         RexNode newCondition);
 
+    public static RexNode buildNewCondition(LogicalJoin join) {
+        RexUtils.RestrictType restrictType;
+        switch (join.getJoinType()) {
+        case LEFT:
+        case INNER:
+            restrictType = RexUtils.RestrictType.RIGHT;
+            break;
+        case RIGHT:
+            restrictType = RexUtils.RestrictType.LEFT;
+            break;
+        default:
+            return null;
+        }
+
+        RexNode newCondition =
+            JoinConditionSimplifyRule.simplifyCondition(join.getCondition(), join.getCluster().getRexBuilder());
+
+        if (!RexUtils.isBatchKeysAccessCondition(join, newCondition, join.getLeft().getRowType().getFieldCount(),
+            restrictType,
+            (Pair<RelDataType, RelDataType> relDataTypePair) -> CBOUtil.bkaTypeCheck(relDataTypePair))) {
+            return null;
+        }
+
+        if (!CBOUtil.canBKAJoin(join)) {
+            return null;
+        }
+        return newCondition;
+    }
 }

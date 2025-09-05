@@ -20,5 +20,5 @@ package com.alibaba.polardbx.optimizer.config.table;
  */
 public enum IndexType {
 
-    NONE, BTREE, HASH, INVERSE;
+    NONE, BTREE, HASH, INVERSE, FULLTEXT;
 }

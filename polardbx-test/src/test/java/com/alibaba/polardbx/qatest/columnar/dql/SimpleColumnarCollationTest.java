@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.qatest.columnar.dql.FullTypeTest.waitForRowCountEquals;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.mysqlDBName1;
 
 public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
@@ -92,7 +93,7 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
     }
 
     @Before
-    public void prepare() throws SQLException {
+    public void prepare() throws SQLException, InterruptedException {
         dropTables();
         prepareData();
     }
@@ -116,6 +117,7 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
     private void prepareData() throws SQLException {
         String insertData =
             "insert into %s values (1, 'nihaore'), (2, 'nihaore '), (3, 'nihaOre'), (4, 'a'), (5, 'A'), (6, 'b')";
+        String insertDataDelta = "insert into %s values (12, 'test3 '), (13, 'test5'), (14, 'R'), (15, 'r')";
         try (Connection connection = getPolardbxConnection0(PropertiesUtil.polardbXAutoDBName1())) {
             JdbcUtil.executeSuccess(connection,
                 String.format(CREATE_TABLE + PARTITION_INFO, table1, columnType, collation));
@@ -129,6 +131,12 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
             ColumnarUtils.createColumnarIndex(connection, "col_" + table1, table1, "c2", "c2", 4);
             ColumnarUtils.createColumnarIndexWithDictionary(connection, "col_" + table2, table2, "c2", "c2", 4, "c2");
             ColumnarUtils.createColumnarIndex(connection, "col_" + table3, table3, "c1", "c1", 4);
+            execute(connection, insertDataDelta);
+            waitForRowCountEquals(connection, table1, "col_" + table1);
+            waitForRowCountEquals(connection, table2, "col_" + table2);
+            waitForRowCountEquals(connection, table3, "col_" + table3);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
         try (Connection mysqlConnection = ConnectionManager.getInstance().getDruidMysqlConnection()) {
@@ -139,6 +147,7 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
             execute(mysqlConnection, insertData);
             JdbcUtil.executeSuccess(mysqlConnection, String.format("insert into %s values (11, 'CxC')", table1));
             JdbcUtil.executeSuccess(mysqlConnection, String.format("insert into %s values (11, 'CDC')", table2));
+            execute(mysqlConnection, insertDataDelta);
         }
     }
 

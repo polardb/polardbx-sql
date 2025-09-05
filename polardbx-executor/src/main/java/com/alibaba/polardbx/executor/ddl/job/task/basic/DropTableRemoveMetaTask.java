@@ -24,23 +24,27 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.sql.Connection;
 
 @Getter
+@Setter
 @TaskName(name = "DropTableRemoveMetaTask")
 public class DropTableRemoveMetaTask extends BaseGmsTask {
 
+    protected boolean dropEmptyTableGroup;
     @JSONCreator
-    public DropTableRemoveMetaTask(String schemaName, String logicalTableName) {
+    public DropTableRemoveMetaTask(String schemaName, String logicalTableName, boolean dropEmptyTableGroup) {
         super(schemaName, logicalTableName);
+        this.dropEmptyTableGroup = dropEmptyTableGroup;
     }
 
     @Override
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         updateSupportedCommands(true, false, metaDbConnection);
 
-        TableMetaChanger.removeTableMeta(metaDbConnection, schemaName, logicalTableName, true, executionContext);
+        TableMetaChanger.removeTableMeta(metaDbConnection, schemaName, logicalTableName, true, dropEmptyTableGroup, executionContext);
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);

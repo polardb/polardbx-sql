@@ -234,8 +234,7 @@ public class ColumnarSpecifiedScanExec extends ColumnarScanExec {
             context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE),
             tableMeta.getAllColumns(),
             ossTableScan.getOrcNode().getOriFilters(),
-            ossSplit.getParams(),
-
+            context.getParams().getCurrentParameter(),
             // for mock
             DEFAULT_GROUPS_RATIO,
             DEFAULT_DELETION_RATIO,

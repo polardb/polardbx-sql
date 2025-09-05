@@ -60,6 +60,7 @@ import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -539,6 +540,10 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
                         Parameters parameters = new Parameters();
                         parameters.setBatchParams(batchParams);
                         executionContext.setParams(parameters);
+
+                        final HandlerParams handlerParams = new HandlerParams();
+                        RexUtils.updateParam(logicalInsert, executionContext, true, handlerParams);
+
                         List<RelNode> allPhyPlan = getAllRelNode(
                             logicalInsert, executionContext);
                         if (concurrentQueues.size() > 1) {

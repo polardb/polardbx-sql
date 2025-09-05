@@ -282,17 +282,4 @@ public class ModifyPartitionKeyMultiWriteTest extends DDLBaseNewDBTestCase {
         Assert.assertThat(trace.size(), is(7));
         assertTraceContains(trace, "DELETE", 2);
     }
-
-    protected void assertTraceContains(List<List<String>> trace, String targetStr, int count) {
-        int c = 0;
-        for (List<String> item : trace) {
-            for (String s : item) {
-                if (StringUtils.containsIgnoreCase(s, targetStr)) {
-                    c++;
-                }
-            }
-        }
-        //make sure now() is pushed down, instead of logical execution
-        org.junit.Assert.assertEquals(count, c);
-    }
 }

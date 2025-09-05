@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.transaction.async;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -23,6 +25,7 @@ import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
 import com.alibaba.polardbx.executor.sync.ColumnarSnapshotUpdateSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.config.SqlEngineAlert;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
@@ -47,6 +50,19 @@ public class UpdateColumnarTsoTimerTask implements Runnable {
             } else {
                 latestTso = ColumnarTransactionUtils.getLatestTsoFromGms();
             }
+            long lastTsoMs = ColumnarManager.getInstance().latestTso() >> 22;
+            long delayThreshold = InstConfUtil.getInt(ConnectionParams.COLUMNAR_DELAY_WARNING_THRESHOLD);
+            long currentDelay = System.currentTimeMillis() - lastTsoMs;
+            if (currentDelay > delayThreshold) {
+                String alertMsg =
+                    String.format("Current columnar read delay is %d ms, which is beyond the threshold %d ms",
+                        currentDelay, delayThreshold);
+                EventLogger.log(EventType.COLUMNAR_READ_ALERT, alertMsg);
+                if (InstConfUtil.getBool(ConnectionParams.ENABLE_SQL_ENGINE_ALERT_COLUMNAR_READ)) {
+                    SqlEngineAlert.getInstance().putNormal(EventType.COLUMNAR_READ_ALERT.name() + " " + alertMsg);
+                }
+            }
+
             logger.warn("update the columnar tso: " + latestTso);
 
             if (latestTso != null) {

@@ -175,7 +175,7 @@ public class ReplicaParserTest {
 
     @Test
     // 测试非上帝用户执行命令时抛出异常
-    public void testVisitReplicaStatementWithNonGodUser() {
+    public void testVisitReplicaStatementWithNonGodUserOrNonDBAUser() {
         try (MockedStatic<CdcRpcClient> ob1 = Mockito.mockStatic(CdcRpcClient.class)) {
             ob1.when(CdcRpcClient::useCdc).thenReturn(true);
             ExecutionContext mockEc = Mockito.mock(ExecutionContext.class);
@@ -239,11 +239,15 @@ public class ReplicaParserTest {
             Assert.assertTrue(runIntoException);
             runIntoException = false;
 
+
+            // replica check need god or DBA privileges
+            when(mockEc.isSuperUserOrAllPrivileges()).thenReturn(false);
+
             try {
                 visitor.visit(Mockito.mock(SQLResetReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
-                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
                 runIntoException = true;
             }
             Assert.assertTrue(runIntoException);
@@ -253,7 +257,7 @@ public class ReplicaParserTest {
                 visitor.visit(Mockito.mock(SQLContinueReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
-                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
                 runIntoException = true;
             }
             Assert.assertTrue(runIntoException);
@@ -263,7 +267,7 @@ public class ReplicaParserTest {
                 visitor.visit(Mockito.mock(SQLCancelReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
-                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
                 runIntoException = true;
             }
             Assert.assertTrue(runIntoException);
@@ -273,7 +277,7 @@ public class ReplicaParserTest {
                 visitor.visit(Mockito.mock(SQLPauseReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
-                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
                 runIntoException = true;
             }
             Assert.assertTrue(runIntoException);
@@ -283,7 +287,7 @@ public class ReplicaParserTest {
                 visitor.visit(Mockito.mock(SQLStartReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
-                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
                 runIntoException = true;
             }
             Assert.assertTrue(runIntoException);
@@ -313,7 +317,7 @@ public class ReplicaParserTest {
     }
 
     @Test
-    // 测试非上帝用户执行命令时抛出异常
+    // 测试上帝用户执行命令时不抛出权限相关异常
     public void testVisitReplicaStatementWithGodUser() {
         try (MockedStatic<CdcRpcClient> ob1 = Mockito.mockStatic(CdcRpcClient.class)) {
             ob1.when(CdcRpcClient::useCdc).thenReturn(true);
@@ -358,34 +362,36 @@ public class ReplicaParserTest {
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
+            when(mockEc.isSuperUserOrAllPrivileges()).thenReturn(true);
+
             try {
                 visitor.visit(Mockito.mock(SQLResetReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLContinueReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLCancelReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLPauseReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLStartReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'DBA' privilege. "));
             }
 
             try {

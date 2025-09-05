@@ -18,7 +18,7 @@
             `update_time` datetime default current_timestamp on update current_timestamp,
             unique key `checkpoint_tso_index` (`checkpoint_tso`, `checkpoint_type`, `logical_schema`, `logical_table`, `partition_name`),
             KEY `checkpoint_tso_table_index` (`checkpoint_tso`, `logical_schema`, `logical_table`),
-            KEY `binlog_tso_type` (`binlog_tso`, `checkpoint_tso` desc, `checkpoint_type`),
+            KEY `binlog_tso_type_2` (`binlog_tso`, `checkpoint_tso`, `checkpoint_type`),
             KEY `type_tso_index` (`checkpoint_type`, `logical_schema`, `logical_table`, `partition_name`, `checkpoint_tso`),
             KEY `schema_table_binlog_tso` (`logical_schema`, `logical_table`, `binlog_tso`),
             primary key (`id`)
@@ -38,6 +38,9 @@
         ]]></Change>
         <Change><![CDATA[
             alter table `columnar_checkpoints` add key `schema_table_binlog_tso` (`logical_schema`, `logical_table`, `binlog_tso`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_checkpoints` add key `binlog_tso_type_2` (`binlog_tso`, `checkpoint_tso`, `checkpoint_type`)
         ]]></Change>
     </SystemTable>
 
@@ -66,6 +69,7 @@
             KEY `type_engine_index` (`file_type`, `engine`),
             KEY `schema_table_part_type_tso` (`logical_schema`,`logical_table`,`part_name`,`file_type`,`checkpoint_tso`),
             KEY `schema_table_file_name` (`logical_schema`,`logical_table`,`file_name`),
+            KEY `file_name_schema_table_tso` (`file_name`, `logical_schema`, `logical_table`, `checkpoint_tso`),
             primary key (`id`)
          ) charset=utf8
         ]]></Create>
@@ -83,6 +87,9 @@
         ]]></Change>
         <Change><![CDATA[
             alter table `columnar_appended_files` add key `schema_table_file_name`(`logical_schema`,`logical_table`,`file_name`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_appended_files` add key `file_name_schema_table_tso`(`file_name`, `logical_schema`, `logical_table`, `checkpoint_tso`)
         ]]></Change>
     </SystemTable>
 
@@ -212,7 +219,7 @@
                 `options` json DEFAULT NULL COMMENT 'table options in key-value format',
                 `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (`version_id`,`table_id`),
+                PRIMARY KEY (`version_id`,`table_id`,`table_name`),
                 KEY `idx_ddl_job_id`(`ddl_job_id`),
                 KEY `idx_table_id_commit_ts`(`table_id`, `commit_ts`)
             ) DEFAULT CHARSET = utf8mb4

@@ -49,6 +49,10 @@ public class UnlockTableSyncAction implements ISyncAction {
 
     protected void syncForLockTable() {
         synchronized (OptimizerContext.getContext(schemaName)) {
+            if (connId > 0) {
+                throw new RuntimeException("The connId used for UnlockTableSyncAction must be less than 0.");
+            }
+
             final MdlContext context = MdlManager.addContext(connId);
             SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
                 "{0}  {1}.addContext({2}) (UNLOCK)", Thread.currentThread().getName(),

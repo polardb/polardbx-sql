@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -66,9 +67,11 @@ public class LogicalCheckColumnarSnapshotHandler extends HandlerCommon {
 
         ColumnarManager cm = ColumnarManager.getInstance();
         long tso = cm.latestTso();
+        boolean autoPosition =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_SNAPSHOT_AUTO_POSITION);
 
         for (String columnarName : columnarNames) {
-            FlashbackColumnarManager fcm = new FlashbackColumnarManager(tso, schemaName, columnarName);
+            FlashbackColumnarManager fcm = new FlashbackColumnarManager(tso, schemaName, columnarName, autoPosition);
             Map<String, Pair<List<String>, List<Pair<String, Long>>>> snapshotInfo = fcm.getSnapshotInfo();
 
             for (Map.Entry<String, Pair<List<String>, List<Pair<String, Long>>>> entry : snapshotInfo.entrySet()) {

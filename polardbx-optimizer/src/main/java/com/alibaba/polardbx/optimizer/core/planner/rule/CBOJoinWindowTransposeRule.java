@@ -157,8 +157,8 @@ public class CBOJoinWindowTransposeRule extends RelOptRule {
             if (leftKeys.size() == 0) {
                 return null;
             }
-            boolean isUniq = mq.areColumnsUnique(other, ImmutableBitSet.of(leftKeys));
-            if (!isUniq) {
+            Boolean isUniq = mq.areColumnsUnique(other, ImmutableBitSet.of(leftKeys));
+            if (isUniq == null || !isUniq) {
                 return null;
             }
 

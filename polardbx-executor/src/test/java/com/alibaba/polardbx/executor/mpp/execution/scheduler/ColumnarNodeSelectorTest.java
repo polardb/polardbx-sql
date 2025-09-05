@@ -8,6 +8,7 @@ import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeVersion;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
@@ -29,6 +30,7 @@ public class ColumnarNodeSelectorTest {
 
     private ColumnarNodeSelector nodeSelector;
     private List<Node> candidateNodes;
+    private ExecutionContext executionContext;
 
     @Before
     public void setUp() {
@@ -39,7 +41,10 @@ public class ColumnarNodeSelectorTest {
         InternalNode node2 = new InternalNode("node2", "cluster1", "inst1", "10.10.10.10", 1234, 12345,
             NodeVersion.UNKNOWN, true, true, false, false);
         Set<InternalNode> nodes = new HashSet<>(Arrays.asList(node1, node2));
-        nodeSelector = new ColumnarNodeSelector(nodeManager, nodeTaskMap, nodes, 2, 1024, false, false, true, false);
+        executionContext = new ExecutionContext();
+        nodeSelector =
+            new ColumnarNodeSelector(nodeManager, nodeTaskMap, nodes, 2, 1024, false, RandomNodeMode.NONE, true, false,
+                executionContext);
         candidateNodes = Arrays.asList(node1, node2); // Fill with mock or real nodes
     }
 
@@ -57,7 +62,7 @@ public class ColumnarNodeSelectorTest {
         NodeAssignmentStats assignmentStats = mock(NodeAssignmentStats.class);
         Multimap assignment = HashMultimap.create();
         try (MockedStatic<PartitionUtils> theMock = Mockito.mockStatic(PartitionUtils.class)) {
-            when(PartitionUtils.calcPartition("test", "test", "test", "test")).thenReturn(1);
+            when(PartitionUtils.calcPartition("test", "test", "test", "test", executionContext)).thenReturn(1);
             Multimap<Node, Split> result =
                 nodeSelector.scheduleOssSplit(splits, candidateNodes, assignmentStats, assignment);
 

@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -118,7 +119,7 @@ public class AlterGsiVisibilityJobFactory extends DdlJobFactory {
                 primaryTableName,
                 indexTableName,
                 IndexVisibility.INVISIBLE,
-                IndexVisibility.VISIBLE);
+                 IndexVisibility.VISIBLE);
         } else {
             changeGsiStatusTask = new GsiUpdateIndexVisibilityTask(schemaName,
                 primaryTableName,

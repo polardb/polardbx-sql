@@ -381,6 +381,10 @@ public class LogicalShowVariablesMyHandlerTest {
         public long getIdleRWTimeout() {
             return 0;
         }
+
+        @Override
+        public void releaseDirtyReadConnections() {
+        }
     }
 
     private static class MockMetaDbInstConfigManager extends MetaDbInstConfigManager {

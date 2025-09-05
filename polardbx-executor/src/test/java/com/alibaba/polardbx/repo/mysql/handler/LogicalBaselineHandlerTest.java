@@ -22,7 +22,6 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.junit.After;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -30,9 +29,7 @@ import org.mockito.Mockito;
 import java.util.List;
 import java.util.Map;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 /**
  * @author fangwu
@@ -52,11 +49,11 @@ public class LogicalBaselineHandlerTest {
     public void testBaselineDeletePlan() {
         String sql = "select * from t where c1 = 1";
         try (
-            MockedStatic<ExtensionLoader> extensionLoaderMockedStatic = mockStatic(ExtensionLoader.class);
-            MockedStatic<SyncManagerHelper> syncManagerHelperMockedStatic = mockStatic(SyncManagerHelper.class)) {
+                MockedStatic<ExtensionLoader> extensionLoaderMockedStatic = mockStatic(ExtensionLoader.class);
+                MockedStatic<SyncManagerHelper> syncManagerHelperMockedStatic = mockStatic(SyncManagerHelper.class)) {
             extensionLoaderMockedStatic.when(() -> ExtensionLoader.load(Mockito.any())).thenReturn(null);
             syncManagerHelperMockedStatic.when(() -> SyncManagerHelper.sync(Mockito.any(), Mockito.any()))
-                .thenReturn(null);
+                    .thenReturn(null);
 
             LogicalBaselineHandler baselineHandler = new LogicalBaselineHandler(null);
             PlanManager planManager = Mockito.mock(PlanManager.class);
@@ -74,10 +71,11 @@ public class LogicalBaselineHandlerTest {
             ExecutionContext ec = new ExecutionContext();
             try {
                 baselineHandler.baselineLPCVD(idList, ec, "DELETE", planManager);
+                Assert.fail();
             } catch (Exception e) {
                 e.printStackTrace();
                 assert e.getMessage().equals(
-                    "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline DELETE statement without baselineId ");
+                        "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline DELETE statement without baselineId ");
             }
             idList.add(11111111L);
             idList.add(11111211L);
@@ -104,15 +102,89 @@ public class LogicalBaselineHandlerTest {
         }
     }
 
+
+    @Test
+    public void testBaselineDeletePlan2() {
+        String testSchema = "test_schema";
+        String sql = "select * from t where c1 = 1";
+        try (
+                MockedStatic<ExtensionLoader> extensionLoaderMockedStatic = mockStatic(ExtensionLoader.class);
+                MockedStatic<SyncManagerHelper> syncManagerHelperMockedStatic = mockStatic(SyncManagerHelper.class)) {
+            extensionLoaderMockedStatic.when(() -> ExtensionLoader.load(Mockito.any())).thenReturn(null);
+            syncManagerHelperMockedStatic.when(() -> SyncManagerHelper.sync(Mockito.any(), Mockito.any()))
+                    .thenReturn(null);
+
+            LogicalBaselineHandler baselineHandler = new LogicalBaselineHandler(null);
+            PlanManager planManager = Mockito.mock(PlanManager.class);
+            Map<String, BaselineInfo> baselineInfoMap = Maps.newHashMap();
+            Map<String, Map<String, BaselineInfo>> schemaBaselineInfoMap = Maps.newHashMap();
+            schemaBaselineInfoMap.put(testSchema, baselineInfoMap);
+            int targetId = 123;
+            BaselineInfo baselineInfo = new BaselineInfo(sql, Sets.newHashSet(Pair.of("t", "c1")));
+            PlanInfo planInfo1 = mock(PlanInfo.class);
+            when(planInfo1.getId()).thenReturn(targetId);
+
+            PlanInfo planInfo2 = mock(PlanInfo.class);
+            when(planInfo2.getId()).thenReturn(11111111);
+
+            PlanInfo planInfo3 = mock(PlanInfo.class);
+            when(planInfo3.getId()).thenReturn(11111211);
+
+            baselineInfo.addAcceptedPlan(planInfo1);
+            baselineInfo.addAcceptedPlan(planInfo2);
+            baselineInfo.addUnacceptedPlan(planInfo3);
+            baselineInfoMap.put(sql, baselineInfo);
+            Mockito.when(planManager.getBaselineMap()).thenReturn(schemaBaselineInfoMap);
+            Mockito.when(planManager.getBaselineMap(testSchema)).thenReturn(schemaBaselineInfoMap.get(testSchema));
+            List<Long> idList = Lists.newArrayList();
+            ExecutionContext ec = new ExecutionContext();
+            try {
+                baselineHandler.baselineLPCVD(idList, ec, "DELETE", planManager);
+                Assert.fail();
+            } catch (Exception e) {
+                e.printStackTrace();
+                assert e.getMessage().equals(
+                        "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline DELETE statement without baselineId ");
+            }
+            idList.add(11111111L);
+            idList.add(11111211L);
+            idList.add(-11111111L);
+            idList.add(null);
+            idList.add(Long.valueOf(targetId));
+            Cursor c = baselineHandler.baselineLPCVD(idList, ec, "DELETE_PLAN", planManager);
+
+            Row r = null;
+            r = c.next();
+            Assert.assertTrue(r.getString(0).equals("11111111"));
+            Assert.assertTrue(r.getString(1).equals("OK"));
+
+            r = c.next();
+            Assert.assertTrue(r.getString(0).equals("11111211"));
+            Assert.assertTrue(r.getString(1).equals("OK"));
+
+            r = c.next();
+            Assert.assertTrue(r.getString(0).equals("-11111111"));
+            Assert.assertTrue(r.getString(1).equals("not found"));
+
+            r = c.next();
+            Assert.assertTrue(r.getString(0).equals("123"));
+            Assert.assertTrue(r.getString(1).equals("OK"));
+
+            ec.setSchemaName(testSchema);
+            baselineHandler.baselineLPCVD(null, ec, "DELETE_ALL", planManager);
+        }
+    }
+
+
     @Test
     public void testBaselineDeleteBaseline() {
         String sql = "select * from t where c1 = 1";
         try (
-            MockedStatic<ExtensionLoader> extensionLoaderMockedStatic = mockStatic(ExtensionLoader.class);
-            MockedStatic<SyncManagerHelper> syncManagerHelperMockedStatic = mockStatic(SyncManagerHelper.class)) {
+                MockedStatic<ExtensionLoader> extensionLoaderMockedStatic = mockStatic(ExtensionLoader.class);
+                MockedStatic<SyncManagerHelper> syncManagerHelperMockedStatic = mockStatic(SyncManagerHelper.class)) {
             extensionLoaderMockedStatic.when(() -> ExtensionLoader.load(Mockito.any())).thenReturn(null);
             syncManagerHelperMockedStatic.when(() -> SyncManagerHelper.sync(Mockito.any(), Mockito.any()))
-                .thenReturn(null);
+                    .thenReturn(null);
 
             LogicalBaselineHandler baselineHandler = new LogicalBaselineHandler(null);
             PlanManager planManager = Mockito.mock(PlanManager.class);
@@ -130,7 +202,7 @@ public class LogicalBaselineHandlerTest {
             } catch (Exception e) {
                 e.printStackTrace();
                 assert e.getMessage().equals(
-                    "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline DELETE statement without baselineId ");
+                        "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline DELETE statement without baselineId ");
             }
             idList.add(11111111L);
             idList.add(11111211L);
@@ -141,15 +213,12 @@ public class LogicalBaselineHandlerTest {
             Row r = null;
             r = c.next();
             Assert.assertTrue(r.getString(0).equals("11111111"));
-            Assert.assertTrue(r.getString(1).equals("not found"));
 
             r = c.next();
             Assert.assertTrue(r.getString(0).equals("11111211"));
-            Assert.assertTrue(r.getString(1).equals("not found"));
 
             r = c.next();
             Assert.assertTrue(r.getString(0).equals("-11111111"));
-            Assert.assertTrue(r.getString(1).equals("not found"));
 
             r = c.next();
             Assert.assertTrue(r.getString(0).equals("1122414013"));
@@ -168,7 +237,7 @@ public class LogicalBaselineHandlerTest {
         } catch (Exception e) {
             e.printStackTrace();
             assert e.getMessage().equals(
-                "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline add statement without hint ");
+                    "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline add statement without hint ");
         }
 
         String hint = "/*TDDL:BASELINE*/";
@@ -182,7 +251,7 @@ public class LogicalBaselineHandlerTest {
         } catch (Exception e) {
             e.printStackTrace();
             assert e.getMessage().equals(
-                "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline add plan with generated column substitution ");
+                    "ERR-CODE: [TDDL-7001][ERR_BASELINE] Baseline error: not support baseline add plan with generated column substitution ");
         }
         PlanManager planManager = Mockito.mock(PlanManager.class);
         Map<String, BaselineInfo> baselineInfoMap = Maps.newHashMap();
@@ -199,15 +268,15 @@ public class LogicalBaselineHandlerTest {
 
         Mockito.when(planManager.getBaselineMap(Mockito.anyString())).thenReturn(Maps.newHashMap());
         Mockito.when(planManager.createBaselineInfo(Mockito.anyString(), Mockito.any(), Mockito.any()))
-            .thenReturn(baselineInfo);
+                .thenReturn(baselineInfo);
         try (
-            MockedStatic<ExtensionLoader> extensionLoaderMockedStatic = mockStatic(ExtensionLoader.class);
-            MockedStatic<SyncManagerHelper> syncManagerHelperMockedStatic = mockStatic(SyncManagerHelper.class);
-            MockedStatic<PlanManagerUtil> planManagerUtil = mockStatic(PlanManagerUtil.class);
-            MockedStatic<ExplainExecutorUtil> explainExecutorUtil = mockStatic(ExplainExecutorUtil.class);) {
+                MockedStatic<ExtensionLoader> extensionLoaderMockedStatic = mockStatic(ExtensionLoader.class);
+                MockedStatic<SyncManagerHelper> syncManagerHelperMockedStatic = mockStatic(SyncManagerHelper.class);
+                MockedStatic<PlanManagerUtil> planManagerUtil = mockStatic(PlanManagerUtil.class);
+                MockedStatic<ExplainExecutorUtil> explainExecutorUtil = mockStatic(ExplainExecutorUtil.class);) {
             extensionLoaderMockedStatic.when(() -> ExtensionLoader.load(Mockito.any())).thenReturn(null);
             syncManagerHelperMockedStatic.when(() -> SyncManagerHelper.sync(Mockito.any(), Mockito.any()))
-                .thenReturn(null);
+                    .thenReturn(null);
             cursor = baselineHandler.baselineAdd(hint, sql, ec, false, true, planner, planManager);
             r = cursor.next();
             info = r.getString(2);
@@ -218,14 +287,14 @@ public class LogicalBaselineHandlerTest {
             planInfo.setFixed(true);
             ArrayResultCursor result = new ArrayResultCursor("baseline");
             result.addColumn("PLAN", DataTypes.StringType);
-            result.addRow(new Object[] {"test plan"});
+            result.addRow(new Object[]{"test plan"});
             planManagerUtil.when(() -> PlanManagerUtil.baselineSupported(Mockito.any())).thenReturn(true);
             explainExecutorUtil.when(() -> ExplainExecutorUtil.explain(Mockito.any(), Mockito.any(), Mockito.any()))
-                .thenReturn(result);
+                    .thenReturn(result);
             PlanInfo planInfo1 = new PlanInfo("", 1, 0.0D, "", "", 0);
             planInfo1.setFixed(true);
             Mockito.when(planManager.createPlanInfo(Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.anyInt(),
-                Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any())).thenReturn(planInfo1);
+                    Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any())).thenReturn(planInfo1);
             Mockito.when(planManager.getBaselineMap(Mockito.anyString())).thenReturn(baselineInfoMap);
             baselineInfo.addAcceptedPlan(planInfo);
             planInfo.setFixed(true);

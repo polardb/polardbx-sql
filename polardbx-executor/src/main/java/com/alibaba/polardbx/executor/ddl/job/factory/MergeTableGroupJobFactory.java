@@ -33,11 +33,11 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MergeTableGroupPreparedData;
@@ -50,7 +50,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -157,8 +156,8 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         String targetTableGroup = preparedData.getTargetTableGroupName();
         TableGroupConfig targetTableGroupConfig = preparedData.getTableGroupConfigMap().get(targetTableGroup);
         Map<String, String> targetLocations = new TreeMap<>(String::compareToIgnoreCase);
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
         for (PartitionGroupRecord record : targetTableGroupConfig.getPartitionGroupRecords()) {
             targetLocations.put(record.partition_name, record.phy_db);
@@ -236,7 +235,7 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         }
 
         TablesSyncTask tablesSyncTask = new TablesSyncTask(preparedData.getSchemaName(), primaryTables.stream().collect(
-            Collectors.toList()), true, initWait, interval, TimeUnit.MILLISECONDS);
+            Collectors.toList()), true, preemptiveTime);
         job.addTask(tablesSyncTask);
         for (String tableGroup : preparedData.getSourceTableGroups()) {
             CleanupEmptyTableGroupTask cleanupEmptyTableGroupTask =

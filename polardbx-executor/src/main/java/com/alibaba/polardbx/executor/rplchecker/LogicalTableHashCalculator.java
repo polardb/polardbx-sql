@@ -201,7 +201,7 @@ public class LogicalTableHashCalculator {
                     defaultValue = 0L;
                 }
                 return new ParameterContext(defaultMethod, new Object[] {i, defaultValue});
-            });
+            }, null);
         } finally {
             cursor.close(new ArrayList<>());
         }

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.workqueue.ChangeSetThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
+import com.alibaba.polardbx.executor.ddl.workqueue.OmcThreadPoll;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -95,6 +96,7 @@ public class DdlEngineShowDdlStatsHandler extends DdlEngineJobsHandler {
             // backfill parallelism
             BackFillThreadPool.updateStats();
             ChangeSetThreadPool.updateStats();
+            OmcThreadPoll.getInstance().updateStats();
             DdlEngineStats.updateBackfillRowsMetric(0);
 
             //only leader update the fastchecker stats

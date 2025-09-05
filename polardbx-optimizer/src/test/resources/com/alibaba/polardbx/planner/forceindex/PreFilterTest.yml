@@ -1,0 +1,344 @@
+SQL:
+  - sql: |
+      select modify_time from pm_order_finish force index(indx1) WHERE 
+      pre_filter(modify_time) and user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`modify_time` < ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select modify_time from pm_order_finish force index(indx1) WHERE 
+      pre_filter(modify_time) and user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?5, fetch=?6)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select modify_time from pm_order_finish force index(indx1) WHERE 
+      pre_filter(modify_time) and user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and '2024-11-15 00:00:00.000' < modify_time and '2024-11-21 23:59:59.000' > modify_time
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?4, fetch=?5)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (? < `modify_time`) and (? > `modify_time`) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select modify_time from pm_order_finish force index(indx1) WHERE 
+      pre_filter(modify_time) and user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and  '2024-11-15 00:00:00.000' <= modify_time and '2024-11-21 23:59:59.000' >= modify_time
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?4, fetch=?5)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (? <= `modify_time`) and (? >= `modify_time`) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select modify_time from pm_order_finish force index(indx1) WHERE 
+      pre_filter(modify_time) and user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and modify_time between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?5, fetch=?6)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (`modify_time` between ? and ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select modified_at from pm_order_simple force index(indx1) WHERE 
+      pre_filter(modified_at) and user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and modified_at between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      project(modified_at="modified_at")
+        mergesort(sort="modify_time desc", offset=?5, fetch=?6)
+          logicalview(tables="pm_order_simple[p202411],pm_order_simple[p202411],pm_order_simple[p202411]", sql="select `modified_at`, `modify_time` from `pm_order_simple` as `pm_order_simple` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (`modified_at` between ? and ?) and (`status` <> ?) and ((((select max(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple0` force index(`idx_modified_at`)))) >= ?) and ((((select min(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple1` force index(`idx_modified_at`)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select modified_at from pm_order_simple force index(indx1) WHERE 
+        pre_filter(modified_at) and modified_at between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000' and status != 33 
+        order by modify_time desc limit 0,100;
+    plan: |
+      project(modified_at="modified_at")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `modified_at`, `modify_time` from `pm_order_simple` as `pm_order_simple` force index(indx1) where ((`modified_at` between ? and ?) and (`status` <> ?) and ((((select max(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple0` force index(`idx_modified_at`)))) >= ?) and ((((select min(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple1` force index(`idx_modified_at`)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select modified_at from pm_order_simple force index(indx1) WHERE 
+      pre_filter(modified_at) and pre_filter(created_at) and modified_at between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000'
+      and created_at < '2024-11-22 23:59:59.000'
+      order by modify_time desc limit 0,100;
+    plan: |
+      project(modified_at="modified_at")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `modified_at`, `modify_time` from `pm_order_simple` as `pm_order_simple` force index(indx1) where ((`modified_at` between ? and ?) and (`created_at` < ?) and ((((select max(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple0` force index(`idx_modified_at`)))) >= ?) and ((((select min(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple1` force index(`idx_modified_at`)))) <= ?) and ((((select min(`created_at`) as `created_at` from `pm_order_simple` as `pm_order_simple2` force index(`idx_created_at`)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/update pm_order_finish force index(indx1) 
+      set id = 1 WHERE 
+       user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      logicalmodify(type="update", set="pm_order_finish.id=?0")
+        mergesort(sort="modify_time desc", offset=?7, fetch=?8)
+          logicalview(tables="pm_order_finish[p4p202411]", sql="select `id`, `user_id`, `broker_id`, `order_type`, `system_type`, `reduce_only`, `status`, `fee`, `fee_rate`, `partition_time`, `created_at`, `modified_at`, `create_time`, `modify_time`, `amend_px_on_trigger_type`, `deal_avg_price`, ? from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`modify_time` < ?) and (`status` <> ?)) order by `modify_time` desc limit (? + ?) for update")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/select modify_time from pm_order_finish force index(indx1) WHERE 
+       user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`modify_time` < ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/select modify_time from pm_order_finish force index(indx1) WHERE 
+       user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?5, fetch=?6)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/select modify_time from pm_order_finish force index(indx1) WHERE 
+       user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and '2024-11-15 00:00:00.000' < modify_time and '2024-11-21 23:59:59.000' > modify_time
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?4, fetch=?5)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (? < `modify_time`) and (? > `modify_time`) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/select modify_time from pm_order_finish force index(indx1) WHERE 
+       user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and  '2024-11-15 00:00:00.000' <= modify_time and '2024-11-21 23:59:59.000' >= modify_time
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?4, fetch=?5)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (? <= `modify_time`) and (? >= `modify_time`) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="'optest.pm_order_finish.modify_time'")*/select modify_time from pm_order_finish force index(indx1) WHERE 
+       user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and modify_time between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?5, fetch=?6)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (`modify_time` between ? and ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish1` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_simple.modified_at,optest.pm_order_finish.modify_time")*/select modified_at from pm_order_simple force index(indx1) WHERE 
+       user_id = 13701542 and partition_time >= '2024-11-14 00:00:00.000' and modified_at between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000' and status != 33 
+      order by modify_time desc limit 0,100;
+    plan: |
+      project(modified_at="modified_at")
+        mergesort(sort="modify_time desc", offset=?5, fetch=?6)
+          logicalview(tables="pm_order_simple[p202411],pm_order_simple[p202411],pm_order_simple[p202411]", sql="select `modified_at`, `modify_time` from `pm_order_simple` as `pm_order_simple` force index(indx1) where ((`user_id` = ?) and (`partition_time` >= ?) and (`modified_at` between ? and ?) and (`status` <> ?) and ((((select max(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple0` force index(`idx_modified_at`)))) >= ?) and ((((select min(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple1` force index(`idx_modified_at`)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_finish.modify_time,'optest.pm_order_simple.modified_at'")*/select modified_at from pm_order_simple force index(indx1) WHERE 
+         modified_at between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000' and status != 33 
+        order by modify_time desc limit 0,100;
+    plan: |
+      project(modified_at="modified_at")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `modified_at`, `modify_time` from `pm_order_simple` as `pm_order_simple` force index(indx1) where ((`modified_at` between ? and ?) and (`status` <> ?) and ((((select max(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple0` force index(`idx_modified_at`)))) >= ?) and ((((select min(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple1` force index(`idx_modified_at`)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_simple.modified_at,optest.pm_order_simple.created_at")*/select modified_at from pm_order_simple force index(indx1) WHERE 
+        modified_at between '2024-11-15 00:00:00.000' and '2024-11-21 23:59:59.000'
+      and created_at < '2024-11-22 23:59:59.000'
+      order by modify_time desc limit 0,100;
+    plan: |
+      project(modified_at="modified_at")
+        mergesort(sort="modify_time desc", offset=?3, fetch=?4)
+          logicalview(tables="pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `modified_at`, `modify_time` from `pm_order_simple` as `pm_order_simple` force index(indx1) where ((`modified_at` between ? and ?) and (`created_at` < ?) and ((((select min(`created_at`) as `created_at` from `pm_order_simple` as `pm_order_simple0` force index(`idx_created_at`)))) <= ?) and ((((select max(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple1` force index(`idx_modified_at`)))) >= ?) and ((((select min(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple2` force index(`idx_modified_at`)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      select pre_filter(modify_time) from pm_order_finish force index(indx1);
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="pm_order_finish[p1p202409,p1p202410,p1p202411,...p4p202411]", shardcount=12, sql="select (true) as `pre_filter(modify_time)` from `pm_order_finish` as `pm_order_finish` force index(indx1)")
+  - sql: |
+      select pre_filter(modify_time) from t_s force index(indx1);
+    plan: |
+      logicalview(tables="optest_p00000_group.t_s", sql="select (true) as `pre_filter(modify_time)` from `t_s` as `t_s` force index(indx1)")
+  - sql: |
+      /*+TDDL:cmd_extra(enable_direct_plan=false)*/select pre_filter(modify_time) from t_s force index(indx1);
+    plan: |
+      phytableoperation(tables="t_s[p1]", sql="select (true) as `pre_filter(modify_time)` from ? as `t_s` force index(indx1)")
+  - sql: |
+      select t1.modify_time, t2.broker_id from pm_order_finish t1 join pm_order_finish t2 on t1.modify_time = t2.modify_time WHERE pre_filter(t1.modify_time) and t1.user_id = 13701542 and t1.user_id = t2.user_id and t1.modify_time > '2024-11-15 00:00:00.000' ;
+    plan: |
+      project(modify_time="modify_time", broker_id="broker_id")
+        bkajoin(condition="modify_time = modify_time and user_id = user_id", type="inner")
+          gather(concurrent=true)
+            logicalview(tables="pm_order_finish[p4p202409,p4p202410,p4p202411],pm_order_finish[p4p202409,p4p202410,p4p202411]", shardcount=3, sql="select `user_id`, `modify_time` from `pm_order_finish` as `pm_order_finish` where ((`user_id` = ?) and (`modify_time` > ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?))")
+          gather(concurrent=true)
+            logicalview(tables="pm_order_finish[p4p202409,p4p202410,p4p202411]", shardcount=3, sql="select `user_id`, `broker_id`, `modify_time` from `pm_order_finish` as `pm_order_finish` where ((`user_id` = ?) and (`modify_time` > ?) and (true) and (((`modify_time`, `user_id`)) in (...)))")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/select t1.modify_time, t2.broker_id from pm_order_finish t1 join pm_order_finish t2 on t1.modify_time = t2.modify_time WHERE t1.user_id = 13701542 and t1.user_id = t2.user_id and t1.modify_time > '2024-11-15 00:00:00.000' ;
+    plan: |
+      project(modify_time="modify_time", broker_id="broker_id")
+        bkajoin(condition="modify_time = modify_time and user_id = user_id", type="inner")
+          gather(concurrent=true)
+            logicalview(tables="pm_order_finish[p4p202409,p4p202410,p4p202411],pm_order_finish[p4p202409,p4p202410,p4p202411]", shardcount=3, sql="select `user_id`, `modify_time` from `pm_order_finish` as `pm_order_finish` where ((`user_id` = ?) and (`modify_time` > ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?))")
+          gather(concurrent=true)
+            logicalview(tables="pm_order_finish[p4p202409,p4p202410,p4p202411]", shardcount=3, sql="select `user_id`, `broker_id`, `modify_time` from `pm_order_finish` as `pm_order_finish` where ((`user_id` = ?) and (`modify_time` > ?) and (((`modify_time`, `user_id`)) in (...)))")
+  - sql: |
+      select t1.modify_time, t2.broker_id from pm_order_simple t1 join pm_order_simple t2 on t1.created_at = t2.created_at WHERE pre_filter(t1.created_at) and t1.partition_time = t2.partition_time and t1.created_at > '2024-11-15 00:00:00.000' ;
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `pm_order_simple`.`modify_time`, `pm_order_simple0`.`broker_id` from `pm_order_simple` as `pm_order_simple` inner join `pm_order_simple` as `pm_order_simple0` on ((`pm_order_simple`.`created_at` = `pm_order_simple0`.`created_at`) and (`pm_order_simple`.`partition_time` = `pm_order_simple0`.`partition_time`) and (true) and (`pm_order_simple`.`created_at` > ?))")
+  - sql: |
+      select t1.modify_time, t2.broker_id from pm_order_simple t1 left join pm_order_simple t2 on t1.created_at = t2.created_at and t1.partition_time = t2.partition_time WHERE pre_filter(t1.created_at) and t1.created_at > '2024-11-15 00:00:00.000' ;
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `pm_order_simple`.`modify_time`, `pm_order_simple0`.`broker_id` from `pm_order_simple` as `pm_order_simple` left join `pm_order_simple` as `pm_order_simple0` on ((`pm_order_simple`.`created_at` = `pm_order_simple0`.`created_at`) and (`pm_order_simple`.`partition_time` = `pm_order_simple0`.`partition_time`)) where ((`pm_order_simple`.`created_at` > ?) and (true))")
+  - sql: |
+      select modified_at from pm_order_simple force index(idx_id) WHERE 
+      pre_filter(id) and partition_time >= '2024-11-14 00:00:00.000' and id > 10;
+    plan: |
+      project(modified_at="modified_at")
+        bkajoin(condition="id = id and partition_time = partition_time", type="inner")
+          gather(concurrent=true)
+            indexscan(tables="idx_id[p1,p2,p3,p4],idx_id[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `partition_time` from `idx_id` as `idx_id` where ((`partition_time` >= ?) and (`id` > ?) and ((((select max(`id`) as `id` from `idx_id` as `idx_id0` force index(`primary`)))) >= ?))")
+          gather(concurrent=true)
+            logicalview(tables="pm_order_simple[p202411]", sql="select `id`, `partition_time`, `modified_at` from `pm_order_simple` as `pm_order_simple` force index(`primary`) where ((`partition_time` >= ?) and (`id` > ?) and (true) and (((`id`, `partition_time`)) in (...)))")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_simple.id")*/select modified_at from pm_order_simple force index(idx_id) WHERE 
+      partition_time >= '2024-11-14 00:00:00.000' and id > 10;
+    plan: |
+      project(modified_at="modified_at")
+        bkajoin(condition="id = id and partition_time = partition_time", type="inner")
+          gather(concurrent=true)
+            indexscan(tables="idx_id[p1,p2,p3,p4],idx_id[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `partition_time` from `idx_id` as `idx_id` where ((`partition_time` >= ?) and (`id` > ?) and ((((select max(`id`) as `id` from `idx_id` as `idx_id0` force index(`primary`)))) >= ?))")
+          gather(concurrent=true)
+            logicalview(tables="pm_order_simple[p202411]", sql="select `id`, `partition_time`, `modified_at` from `pm_order_simple` as `pm_order_simple` force index(`primary`) where ((`partition_time` >= ?) and (`id` > ?) and (((`id`, `partition_time`)) in (...)))")
+  - sql: |
+      select modified_at from pm_order_simple WHERE 
+      pre_filter(user_id + broker_id) and user_id+broker_id > 10
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `modified_at` from `pm_order_simple` as `pm_order_simple` where (((`user_id` + `broker_id`) > ?) and true)")
+  - sql: |
+      select modified_at from pm_order_simple WHERE 
+      pre_filter(id) and id > 10 + 10
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="pm_order_simple[p202409,p202410,p202411],pm_order_simple[p202409,p202410,p202411]", shardcount=3, sql="select `modified_at` from `pm_order_simple` as `pm_order_simple` where ((`id` > (? + ?)) and ((((select max(`id`) as `id` from `pm_order_simple` as `pm_order_simple0` force index(`primary`)))) >= (? + ?)))")
+  - sql: |
+      select modified_at from pm_order_simple paging_force index(indx1) WHERE 
+      pre_filter(modified_at) and partition_time >= '2024-11-14 00:00:00.000' and modified_at > '2024-11-14 00:00:00.000' 
+      limit 10;
+    plan: |
+      mergesort(sort="", offset=0, fetch=?2)
+        logicalview(tables="pm_order_simple[p202411],pm_order_simple[p202411],pm_order_simple[p202411]", sql="select `pm_order_simple1`.`modified_at` from (select `id`, `partition_time` from `pm_order_simple` as `pm_order_simple` force index(`indx1`) where ((`partition_time` >= ?) and (`modified_at` > ?) and ((((select max(`modified_at`) as `modified_at` from `pm_order_simple` as `pm_order_simple0` force index(`idx_modified_at`)))) >= ?)) limit (? + 0)) as `t2` inner join `pm_order_simple` as `pm_order_simple1` on ((`t2`.`id` = `pm_order_simple1`.`id`) and (`t2`.`partition_time` = `pm_order_simple1`.`partition_time`)) limit (? + 0)")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_PREFILTER_UPPER_BOUND=false)*/select modify_time from pm_order_finish force index(indx1) WHERE pre_filter(modify_time) and user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`modify_time` < ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_PREFILTER_UPPER_BOUND=false PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/select modify_time from pm_order_finish force index(indx1) WHERE user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`modify_time` < ?) and (`status` <> ?) and ((((select max(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) >= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_PREFILTER_LOWER_BOUND=false)*/select modify_time from pm_order_finish force index(indx1) WHERE pre_filter(modify_time) and user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?6, fetch=?7)
+        logicalview(tables="pm_order_finish[p4p202411],pm_order_finish[p4p202411]", sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`user_id` = ?) and (`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`modify_time` < ?) and (`status` <> ?) and ((((select min(`modify_time`) as `modify_time` from `pm_order_finish` as `pm_order_finish0` force index(`idx_test`) where (`user_id` = ?)))) <= ?)) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_PREFILTER_UPPER_BOUND=false ENABLE_PREFILTER_LOWER_BOUND=false)*/select modify_time from pm_order_finish force index(indx1) WHERE pre_filter(modify_time) and user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 order by modify_time desc limit 0,100;
+    plan: |
+      phytableoperation(tables="pm_order_finish[p4p202411]", sql="select `pm_order_finish`.`modify_time` as `modify_time` from ? as `pm_order_finish` force index(indx1) where ((true) and (`pm_order_finish`.`user_id` = ?) and (`pm_order_finish`.`broker_id` = ?) and (`pm_order_finish`.`partition_time` >= ?) and (`pm_order_finish`.`modify_time` > ?) and (`pm_order_finish`.`modify_time` < ?) and (`pm_order_finish`.`status` <> ?)) order by `modify_time` desc limit ? offset ?", params="0,33,2024-11-15 00:00:00.000,100,13701542,2024-11-14 00:00:00.000,0,2024-11-21 23:59:59.000")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_PREFILTER_UPPER_BOUND=false ENABLE_PREFILTER_LOWER_BOUND=false PREFILTER_COLUMNS="optest.pm_order_finish.modify_time")*/select modify_time from pm_order_finish force index(indx1) WHERE user_id = 13701542 and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 order by modify_time desc limit 0,100;
+    plan: |
+      phytableoperation(tables="pm_order_finish[p4p202411]", sql="select `pm_order_finish`.`modify_time` as `modify_time` from ? as `pm_order_finish` force index(indx1) where ((`pm_order_finish`.`user_id` = ?) and (`pm_order_finish`.`broker_id` = ?) and (`pm_order_finish`.`partition_time` >= ?) and (`pm_order_finish`.`modify_time` > ?) and (`pm_order_finish`.`modify_time` < ?) and (`pm_order_finish`.`status` <> ?)) order by `modify_time` desc limit ? offset ?", params="0,33,2024-11-15 00:00:00.000,100,13701542,2024-11-14 00:00:00.000,0,2024-11-21 23:59:59.000")
+  - sql: |
+      select modify_time from pm_order_finish force index(indx1) WHERE pre_filter(modify_time) and broker_id = 0 and partition_time >= '2024-11-14 00:00:00.000' and modify_time > '2024-11-15 00:00:00.000' and modify_time < '2024-11-21 23:59:59.000' and status != 33 order by modify_time desc limit 0,100;
+    plan: |
+      mergesort(sort="modify_time desc", offset=?5, fetch=?6)
+        logicalview(tables="pm_order_finish[p1p202411,p2p202411,p3p202411,p4p202411]", shardcount=4, sql="select `modify_time` from `pm_order_finish` as `pm_order_finish` force index(indx1) where ((`broker_id` = ?) and (`partition_time` >= ?) and (`modify_time` > ?) and (`modify_time` < ?) and (`status` <> ?) and true) order by `modify_time` desc limit (? + ?)")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_simple.id")*/
+      select id from (select count(1) as id from pm_order_simple force index(idx_id) WHERE 
+      partition_time >= '2024-11-14 00:00:00.000' and id > 10 group by partition_time ) where id > 10;
+    plan: |
+      project(id="id")
+        filter(condition="id > ?2")
+          hashagg(group="partition_time", id="sum(id)")
+            gather(concurrent=true)
+              indexscan(tables="idx_id[p1,p2,p3,p4],idx_id[p1,p2,p3,p4]", shardcount=4, sql="select `partition_time`, count(*) as `id` from `idx_id` as `idx_id` where ((`partition_time` >= ?) and (`id` > ?) and ((((select max(`id`) as `id` from `idx_id` as `idx_id0` force index(`primary`)))) >= ?)) group by `partition_time`")
+  - sql: |
+      /*+TDDL:cmd_extra(PREFILTER_COLUMNS="optest.pm_order_simple.id" enable_post_planner=false)*/ 
+      select id from (select count(1) as xx,id from pm_order_simple force index(idx_id) WHERE        partition_time = '2024-11-14 00:00:00.000' and id > 10 group by partition_time,id ) where id > 10 and xx < 10;
+    plan: |
+      gather(concurrent=true)
+        indexscan(tables="idx_id[p1,p2,p3,p4],idx_id[p1,p2,p3,p4]", shardcount=4, sql="select `id` from (select `id`, (`partition_time`) as `partition_time`, count(*) as `xx` from `idx_id` as `idx_id` where ((`partition_time` = ?) and (`id` > ?) and (`id` > ?) and ((((select max(`id`) as `id` from `idx_id` as `idx_id0` force index(`primary`)))) >= ?)) group by `id` having (count(*) < ?)) as `t2`")
+DDL:
+  pm_order_finish:
+    CREATE TABLE `pm_order_finish` (
+    `id` bigint(20) NOT NULL,
+    `user_id` bigint(20) NOT NULL,
+    `broker_id` int(11) NOT NULL DEFAULT '0',
+    `order_type` tinyint(4) NOT NULL,
+    `system_type` tinyint(4) NOT NULL DEFAULT '0',
+    `reduce_only` tinyint(1) NOT NULL,
+    `status` tinyint(4) NOT NULL,
+    `fee` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `fee_rate` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `partition_time` datetime(3) NOT NULL,
+    `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modified_at` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    `create_time` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modify_time` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `amend_px_on_trigger_type` int(11) DEFAULT NULL,
+    `deal_avg_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    PRIMARY KEY (`id`),
+    LOCAL KEY `idx_test` (`user_id`, `modify_time`),
+    LOCAL KEY `idx_modified_at` (`modified_at`),
+    LOCAL KEY `indx1` (`user_id`,`broker_id`,`modify_time`),
+    LOCAL KEY `auto_shard_key_partition_time` USING BTREE (`partition_time`)
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+    PARTITION BY KEY(`user_id`)
+    PARTITIONS 4
+    SUBPARTITION BY RANGE(TO_DAYS(`partition_time`))
+    (SUBPARTITION `p202409` VALUES LESS THAN (739525),
+    SUBPARTITION `p202410` VALUES LESS THAN (739556),
+    SUBPARTITION `p202411` VALUES LESS THAN (739586))
+  pm_order_simple:
+    CREATE TABLE `pm_order_simple` (
+    `id` bigint(20) NOT NULL,
+    `user_id` bigint(20) NOT NULL,
+    `broker_id` int(11) NOT NULL DEFAULT '0',
+    `order_type` tinyint(4) NOT NULL,
+    `system_type` tinyint(4) NOT NULL DEFAULT '0',
+    `reduce_only` tinyint(1) NOT NULL,
+    `status` tinyint(4) NOT NULL,
+    `fee` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `fee_rate` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `partition_time` datetime(3) NOT NULL,
+    `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modified_at` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    `create_time` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modify_time` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `amend_px_on_trigger_type` int(11) DEFAULT NULL,
+    `deal_avg_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    PRIMARY KEY (`id`),
+    LOCAL KEY `idx_test` (`user_id`, `modify_time`),
+    GLOBAL INDEX `idx_id` (`id`, `partition_time`) partition by key(id) partitions 4,
+    LOCAL KEY `idx_modified_at` (`modified_at`),
+    LOCAL KEY `idx_created_at` (`created_at`),
+    LOCAL KEY `indx1` (`user_id`,`broker_id`,`modify_time`, `modified_at`,`partition_time`)
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+    PARTITION BY RANGE(TO_DAYS(`partition_time`))
+    (PARTITION `p202409` VALUES LESS THAN (739525),
+    PARTITION `p202410` VALUES LESS THAN (739556),
+    PARTITION `p202411` VALUES LESS THAN (739586))
+  t_s:
+    CREATE TABLE `t_s` (
+    `id` bigint(20) NOT NULL,
+    `user_id` bigint(20) NOT NULL,
+    `broker_id` int(11) NOT NULL DEFAULT '0',
+    `order_type` tinyint(4) NOT NULL,
+    `system_type` tinyint(4) NOT NULL DEFAULT '0',
+    `reduce_only` tinyint(1) NOT NULL,
+    `status` tinyint(4) NOT NULL,
+    `fee` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `fee_rate` decimal(32, 16) NOT NULL DEFAULT '0.0000000000000000',
+    `partition_time` datetime(3) NOT NULL,
+    `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modified_at` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    `create_time` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `modify_time` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `amend_px_on_trigger_type` int(11) DEFAULT NULL,
+    `deal_avg_price` decimal(32, 16) DEFAULT '0.0000000000000000',
+    PRIMARY KEY (`id`),
+    LOCAL KEY `idx_test` (`user_id`, `modify_time`),
+    LOCAL KEY `idx_modified_at` (`modified_at`),
+    LOCAL KEY `indx1` (`user_id`,`broker_id`,`modify_time`),
+    LOCAL KEY `auto_shard_key_partition_time` USING BTREE (`partition_time`)
+    ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 single
+STATISTICS:
+  pm_order_finish:
+    100
+CONFIG:
+  defaltxxAPPName.isNew:
+    true

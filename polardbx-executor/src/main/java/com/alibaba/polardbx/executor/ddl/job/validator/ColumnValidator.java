@@ -46,7 +46,7 @@ public class ColumnValidator {
             } else if (colDef.getValue() != null && colDef.getValue().getName() != null) {
                 columnName = colDef.getValue().getName().getLastName();
             }
-            LimitValidator.validateColumnNameLength(columnName);
+            LimitValidator.validateColumnName(columnName);
 
             // Check column comment length.
             if (colDef.getValue() != null && colDef.getValue().getComment() != null) {
@@ -80,7 +80,7 @@ public class ColumnValidator {
 
                     // Check new column name.
                     String newColumnName = changeColumn.getNewName().getLastName();
-                    LimitValidator.validateColumnNameLength(newColumnName);
+                    LimitValidator.validateColumnName(newColumnName);
 
                     // Check new column comment.
                     SqlLiteral newColumnComment = changeColumn.getColDef().getComment();

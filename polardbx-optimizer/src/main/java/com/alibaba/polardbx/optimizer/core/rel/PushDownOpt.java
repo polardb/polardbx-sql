@@ -30,11 +30,16 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.AutoForceIndexRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.AutoPaginationRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterConditionSimplifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterReorderRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.GenPreFilterRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinSemiJoinTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PagingForceRemoveRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PagingForceToJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PreFilterToSubqueryRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinCorrToSubQueryRule;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -93,6 +98,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.Pair;
@@ -218,12 +224,6 @@ public class PushDownOpt {
                 newPushDownOpt.fullComparatives.add(newMap);
             }
         }
-        if (this.allPartPruneSteps != null && !this.allPartPruneSteps.isEmpty() && logicalView.isNewPartDbTbl()) {
-            PartRoutingPlanInfo partRoutingPlanInfo =
-                newPushDownOpt.buildPartRoutingPlanInfo(logicalView, logicalView.isNewPartDbTbl(),
-                    PlannerContext.getPlannerContext(rel).getExecutionContext());
-            newPushDownOpt.updatePartRoutingPlanInfo(partRoutingPlanInfo);
-        }
         newPushDownOpt.shardRelatedInTypeParamIndexes = shardRelatedInTypeParamIndexes;
         return newPushDownOpt;
     }
@@ -339,7 +339,7 @@ public class PushDownOpt {
         builder.addRuleInstance(JoinProjectTransposeRule.BOTH_PROJECT);
         builder.addRuleInstance(FilterProjectTransposeRule.INSTANCE);
         builder.addRuleInstance(SemiJoinProjectTransposeRule.INSTANCE);
-        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE_WONT_IGNORE_REX_SUBQUERY);
         builder.addGroupEnd();
 
         //pull filter
@@ -371,14 +371,80 @@ public class PushDownOpt {
         builder.addRuleInstance(FilterReorderRule.INSTANCE);
         builder.addGroupEnd();
 
-        HepPlanner planner = new HepPlanner(builder.build());
-        planner.stopOptimizerTrace();
-        planner.setRoot(getPushedRelNode());
-        RelNode optimizedNode = planner.findBestExp();
+        if (shouldOptPagination()) {
+            // auto pagination
+            builder.addGroupBegin();
+            builder.addRuleInstance(AutoPaginationRule.INSTANCE);
+            builder.addRuleInstance(AutoPaginationRule.PROJECT);
+            builder.addGroupEnd();
+            // optimize paging_force
+            builder.addGroupBegin();
+            builder.addRuleInstance(PagingForceToJoinRule.INSTANCE);
+            builder.addRuleInstance(PagingForceToJoinRule.PROJECT);
+            builder.addGroupEnd();
+        }
+        builder.addGroupBegin();
+        builder.addRuleInstance(PagingForceRemoveRule.INSTANCE);
+        builder.addGroupEnd();
 
-        optimizedNode = optimizedNode.accept(new RelCastRemover());
+        // optimize pre_filter
+        if (shouldOptPreFilter()) {
+            builder.addGroupBegin();
+            builder.addRuleInstance(GenPreFilterRule.INSTANCE);
+            builder.addGroupEnd();
+            builder.addGroupBegin();
+            builder.addRuleInstance(PreFilterToSubqueryRule.INSTANCE);
+            builder.addGroupEnd();
+        }
+
+        PlannerContext pc = PlannerContext.getPlannerContext(tableScan);
+        pc.getCalcitePlanOptimizerTrace()
+            .ifPresent(x -> x.addSnapshot("before optimize physical sql", getPushedRelNode(), pc));
+
+        HepPlanner planner = new HepPlanner(builder.build(), pc);
+        planner.setRoot(getPushedRelNode());
+        planner.startOptimizerTrace();
+        RelNode optimizedNode = planner.findBestExp().accept(new RelCastRemover());
         this.builder.clear();
         this.builder.push(optimizedNode);
+
+        pc.getCalcitePlanOptimizerTrace()
+            .ifPresent(x -> x.addSnapshot("after optimize physical sql", optimizedNode, pc));
+    }
+
+    private boolean shouldOptPreFilter() {
+        if (tableScan.getJoin() != null) {
+            return false;
+        }
+        if (tableScan instanceof LogicalModifyView || tableScan instanceof OSSTableScan) {
+            return false;
+        }
+        SqlSelect.LockMode lockMode = tableScan.getLockMode();
+        if (!(lockMode == null || lockMode == SqlSelect.LockMode.UNDEF)) {
+            return false;
+        }
+        return true;
+    }
+
+    public boolean shouldOptPagination() {
+        // correlated
+        if (!tableScan.getScalarList().isEmpty()) {
+            return false;
+        }
+        // lookup join
+        if (tableScan.getJoin() != null) {
+            return false;
+        }
+        // oss table scan
+        if (tableScan instanceof OSSTableScan) {
+            return false;
+        }
+        // dml
+        SqlSelect.LockMode lockMode = tableScan.getLockMode();
+        if (!(lockMode == null || lockMode == SqlSelect.LockMode.UNDEF)) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -834,8 +900,8 @@ public class PushDownOpt {
         updatePartRoutingPlanInfo(partRoutingPlanInfo);
     }
 
-    public boolean couldDynamicPruning() {
-        getShardRelatedInTypeParamIndexes();
+    public boolean couldDynamicPruning(ExecutionContext ec) {
+        getShardRelatedInTypeParamIndexes(ec);
         return shardRelatedInTypeParamIndexes != null && shardRelatedInTypeParamIndexes.size() > 0;
     }
 
@@ -1010,7 +1076,6 @@ public class PushDownOpt {
         } else {
             updatePartPruneSteps(newPruningPlanInfo.allPartPruningSteps);
         }
-        ExecutionContext ec = PlannerContext.getPlannerContext(tableScan).getExecutionContext();
     }
 
     class PlainRefCalculator extends RelShuttleImpl {
@@ -1343,9 +1408,9 @@ public class PushDownOpt {
         }
     }
 
-    public Set<Integer> getShardRelatedInTypeParamIndexes() {
+    public Set<Integer> getShardRelatedInTypeParamIndexes(ExecutionContext ec) {
         if (shardRelatedInTypeParamIndexes == null) {
-            buildShardRelatedInTypeParamIndexes(PlannerContext.getPlannerContext(tableScan).getExecutionContext());
+            buildShardRelatedInTypeParamIndexes(ec);
         }
         return shardRelatedInTypeParamIndexes;
     }

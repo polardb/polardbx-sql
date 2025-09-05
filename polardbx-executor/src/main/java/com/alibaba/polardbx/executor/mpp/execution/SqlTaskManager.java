@@ -81,7 +81,7 @@ public class SqlTaskManager
      */
     private final ConcurrentMap<String, List<TaskId>> queryTasks;
 
-    private Object doRemoveTaskLock = new Object();
+    private final Object doRemoveTaskLock = new Object();
 
     private final SqlTaskExecutionFactory sqlTaskExecutionFactory;
 

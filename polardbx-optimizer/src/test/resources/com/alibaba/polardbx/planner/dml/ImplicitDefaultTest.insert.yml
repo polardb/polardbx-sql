@@ -1,0 +1,262 @@
+- sql: |
+    insert into t1_default(c1) select null from t1_default where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, null c1), mode=multi)
+      LogicalView(tables="t1_default[p1]", sql="select null as `id`, current_timestamp(6) as `c1` from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?)")
+
+- sql: |
+    insert into t1_default(c1) select 1 + null from t1_default where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, bigint c1), mode=multi)
+      LogicalView(tables="t1_default[p1]", sql="select null as `id`, ifnull((? + null), current_timestamp(6)) as `c1` from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?)")
+
+- sql: |
+    insert into t1_default(c1) select from_unixtime(null) from t1_default where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, datetime(0) c1), mode=multi)
+      LogicalView(tables="t1_default[p1]", sql="select null as `id`, ifnull(from_unixtime(null), current_timestamp(6)) as `c1` from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?)")
+
+- sql: |
+    insert into t1_default(c1) select c2 from t1_default where c1 = "2024-11-25 17:49:57.846790" and c2 is null
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, bigint c1), mode=multi)
+      LogicalView(tables="t1_default[p1]", sql="select null as `id`, `c2` as `c1` from `t1_default` as `t1_default` where ((`c2` is null) and (`c1` = ?))")
+
+- sql: |
+    insert into t1_default(c2) select null from t1_default where c1 = "2024-11-25 17:49:57.846790"
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, datetime(6) c1, null c2), mode=multi)
+      LogicalView(tables="t1_default[p1]", sql="select null as `id`, current_timestamp(6) as `c1`, null as `c2` from `t1_default` as `t1_default` force index(`auto_shard_key_c1`) where (`c1` = ?)")
+
+- sql: |
+    insert into t1_default(c2) select null from t1_default where c1 = "2024-11-25 17:49:57.846790" order by c3 limit 1
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, datetime(6) c1, null c2), mode=multi)
+      LogicalView(tables="t1_default[p1]", sql="select null as `id`, current_timestamp(6) as `c1`, null as `c2` from `t1_default` as `t1_default` where (`c1` = ?) order by `c3` limit ?")
+
+- sql: |
+    insert into t2_default(c1, c2, c3) select null, null, null from t2_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, null c1, null c2, null c3), mode=multi)
+      LogicalView(tables="t2_default[p1]", sql="select null as `id`, null as `c1`, 0 as `c2`, null as `c3` from `t2_default` as `t2_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+
+- sql: |
+    insert into t2_default(c1, c2, c3) select 1 + null, 1 + null, 1 + null from t2_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, bigint c1, bigint c2, bigint c3), mode=multi)
+      LogicalView(tables="t2_default[p1]", sql="select null as `id`, (? + null) as `c1`, ifnull((? + null), 0) as `c2`, (? + null) as `c3` from `t2_default` as `t2_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+- sql: |
+    insert into t2_default(c1, c2, c3) select from_unixtime(null), from_unixtime(null), from_unixtime(null) from t2_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, datetime(0) c1, datetime(0) c2, datetime(0) c3), mode=multi)
+      LogicalView(tables="t2_default[p1]", sql="select null as `id`, from_unixtime(null) as `c1`, ifnull(from_unixtime(null), 0) as `c2`, from_unixtime(null) as `c3` from `t2_default` as `t2_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+
+- sql: |
+    insert into t2_default(c1, c2, c3) select c2, c2, c2 from t1_default where c1 = "2024-11-25 17:49:57.846790" and c2 is null;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, bigint c1, bigint c2, bigint c3), mode=multi)
+      LogicalView(tables="t1_default[p1]", sql="select null as `id`, `c2` as `c1`, `c2`, `c2` as `c3` from `t1_default` as `t1_default` where ((`c2` is null) and (`c1` = ?))")
+
+- sql: |
+    insert into t2_default(c1, c2, c3) select now(), null, 2 from t2_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, datetime c1, null c2, bigint c3), mode=multi)
+      LogicalView(tables="t2_default[p1]", sql="select null as `id`, cast(? as datetime) as `c1`, 0 as `c2`, ? as `c3` from `t2_default` as `t2_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+
+- sql: |
+    insert into t2_default(c1, c2, c3) select now(), null, 2 from t2_default where c2 = 1 order by c3 limit 1;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, datetime c1, null c2, bigint c3), mode=multi)
+      LogicalView(tables="t2_default[p1]", sql="select null as `id`, cast(? as datetime) as `c1`, 0 as `c2`, ? as `c3` from `t2_default` as `t2_default` where (`c2` = ?) order by `c3` limit ?")
+
+- sql: |
+    insert into t2_default(c1, c2, c3) select null, 1, null from t2_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, null c1, bigint c2, null c3), mode=multi)
+      LogicalView(tables="t2_default[p1]", sql="select null as `id`, null as `c1`, ifnull(?, 0) as `c2`, null as `c3` from `t2_default` as `t2_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+
+- sql: |
+    insert into t2_default(c1, c2, c3) select null, 1, null from t2_default where c2 = 1 order by c3 limit 1;
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, null c1, bigint c2, null c3), mode=multi)
+      LogicalView(tables="t2_default[p1]", sql="select null as `id`, null as `c1`, ifnull(?, 0) as `c2`, null as `c3` from `t2_default` as `t2_default` where (`c2` = ?) order by `c3` limit ?")
+
+- sql: |
+    insert into t3_default(c1) select null from t3_default where c2 = 1
+
+  plan: |
+    LogicalInsert(table="t3_default", columns=RecordType(bigint id, null c1, datetime(6) c2), mode=multi)
+      LogicalView(tables="t3_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select null as `id`, current_timestamp(6) as `c1`, current_timestamp(6) as `c2` from `t3_default` as `t3_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+
+- sql: |
+    insert into t3_default(c1) select null from t3_default where c2 = 1 order by c3 limit 1
+
+  plan: |
+    LogicalInsert(table="t3_default", columns=RecordType(bigint id, null c1, datetime(6) c2), mode=multi)
+      LogicalView(tables="t3_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select null as `id`, current_timestamp(6) as `c1`, current_timestamp(6) as `c2` from `t3_default` as `t3_default` where (`c2` = ?) order by `c3` limit ?")
+
+- sql: |
+    insert into t4_default(c1, c2) select null, null from t4_default where c2 = 1 
+
+  plan: |
+    LogicalInsert(table="t4_default", columns=RecordType(bigint id, null c1, null c2), mode=multi)
+      LogicalView(tables="t4_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select null as `id`, current_timestamp(6) as `c1`, current_timestamp(6) as `c2` from `t4_default` as `t4_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+
+- sql: |
+    insert into t4_default(c1) select 1 + null from t4_default where c2 = 1 
+
+  plan: |
+    LogicalInsert(table="t4_default", columns=RecordType(bigint id, bigint c1, datetime(6) c2), mode=multi)
+      LogicalView(tables="t4_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select null as `id`, ifnull((? + null), current_timestamp(6)) as `c1`, current_timestamp(6) as `c2` from `t4_default` as `t4_default` force index(`auto_shard_key_c2`) where (`c2` = ?)")
+
+- sql: |
+    insert into t4_default(c1) select 1 + null from t4_default where c2 = 1 order by c3 limit 1 
+
+  plan: |
+    LogicalInsert(table="t4_default", columns=RecordType(bigint id, bigint c1, datetime(6) c2), mode=multi)
+      LogicalView(tables="t4_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select null as `id`, ifnull((? + null), current_timestamp(6)) as `c1`, current_timestamp(6) as `c2` from `t4_default` as `t4_default` where (`c2` = ?) order by `c3` limit ?")
+
+- sql: |
+    insert into t5_default(c1) select 1 + null from t5_default where c3 = 1 and c2 = "2024-11-25 17:49:57.846790" 
+
+  plan: |
+    LogicalInsert(table="t5_default", columns=RecordType(bigint id, bigint c1, datetime(6) c2), mode=multi)
+      LogicalView(tables="t5_default[p1]", sql="select null as `id`, ifnull((? + null), current_timestamp(6)) as `c1`, current_timestamp(6) as `c2` from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?))")
+
+- sql: |
+    insert into t5_default(c1, c2) select "2024-11-25 17:49:57.846790", "2024-11-25 17:49:57.846790" from t5_default where c3 = 1 and c2 = "2024-11-25 17:49:57.846790" 
+
+  plan: |
+    LogicalInsert(table="t5_default", columns=RecordType(bigint id, char c1, char c2), mode=multi)
+      LogicalView(tables="t5_default[p1]", sql="select null as `id`, ifnull(?, current_timestamp(6)) as `c1`, ifnull(?, current_timestamp(6)) as `c2` from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?))")
+
+- sql: |
+    insert into t5_default(c4) select 10086 from t5_default where c3 = 4 and c2 = "2024-11-25 17:49:57.846790" 
+
+  plan: |
+    LogicalInsert(table="t5_default", columns=RecordType(bigint id, datetime(6) c1, datetime(6) c2, bigint c4), mode=multi)
+      LogicalView(tables="t5_default[p1]", sql="select null as `id`, current_timestamp(6) as `c1`, current_timestamp(6) as `c2`, ? as `c4` from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?))")
+
+- sql: |
+    insert into t5_default(c4) select 10086 from t5_default where c3 = 4 and c2 = "2024-11-25 17:49:57.846790" order by c4 limit 1 
+
+  plan: |
+    LogicalInsert(table="t5_default", columns=RecordType(bigint id, datetime(6) c1, datetime(6) c2, bigint c4), mode=multi)
+      LogicalView(tables="t5_default[p1]", sql="select null as `id`, current_timestamp(6) as `c1`, current_timestamp(6) as `c2`, ? as `c4` from `t5_default` as `t5_default` where ((`c3` = ?) and (`c2` = ?)) order by `c4` limit ?")
+
+- sql: |
+    insert into t2_default(c1, c2) select null, null from t2_default a join t2_default b on a.c2 = b.c2 where b.c2 = 1 
+
+  plan: |
+    LogicalInsert(table="t2_default", columns=RecordType(bigint id, null c1, null c2), mode=multi)
+      Gather(concurrent=true)
+        LogicalView(tables="t2_default[p1],t2_default[p1]", sql="select null as `id`, null as `c1`, 0 as `c2` from `t2_default` as `t2_default` inner join `t2_default` as `t2_default0` on ((`t2_default0`.`c2` = ?) and (`t2_default`.`c2` = ?) and (`t2_default`.`c2` = `t2_default0`.`c2`))")
+
+- sql: |
+    insert into t1_default(c1) select "2024-11-25 17:49:57.846790" + null from t1_default a join t1_default b on a.c2 = b.c2 where b.c2 = 1 
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, decimal(65, 30) c1), mode=multi)
+      Project(id="null", c1="ifnull(?0 + null, current_timestamp(6))")
+        BKAJoin(condition="c2 = c2", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select `c2` from `t1_default` as `t1_default` where (`c2` = ?)")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select `c2` from `t1_default` as `t1_default` where ((`c2` = ?) and (`c2` in (...)))")
+
+- sql: |
+    insert into t1_default(c2) select a.c1 + null from t1_default a join t1_default b on a.c1 = b.c1 where b.c2 = 1 
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, datetime(6) c1, timestamp(6) c2), mode=multi)
+      Gather(concurrent=true)
+        LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8],t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select null as `id`, current_timestamp(6) as `c1`, ((`t1_default`.`c1` + null)) as `c2` from `t1_default` as `t1_default` inner join `t1_default` as `t1_default0` on ((`t1_default0`.`c2` = ?) and (`t1_default`.`c1` = `t1_default0`.`c1`))")
+
+- sql: |
+    insert into t1_default(c1) select a.c2 + null from t1_default a join t1_default b on a.c1 = b.c1 where b.c2 = 1 order by b.c3 limit 1
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=recordtype(bigint id, bigint c1), mode=multi)
+      Project(id="null", c1="ifnull(a.c2 + null, current_timestamp(6))")
+        MergeSort(sort="c3 asc", offset=0, fetch=?1)
+          LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8],t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select (`t1_default`.`c2` + null) as `a.c2 + null`, `t1_default0`.`c3` from `t1_default` as `t1_default` inner join `t1_default` as `t1_default0` on ((`t1_default0`.`c2` = ?) and (`t1_default`.`c1` = `t1_default0`.`c1`)) order by `t1_default0`.`c3` limit (? + 0)")
+
+- sql: |
+    insert into t1_default(c1) select "2024-11-25 17:49:57.846790" + null from t1_default a join (select c1, c2 from t1_default b where b.c2 = 1) c on a.c2 = c.c2 
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, decimal(65, 30) c1), mode=multi)
+      Project(id="null", c1="ifnull(?0 + null, current_timestamp(6))")
+        BKAJoin(condition="c2 = c2", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select `c2` from `t1_default` as `t1_default` where (`c2` = ?)")
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select `c2` from `t1_default` as `t1_default` where ((`c2` = ?) and (`c2` in (...)))")
+
+- sql: |
+    insert into t1_default(c2) select null from t1_default a join (select c1, c2 from t1_default b where b.c1 = 1) c on a.c1 = c.c1 
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, datetime(6) c1, null c2), mode=multi)
+      Gather(concurrent=true)
+        LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8],t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select null as `id`, current_timestamp(6) as `c1`, null as `c2` from `t1_default` as `t1_default` inner join `t1_default` as `t1_default0` on (`t1_default`.`c1` = `t1_default0`.`c1`) where (`t1_default0`.`c1` = ?)")
+
+- sql: |
+    insert into t1_default(c1) select c.c3 from t1_default a join (select "2024-11-25 17:49:57.846790" as c1, 5 as c2, null as c3 union all select "2024-11-25 17:49:57.846790" as c1, 5 as c2, 2 + null as c3) c on a.c1 = c.c1 and a.c2 = c.c2
+
+  plan: |
+    LogicalInsert(table="t1_default", columns=RecordType(bigint id, bigint c1), mode=multi)
+      Project(id="null", c1="ifnull(c3, current_timestamp(6))")
+        BKAJoin(condition="c1 = c1 and c2 = c2", type="inner")
+          DynamicValues(tuples=[{ ?0, ?1, null }, { ?2, ?3, +(?4, null) }])
+          Gather(concurrent=true)
+            LogicalView(tables="t1_default[p1,p2,p3,p4,p5,p6,p7,p8]", ShardCount=8, sql="select `c1`, `c2` from `t1_default` as `t1_default` where (((`c1`, `c2`)) in (...))")
+
+- sql: |
+    insert into t6_default(c1) select null from t6_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t6_default", columns=RecordType(bigint id, null c1), mode=single)
+      LogicalView(tables="t6_default", ShardCount=0, sql="select null as `id`, current_timestamp(6) as `c1` from `t6_default` as `t6_default` where (`c2` = ?)")
+
+- sql: |
+    insert into t6_default(c1) select current_timestamp() from t6_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t6_default", columns=RecordType(bigint id, datetime(0) c1), mode=single)
+      LogicalView(tables="t6_default", ShardCount=0, sql="select null as `id`, current_timestamp as `c1` from `t6_default` as `t6_default` where (`c2` = ?)")
+
+- sql: |
+     insert into t6_default(c1) select current_timestamp() + null from t6_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t6_default", columns=RecordType(bigint id, datetime(0) c1), mode=single)
+      LogicalView(tables="t6_default", ShardCount=0, sql="select null as `id`, ifnull((current_timestamp + null), current_timestamp(6)) as `c1` from `t6_default` as `t6_default` where (`c2` = ?)")
+
+- sql: |
+    insert into t6_default(c1) select c1 from t6_default where c2 = 1 and c1 is null;
+
+  plan: |
+    LogicalInsert(table="t6_default", columns=RecordType(bigint id, timestamp(6) c1), mode=single)
+      LogicalView(tables="t6_default", ShardCount=0, sql="select null as `id`, `c1` from `t6_default` as `t6_default` where ((`c1` is null) and (`c2` = ?))")
+
+- sql: |
+    insert into t6_default(c3) select 10086 from t6_default where c2 = 1;
+
+  plan: |
+    LogicalInsert(table="t6_default", columns=RecordType(bigint id, datetime(6) c1, bigint c3), mode=single)
+      LogicalView(tables="t6_default", ShardCount=0, sql="select null as `id`, current_timestamp(6) as `c1`, ? as `c3` from `t6_default` as `t6_default` where (`c2` = ?)")

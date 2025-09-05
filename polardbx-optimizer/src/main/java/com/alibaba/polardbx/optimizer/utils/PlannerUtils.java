@@ -115,6 +115,8 @@ public class PlannerUtils {
     public final static int TABLE_NAME_PARAM_INDEX = -1;
     public final static int SCALAR_SUBQUERY_PARAM_INDEX = -2;
     public final static int APPLY_SUBQUERY_PARAM_INDEX = -3;
+    public final static int EXPLAIN_SUBQUERY_PARAM_INDEX = -4;
+    public final static int APPLY_IN_VALUES_PARAM_INDEX = -5;
     private final static Logger logger = LoggerFactory.getLogger(PlannerUtils.class);
 
     public static RelMetadataQuery newMetadataQuery() {

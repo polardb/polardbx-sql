@@ -661,7 +661,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format(
-            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and cardinality >= 0",
             tddlDatabase1, tableName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
@@ -677,7 +677,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = String.format(
-            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and cardinality >= 0",
             tddlDatabase1, tableName);
         ResultSet rs1 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
@@ -702,7 +702,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format(
-            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and cardinality >= 0",
             tddlDatabase1, tableName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
@@ -718,7 +718,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = String.format(
-            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and cardinality >= 0",
             tddlDatabase1, tableName);
         ResultSet rs1 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
@@ -875,6 +875,36 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
             JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         } finally {
             setSqlMode(sqlMode, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testOnlineModifyColumnWithCheckIso() {
+        String tableName = "omc_isolation" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql =
+            String.format(
+                "create table %s (a int primary key auto_increment, b varchar(10)) partition by hash(a) partitions 3",
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        try {
+            sql = "set @transaction_isolation_var = @@transaction_isolation";
+            JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+
+            sql = "set transaction_isolation = 'REPEATABLE-READ'";
+            JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+
+            sql = String.format("insert into table %s(b) values (\"123\"),(\"456\"),(\"789\")", tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+            sql = String.format(
+                "/*+TDDL:cmd_extra(ENABLE_OMC_CHECK_TX_ISOLATION=true)*/alter table %s modify column b varchar(8) not null,"
+                    + USE_OMC_ALGORITHM, tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        } finally {
+            sql = "set transaction_isolation = @transaction_isolation_var";
+            JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         }
     }
 }

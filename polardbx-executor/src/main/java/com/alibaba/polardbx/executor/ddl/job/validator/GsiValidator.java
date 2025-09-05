@@ -207,19 +207,4 @@ public class GsiValidator {
                 "Truncating table with GSI on other schema is forbidden, so please login with corresponding schema.");
         }
     }
-
-    public static void validateIfDroppingCciOfArcTableOfTtlTable(String tableSchema,
-                                                                 String tableName,
-                                                                 String indexName,
-                                                                 ExecutionContext ec) {
-
-        if (!TtlUtil.checkIfDropCciOfArcTblView(tableSchema, tableName, indexName, ec)) {
-            return;
-        }
-
-        throw new TddlRuntimeException(ErrorCode.ERR_TTL,
-            String.format("Dropping a columnar index `%s` of archive data of table `%s`.`%s` is not allowed.",
-                indexName, tableSchema, tableName));
-    }
-
 }

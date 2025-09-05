@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.mpp.planner.RemoteSourceNode;
 import com.alibaba.polardbx.executor.mpp.server.remotetask.HttpRemoteTask;
 import com.alibaba.polardbx.executor.mpp.split.RemoteSplit;
 import com.alibaba.polardbx.executor.mpp.util.ImmutableCollectors;
+import com.alibaba.polardbx.gms.metadb.scheduler.Task;
 import com.alibaba.polardbx.gms.node.Node;
 import com.google.common.base.Predicate;
 import com.google.common.collect.HashMultimap;
@@ -205,12 +206,6 @@ public class SqlStageExecution {
         return new Split(true, new RemoteSplit(location));
     }
 
-    private static Split createRemoteSplitForPairWise(TaskLocation taskLocation, int outputBufferId) {
-        TaskLocation location =
-            new TaskLocation(taskLocation.getNodeServer(), taskLocation.getTaskId(), outputBufferId);
-        return new Split(true, new RemoteSplit(location));
-    }
-
     private synchronized RemoteTask scheduleTask(Node node, TaskId taskId, Multimap<Integer, Split> sourceSplits,
                                                  boolean noMoreSplits, boolean startImmediately) {
         ensureNeedSetStageId();
@@ -218,18 +213,7 @@ public class SqlStageExecution {
         ImmutableMultimap.Builder<Integer, Split> initialSplits = ImmutableMultimap.builder();
         initialSplits.putAll(sourceSplits);
         for (Map.Entry<Integer, TaskLocation> entry : exchangeLocations.entries()) {
-            if (getFragment().isRemotePairWise()) {
-                int bufferId = orderedNodes.indexOf(node.getNodeIdentifier());
-                checkArgument(bufferId != -1,
-                    "Unknown node id under partition wise join, node is is %s, while all nodes is %s",
-                    node.getNodeIdentifier(),
-                    String.join(",", orderedNodes));
-                bufferId = OutputBuffers.OutputBufferId
-                    .formatOutputBufferId(needStageId ? taskId.getStageId().getId() : 0, bufferId);
-                initialSplits.put(entry.getKey(), createRemoteSplitForPairWise(entry.getValue(), bufferId));
-            } else {
-                initialSplits.put(entry.getKey(), createRemoteSplitFor(taskId, entry.getValue(), needStageId));
-            }
+            initialSplits.put(entry.getKey(), createRemoteSplitFor(taskId, entry.getValue(), needStageId));
         }
 
         RemoteTask task = remoteTaskFactory.createRemoteTask(
@@ -330,9 +314,20 @@ public class SqlStageExecution {
         ImmutableSet.Builder<RemoteTask> newTasks = ImmutableSet.builder();
         Collection<RemoteTask> tasks = this.tasks.get(node);
         if (tasks == null) {
-            // The output buffer depends on the task id starting from 0 and being sequential, since each
-            // task is assigned a private buffer based on task id.
-            TaskId taskId = new TaskId(stateMachine.getStageId(), nextTaskId.getAndIncrement());
+            TaskId taskId;
+            // each task is assigned a private buffer based on task id.
+            if (getFragment().isRemotePairWise()) {
+                int pairWiseId = orderedNodes.indexOf(node.getNodeIdentifier());
+                checkArgument(pairWiseId != -1,
+                    "Unknown partition wise node id: %s, while all nodes is %s",
+                    node.getNodeIdentifier(), String.join(",", orderedNodes));
+                // In partition-wise mode, we need to a taskID according to the schedule pattern of remote splits
+                // @see ColumnarNodeSelector#assignByPartition
+                taskId = new TaskId(stateMachine.getStageId(), pairWiseId);
+            } else {
+                // The output buffer depends on the task id starting from 0 and being sequential, since
+                taskId = new TaskId(stateMachine.getStageId(), nextTaskId.getAndIncrement());
+            }
             newTasks.add(scheduleTask(node, taskId, splits, noMoreSplits, true));
         } else {
             RemoteTask task = tasks.iterator().next();
@@ -378,19 +373,8 @@ public class SqlStageExecution {
             for (RemoteTask task : getAllTasks()) {
                 ImmutableMultimap.Builder<Integer, Split> newSplits = ImmutableMultimap.builder();
                 for (TaskLocation exchangeLocation : exchangeLocations) {
-                    if (getFragment().isRemotePairWise()) {
-                        int bufferId = orderedNodes.indexOf(task.getNodeId());
-                        checkArgument(bufferId != -1,
-                            "Unknown node id under partition wise join, node is is %s, while all nodes is %s",
-                            task.getNodeId(), String.join(",", orderedNodes));
-                        bufferId = OutputBuffers.OutputBufferId
-                            .formatOutputBufferId(needStageId ? task.getTaskId().getStageId().getId() : 0, bufferId);
-                        newSplits.put(remoteSource.getRelatedId(),
-                            createRemoteSplitForPairWise(exchangeLocation, bufferId));
-                    } else {
-                        newSplits.put(remoteSource.getRelatedId(),
-                            createRemoteSplitFor(task.getTaskId(), exchangeLocation, needStageId));
-                    }
+                    newSplits.put(remoteSource.getRelatedId(),
+                        createRemoteSplitFor(task.getTaskId(), exchangeLocation, needStageId));
                 }
                 task.addSplits(newSplits.build(), isNoMoreSplits);
             }

@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
+import com.alibaba.polardbx.common.memory.MemoryUsageReport;
 import com.alibaba.polardbx.common.utils.time.RandomTimeGenerator;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DateType;
@@ -55,7 +58,16 @@ public class DateBlockTest extends BaseBlockTest {
             .collect(Collectors.toList());
 
         values.forEach(dateBlockBuilder::writeString);
+
+        MemoryCountable.checkDeviation(dateBlockBuilder, .05d, true);
         Block block = dateBlockBuilder.build();
+
+        MemoryUsageReport report = FastMemoryCounter.parseInstance(block, 16, true, true, true);
+        System.out.println("memory usage = " + report.getTotalSize());
+        System.out.println("memory verbose = " + report.getFieldSizeMap());
+        System.out.println("memory usage tree = \n" + report.getMemoryUsageTree());
+
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         // serialization & deserialization
         DateBlockEncoding encoding = new DateBlockEncoding();
@@ -100,7 +112,10 @@ public class DateBlockTest extends BaseBlockTest {
                 break;
             }
         }
+        MemoryCountable.checkDeviation(builder1, .05d, true);
         DateBlock newBlock = (DateBlock) builder1.build();
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
+
         for (int i = 0; i < TEST_SIZE; i++) {
             Assert.assertEquals(dateBlock.hashCode(i), newBlock.hashCode(i));
             Assert.assertEquals(dateBlock.hashCodeUseXxhash(i), newBlock.hashCodeUseXxhash(i));
@@ -118,7 +133,11 @@ public class DateBlockTest extends BaseBlockTest {
         BlockBuilder builder = builder1.newBlockBuilder();
         Assert.assertTrue(builder instanceof DateBlockBuilder);
 
+        MemoryCountable.checkDeviation(builder, .05d, true);
+
         DateBlock newBlock2 = DateBlock.from(dateBlock, TEST_SIZE, null, false);
+        MemoryCountable.checkDeviation(newBlock2, .05d, true);
+
         for (int i = 0; i < TEST_SIZE; i++) {
             if (dateBlock.isNull(i)) {
                 Assert.assertTrue(newBlock2.isNull(i));
@@ -132,6 +151,8 @@ public class DateBlockTest extends BaseBlockTest {
             sel[i] = i * 2;
         }
         DateBlock newBlock3 = DateBlock.from(dateBlock, TEST_SIZE / 2, sel, true);
+        MemoryCountable.checkDeviation(newBlock3, .05d, true);
+
         for (int i = 0; i < TEST_SIZE / 2; i++) {
             int j = sel[i];
             if (dateBlock.isNull(j)) {

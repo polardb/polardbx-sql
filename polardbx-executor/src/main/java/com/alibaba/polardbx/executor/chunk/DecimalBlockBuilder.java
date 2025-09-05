@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
@@ -28,6 +30,7 @@ import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.executor.chunk.SegmentedDecimalBlock.DecimalBlockState.DECIMAL_128;
@@ -38,11 +41,14 @@ import static com.alibaba.polardbx.executor.chunk.SegmentedDecimalBlock.DecimalB
  * Decimal block builder
  */
 public class DecimalBlockBuilder extends AbstractBlockBuilder implements SegmentedDecimalBlock {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(DecimalBlockBuilder.class).instanceSize();
 
     SliceOutput sliceOutput;
 
-    LongArrayList decimal64List;
-    LongArrayList decimal128HighList;
+    MemoryCountableLongArrayList decimal64List;
+    MemoryCountableLongArrayList decimal128HighList;
+
+    @FieldMemoryCounter(value = false)
     DecimalType decimalType;
 
     /**
@@ -72,6 +78,18 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder implements Segment
         this(capacity, DataTypes.DecimalType);
     }
 
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE
+            + FastMemoryCounter.sizeOf(valueIsNull)
+            + FastMemoryCounter.sizeOf(sliceOutput)
+            + FastMemoryCounter.sizeOf(decimal64List)
+            + FastMemoryCounter.sizeOf(decimal128HighList)
+            + (state == null ? 0 : state.memorySize())
+            + FastMemoryCounter.sizeOf(decimalBuffer)
+            + FastMemoryCounter.sizeOf(decimalResult);
+    }
+
     public void initSliceOutput() {
         if (this.sliceOutput == null) {
             this.sliceOutput = new DynamicSliceOutput(initialCapacity * DECIMAL_MEMORY_SIZE);
@@ -80,16 +98,16 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder implements Segment
 
     private void initDecimal64List() {
         if (this.decimal64List == null) {
-            this.decimal64List = new LongArrayList(initialCapacity);
+            this.decimal64List = new MemoryCountableLongArrayList(initialCapacity);
         }
     }
 
     private void initDecimal128List() {
         if (this.decimal64List == null) {
-            this.decimal64List = new LongArrayList(initialCapacity);
+            this.decimal64List = new MemoryCountableLongArrayList(initialCapacity);
         }
         if (this.decimal128HighList == null) {
-            this.decimal128HighList = new LongArrayList(initialCapacity);
+            this.decimal128HighList = new MemoryCountableLongArrayList(initialCapacity);
         }
     }
 

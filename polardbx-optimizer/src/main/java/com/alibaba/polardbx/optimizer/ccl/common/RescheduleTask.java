@@ -53,8 +53,12 @@ public class RescheduleTask {
     private boolean hitCache;
 
     /**
+     * Is switchover reschedule task.
+     */
+    private boolean isSwitchoverReschedule;
+
+    /**
      * 是否被激活
      */
     private AtomicBoolean activation;
-
 }

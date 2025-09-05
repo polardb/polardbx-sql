@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablesPreparedData;
@@ -37,7 +38,6 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablesPreparedData
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.ddl.job.validator.TableValidator.validateAllowRenameMultiTable;
 
@@ -73,8 +73,8 @@ public class RenameTablesJobFactory extends DdlJobFactory {
 
         boolean enablePreemptiveMdl =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.RENAME_PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.RENAME_PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.RENAME_PREEMPTIVE_MDL_INITWAIT, ConnectionParams.RENAME_PREEMPTIVE_MDL_INTERVAL);
 
         List<String> oldNames = preparedData.getFromTableNames();
         List<String> newNames = preparedData.getToTableNames();
@@ -84,7 +84,7 @@ public class RenameTablesJobFactory extends DdlJobFactory {
             new RenameColumnarTablesMetaTask(schemaName, oldNames, newNames, versionIds);
         RenameTablesCdcSyncTask cdcSyncTask =
             new RenameTablesCdcSyncTask(schemaName, preparedData.getDistinctNames(),
-                enablePreemptiveMdl, initWait, interval, TimeUnit.MILLISECONDS,
+                enablePreemptiveMdl, preemptiveTime,
                 oldNames, newNames, preparedData.getCollate(), preparedData.getCdcMetas(),
                 preparedData.getNewTableTopologies(), versionIds);
         RenameTablesUpdateDataIdTask dataIdTask = new RenameTablesUpdateDataIdTask(schemaName, oldNames, newNames);

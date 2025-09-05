@@ -16,6 +16,7 @@
 
 package org.apache.calcite.rex;
 
+import lombok.Getter;
 import org.apache.calcite.rel.type.RelDataType;
 
 /**
@@ -28,9 +29,31 @@ public class RexCallParam extends RexDynamicParam {
 
     private RexSequenceParam sequenceCall;
 
+    /**
+     * Mark this object wrapped a real RexDynamicParam inside,
+     * so that we can compute parameter index correctly for batch insert
+     * in {@link com.alibaba.polardbx.optimizer.core.rel.LogicalInsert#countParamNumInEachBatch}
+     */
+    @Getter
+    private final boolean wrapRexDynamicParam;
+
+    /**
+     * True if this RexCallParam already computed before
+     * {@link com.alibaba.polardbx.optimizer.utils.RexUtils#replaceExpressionWithLiteralParam}
+     * in {@link com.alibaba.polardbx.optimizer.utils.RexUtils#updateParam}
+     */
+    @Getter
+    private final boolean isCommonImplicitDefault;
+
     public RexCallParam(RelDataType type, int index, RexNode call) {
+        this(type, index, call, false, false);
+    }
+
+    public RexCallParam(RelDataType type, int index, RexNode call, boolean wrapRexDynamicParam, boolean isCommonImplicitDefault) {
         super(type, index, DYNAMIC_TYPE_VALUE.REX_CALL);
         this.rexCall = call;
+        this.wrapRexDynamicParam = wrapRexDynamicParam;
+        this.isCommonImplicitDefault = isCommonImplicitDefault;
     }
 
     public RexNode getRexCall() {

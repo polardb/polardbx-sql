@@ -28,6 +28,7 @@ import org.apache.calcite.rel.core.DDL;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class CreateTableWithGsiBuilder {
 
@@ -37,7 +38,7 @@ public class CreateTableWithGsiBuilder {
 
     private DdlPhyPlanBuilder primaryTableBuilder;
 
-    private Map<String, List<List<String>>> primaryTableTopology;
+    private TreeMap<String, List<List<String>>> primaryTableTopology;
     private List<PhyDdlTableOperation> primaryTablePhysicalPlans;
 
     private Map<String, Map<String, List<List<String>>>> indexTableTopologyMap = new LinkedHashMap<>();
@@ -55,7 +56,7 @@ public class CreateTableWithGsiBuilder {
         buildIndexTablePhysicalPlans();
     }
 
-    public Map<String, List<List<String>>> getPrimaryTableTopology() {
+    public TreeMap<String, List<List<String>>> getPrimaryTableTopology() {
         return primaryTableTopology;
     }
 

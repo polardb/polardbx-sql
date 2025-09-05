@@ -2,14 +2,20 @@ package com.alibaba.polardbx.executor.mpp.planner;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.operator.RangeScanMode;
+import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
+import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfo;
 import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfoOneTable;
 import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
-import org.apache.calcite.rel.core.Sort;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 public class RangeScanUtils {
     public static RangeScanMode useRangeScan(LogicalView logicalView, ExecutionContext context) {
@@ -33,8 +39,13 @@ public class RangeScanUtils {
         if (isDml && !context.getParamManager().getBoolean(ConnectionParams.ENABLE_RANGE_SCAN_FOR_DML)) {
             return null;
         }
+
+        Set<String> allTableNames = new HashSet<>();
+        for (String tableName : logicalView.getTableNames()) {
+            allTableNames.add(tableName.toLowerCase());
+        }
         // Check if the logical view contains multiple tables
-        if (logicalView.getTableNames().size() != 1) {
+        if (allTableNames.size() > 1) {
             return null;
         }
         // single group no need range scan
@@ -47,19 +58,61 @@ public class RangeScanUtils {
         }
 
         TargetTableInfo targetTableInfo = logicalView.buildTargetTableInfosForPartitionTb(context);
+
+//        targetTableInfo.getTargetTableInfoList()
         // contains multi table
         if (targetTableInfo.getTargetTableInfoList().size() > 1) {
             return null;
         }
 
         TargetTableInfoOneTable tableInfo = targetTableInfo.getTargetTableInfoList().get(0);
-        if (!PartitionUtils.isTablePartOrdered(tableInfo)) {
+
+        // Case 1: The sort key is the level-one partition key, and the level-one partitions are ordered.
+        List<String> partitionColumns = tableInfo.getPartColList();
+        boolean isSortKeyPartKey = PartitionUtils.isOrderKeyMatched(logicalView, partitionColumns);
+        boolean isPartSorted = tableInfo.isAllPartSorted();
+        if (!tableInfo.isUseSubPart() && !(isSortKeyPartKey && isPartSorted)) {
             return null;
         }
-        if (!PartitionUtils.isOrderKeyMatched(logicalView, tableInfo)) {
-            return null;
+
+        // Case 2: The sort key is the level-two partition key, and the level-two partitions are ordered.
+        if (tableInfo.isUseSubPart()) {
+            // check sub part key first.
+            List<String> subPartitionColumns = tableInfo.getSubpartColList();
+            boolean isSortKeySubPartKey = PartitionUtils.isOrderKeyMatched(logicalView, subPartitionColumns);
+            boolean isSubPartSorted = tableInfo.getPrunedFirstLevelPartCount() == 1
+                && tableInfo.isAllSubPartSorted();
+            if (!(isSortKeySubPartKey && isSubPartSorted)) {
+                return null;
+            }
         }
+
         return determinRangeScanMode(logicalView, context, rootIsMergeSort);
+    }
+
+    public static RangeScanMode checkSplitInfo(SplitInfo splitInfo, RangeScanMode mode) {
+        for (List<Split> splitList : splitInfo.getSplits()) {
+            if (!RangeScanUtils.checkSplit(splitList)) {
+                return null;
+            }
+        }
+        return mode;
+    }
+
+    public static boolean checkSplit(List<Split> splitList) {
+        return splitList.stream().allMatch(split -> {
+            if (!(split.getConnectorSplit() instanceof JdbcSplit)) {
+                return false;
+            }
+            JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
+            Set<String> allTableNames = new HashSet<>();
+            for (List<String> tableNames : jdbcSplit.getTableNames()) {
+                for (String tableName : tableNames) {
+                    allTableNames.add(tableName.toLowerCase());
+                }
+            }
+            return allTableNames.size() == 1;
+        });
     }
 
     /**

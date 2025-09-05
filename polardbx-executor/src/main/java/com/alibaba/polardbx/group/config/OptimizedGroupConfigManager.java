@@ -20,6 +20,8 @@ import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.atom.TAtomDsStandard;
 import com.alibaba.polardbx.atom.config.TAtomDsConfDO;
 import com.alibaba.polardbx.atom.config.gms.TAtomDsGmsConfigHelper;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
@@ -54,8 +56,10 @@ import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import lombok.Getter;
 
 import javax.sql.DataSource;
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -80,6 +84,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
 
     private final TGroupDataSource groupDataSource;
 
+    @Getter
     private final HaSwitcher groupDsSwithcer;
 
     private volatile Map<String/* Atom dbIndex */, DataSourceWrapper/* Wrapper过的Atom DS */> dataSourceWrapperMap =
@@ -895,6 +900,40 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                  *  StorageHaContext.getHaLock().writeLock()
                  */
                 switchGroupDs(haSwitchParams);
+
+                if (DynamicConfig.getInstance().isEnableSmoothSwitchover()) {
+                    // notify datasource switched(wakeup get connection wait)
+                    synchronized (groupDs) {
+                        groupDs.notifyAll();
+                    }
+
+                    // record switchover done
+                    EventLogger.log(EventType.HA_DONE,
+                        haSwitchParams.curAvailableAddr + ':' + haSwitchParams.xport + " @@ " + groupName + " @@ "
+                            + dbName + " @@ " + haSwitchParams.storageInstId + " @@ " + haSwitchParams.instId);
+
+                    // notify reschedule(wakeup pre-check wait)
+                    try {
+                        final Class<?> targetClass =
+                            Class.forName("com.alibaba.polardbx.server.SwitchoverManager");
+                        final Method method = targetClass.getMethod("rescheduleAll");
+                        method.invoke(null);
+                    } catch (Throwable t) {
+                        logger.error(t.getMessage(), t);
+                    }
+
+                    // clean dirty read
+                    if (DynamicConfig.getInstance().isReleaseDirtyReadConnectionWhenSwitchover()) {
+                        try {
+                            final Class<?> targetClass =
+                                Class.forName("com.alibaba.polardbx.server.response.OnDnChangeLeaderAction");
+                            final Method method = targetClass.getMethod("onDnLeaderChanging", boolean.class);
+                            method.invoke(null, false);
+                        } catch (Throwable t) {
+                            logger.error(t.getMessage(), t);
+                        }
+                    }
+                }
             } catch (Throwable ex) {
                 MetaDbLogUtil.META_DB_DYNAMIC_CONFIG
                     .error(String.format("Failed to do switch ds for [%s/%s]", groupName, dbName),

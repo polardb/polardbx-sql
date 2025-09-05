@@ -15,6 +15,7 @@ import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
@@ -117,7 +118,7 @@ public class ImplicitTableGroupTest {
                 GsiMetaManager.GsiIndexMetaBean indexMetaBean =
                     new GsiMetaManager.GsiIndexMetaBean(null, schemaName, tableName, true, schemaName, indexName,
                         indexColumns, null, null, null, null, null, null,
-                        IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE);
+                        IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
                 return indexMetaBean;
             }
 
@@ -855,6 +856,19 @@ public class ImplicitTableGroupTest {
             + "INDEX `gsi_2` WITH TABLEGROUP=tgi2 IMPLICIT, "
             + "INDEX `gsi_1` WITH TABLEGROUP=tgi2 IMPLICIT, "
             + "INDEX `gs``i_4` WITH TABLEGROUP=tgi2 IMPLICIT";
+        Assert.assertEquals(expectedSql, sql);
+
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, SQL_PARSE_FEATURES);
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        Assert.assertEquals(expectedSql, parseResult.get(0).toString());
+    }
+
+    @Test
+    public void testAlterTableModifyPartitions() {
+        String sql = "alter table t_modify_partition_num partitions 31";
+        sql = ImplicitTableGroupUtil.tryAttachImplicitTableGroup("xx", "t_modify_partition_num", sql);
+        String expectedSql = "ALTER TABLE t_modify_partition_num\n"
+            + "\tPARTITIONS 31 WITH TABLEGROUP=tgi2 IMPLICIT";
         Assert.assertEquals(expectedSql, sql);
 
         SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, SQL_PARSE_FEATURES);

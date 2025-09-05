@@ -169,6 +169,19 @@ public class DeadlockDetectionTest {
         }
     }
 
+    @Test
+    public void test5() {
+        MockStatus.setMock(true);
+        ArrayList<TrxLookupSet.Transaction> cycle = new ArrayList<>();
+        TrxLookupSet.Transaction trx = new TrxLookupSet.Transaction(100L);
+        trx.setDdl(true);
+        trx.setSql("alter table drop column a");
+        trx.setFrontendConnId(1024L);
+        trx.setStartTime(System.currentTimeMillis());
+        cycle.add(trx);
+        DeadlockDetectionTask.printDdlDeadlock(cycle, new StringBuilder("test"));
+    }
+
     @NotNull
     private static ArrayResultSet getTrx80Rs() {
         ArrayResultSet rs = new ArrayResultSet();

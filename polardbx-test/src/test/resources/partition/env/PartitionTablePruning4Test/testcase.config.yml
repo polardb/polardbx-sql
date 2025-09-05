@@ -1,1 +1,3 @@
 test_sp_partfunc_month
+test_part_unix_timestamp
+test_part_to_days

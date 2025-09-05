@@ -27,6 +27,7 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.optimizeralert.statisticalert.StatisticAlertLoggerBaseImpl;
 import com.google.common.collect.Sets;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -34,6 +35,7 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.FAILED;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.QUEUED;
@@ -42,9 +44,11 @@ import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.SUCCE
 
 public class OptimizerAlertScheduledJob extends SchedulerExecutor {
 
-    public static final String NO_ALERT = "No optimizer alert found since last schedule job";
+    public static final String NO_ALERT = "No alert found since last schedule job";
 
-    public static final String HAS_ALERT = " optimizer alerts found:";
+    public static final String HAS_OPTIMIZER_ALERT = " optimizer alerts found:";
+
+    public static final String HAS_STATISTIC_ALERT = " statistic alerts found:";
     private static final Logger logger = LoggerFactory.getLogger(OptimizerAlertScheduledJob.class);
 
     private final ExecutableScheduledJob executableScheduledJob;
@@ -72,30 +76,51 @@ public class OptimizerAlertScheduledJob extends SchedulerExecutor {
                 // enable OPTIMIZER_ALERT
                 List<List<Map<String, Object>>> results = SyncManagerHelper.syncWithDefaultDB(
                     new OptimizerAlertScheduleSyncAction(), SyncScope.CURRENT_ONLY);
-                StringBuilder sb = new StringBuilder();
-                long countSum = 0L;
-                Set<String> alertSets = Sets.newHashSet();
+
+                StringBuilder optimizeAlertSb = new StringBuilder();
+                long optimizeAlertCountSum = 0L;
+                Set<String> optimizeAlertSets = Sets.newHashSet();
+                StringBuilder statisticAlertSb = new StringBuilder();
+                long statisticAlertCountSum = 0L;
+                Set<String> statisticAlertSets = Sets.newHashSet();
+
                 for (List<Map<String, Object>> nodeRows : results) {
                     if (CollectionUtils.isEmpty(nodeRows)) {
                         continue;
                     }
-                    sb.append(DataTypes.StringType.convertFrom(nodeRows.get(0).get("COMPUTE_NODE"))).append("{");
+                    optimizeAlertSb.append(DataTypes.StringType.convertFrom(nodeRows.get(0).get("COMPUTE_NODE"))).append("{");
+                    statisticAlertSb.append(DataTypes.StringType.convertFrom(nodeRows.get(0).get("COMPUTE_NODE"))).append("{");
                     for (Map<String, Object> row : nodeRows) {
                         long count = DataTypes.LongType.convertFrom(row.get("COUNT"));
                         String type = DataTypes.StringType.convertFrom(row.get("ALERT_TYPE"));
-                        alertSets.add(type);
-                        sb.append(type)
-                            .append(":").append(count).append(",");
-                        countSum += count;
+                        if (StatisticAlertLoggerBaseImpl.isStatisticAlertType(type)){
+                            statisticAlertSets.add(type);
+                            statisticAlertSb.append(type).append(":").append(count).append(",");
+                            statisticAlertCountSum += count;
+                        }else{
+                            optimizeAlertSets.add(type);
+                            optimizeAlertSb.append(type).append(":").append(count).append(",");
+                            optimizeAlertCountSum += count;
+                        }
                     }
-                    sb.append("},");
+                    optimizeAlertSb.append("},");
+                    statisticAlertSb.append("},");
                 }
-                if (countSum == 0) {
+
+                StringJoiner remarkSj = new StringJoiner(",");
+                if (optimizeAlertCountSum > 0){
+                    EventLogger.log(EventType.OPTIMIZER_ALERT, optimizeAlertSb.toString());
+                    remarkSj.add(optimizeAlertCountSum + HAS_OPTIMIZER_ALERT + String.join(",", optimizeAlertSets));
+                }
+                if (statisticAlertCountSum > 0){
+                    EventLogger.log(EventType.STATISTIC_ALERT, statisticAlertSb.toString());
+                    remarkSj.add(statisticAlertCountSum + HAS_STATISTIC_ALERT + String.join(",", statisticAlertSets));
+                }
+                if (optimizeAlertCountSum + statisticAlertCountSum > 0){
+                    remark = remarkSj.toString();
+                }else{
                     // no alter found
                     remark = NO_ALERT;
-                } else {
-                    EventLogger.log(EventType.OPTIMIZER_ALERT, sb.toString());
-                    remark = countSum + HAS_ALERT + String.join(",", alertSets);
                 }
             }
             //mark as SUCCESS

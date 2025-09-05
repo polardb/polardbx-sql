@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
@@ -32,8 +33,10 @@ import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillReporter;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.gms.partition.PhysicalBackfillDetailInfoFieldJSON;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.SqlIdentifierUtil;
 import com.alibaba.polardbx.rpc.client.XSession;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
@@ -106,8 +109,9 @@ public class CloneTableDataFileTask extends BaseDdlTask {
                                              Long dataSize) {
         String owner = "CloneTableDataFileTask:" + logicalTableName + phyTableName;
         DdlEngineResources resourceRequired = new DdlEngineResources();
-        resourceRequired.request(storageInst + DN_IO, 90L, owner);
-        resourceRequired.request(storageInst + DN_CPU, 15L, owner);
+        String fullDnResourceName = DdlEngineResources.concateDnResourceName(sourceHostIpAndPort, storageInst);
+        resourceRequired.requestForce(fullDnResourceName + DN_IO, 50L, owner);
+        resourceRequired.requestForce(fullDnResourceName + DN_CPU, 15L, owner);
         return resourceRequired;
     }
 
@@ -209,153 +213,170 @@ public class CloneTableDataFileTask extends BaseDdlTask {
 
         String msg = "begin to clone the files for table:" + phyTableName;
         SQLRecorderLogger.ddlLogger.info(msg);
-        XConnection conn = null;
 
         boolean success = false;
         int tryTime = 1;
         StringBuilder copyFileInfo = null;
         AtomicReference<Boolean> finished = new AtomicReference<>(false);
-        do {
-            try {
-                copyFileInfo = new StringBuilder();
-                conn = (XConnection) (PhysicalBackfillUtils.getXConnectionForStorage(srcDbAndGroup.getKey(),
-                    sourceHostIpAndPort.getKey(), sourceHostIpAndPort.getValue(), userInfo.getKey(),
-                    userInfo.getValue(), -1));
-                conn.setNetworkTimeoutNanos(LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN * 1000000L);
-                conn.execQuery(String.format(PhysicalBackfillUtils.FLUSH_TABLE_SQL_TEMPLATE, phyTableName));
-                PolarxPhysicalBackfill.FileManageOperator.Builder builder =
-                    PolarxPhysicalBackfill.FileManageOperator.newBuilder();
-
-                PolarxPhysicalBackfill.TableInfo.Builder tableInfoBuilder =
-                    PolarxPhysicalBackfill.TableInfo.newBuilder();
-                tableInfoBuilder.setTableSchema(srcDbAndGroup.getKey());
-                tableInfoBuilder.setTableName(phyTableName);
-                tableInfoBuilder.setPartitioned(hasNoPhyPart);
-                int i = 0;
-                for (Map.Entry<String, Pair<String, String>> entry : srcFileAndDirs.entrySet()) {
-                    Pair<String, String> srcFileAndDir = entry.getValue();
-
-                    boolean handleCfgFile = false;
-                    boolean handleIbdFile = false;
-                    boolean needHandleCfpFile = encrypted;
-                    do {
-                        PhysicalBackfillUtils.checkInterrupted(ec, null);
-                        PolarxPhysicalBackfill.FileInfo.Builder srcFileInfoBuilder =
-                            PolarxPhysicalBackfill.FileInfo.newBuilder();
-                        String fileName = srcFileAndDir.getKey();
-                        String directory = srcFileAndDir.getValue();
-
-                        if (!handleCfgFile) {
-                            directory =
-                                PhysicalBackfillUtils.convertToCfgFileName(directory, PhysicalBackfillUtils.CFG);
-                            handleCfgFile = true;
-                        } else if (needHandleCfpFile) {
-                            needHandleCfpFile = false;
-                            directory =
-                                PhysicalBackfillUtils.convertToCfgFileName(directory, PhysicalBackfillUtils.CFP);
-                        } else {
-                            handleIbdFile = true;
-                        }
-
-                        srcFileInfoBuilder.setFileName(fileName);
-                        srcFileInfoBuilder.setDirectory(directory);
-                        srcFileInfoBuilder.setPartitionName(entry.getKey());
-
-                        PolarxPhysicalBackfill.FileInfo.Builder tmpFileInfoBuilder =
-                            PolarxPhysicalBackfill.FileInfo.newBuilder();
-                        tmpFileInfoBuilder.setFileName(fileName);
-                        tmpFileInfoBuilder.setDirectory(directory + PhysicalBackfillUtils.TEMP_FILE_POSTFIX);
-                        tmpFileInfoBuilder.setPartitionName(entry.getKey());
-
-                        tableInfoBuilder.addFileInfo(srcFileInfoBuilder.build());
-                        tableInfoBuilder.addFileInfo(tmpFileInfoBuilder.build());
-                        if (i > 0) {
-                            copyFileInfo.append(", ");
-                        }
-                        copyFileInfo.append(directory);
-                        i++;
-                        if (handleIbdFile) {
-                            break;
-                        }
-                    } while (true);
-                }
-                builder.setTableInfo(tableInfoBuilder.build());
-
-                builder.setOperatorType(PolarxPhysicalBackfill.FileManageOperator.Type.COPY_IBD_TO_TEMP_DIR_IN_SRC);
-
-                Thread parentThread = Thread.currentThread();
-                XSession session = conn.getSession();
-                finished.set(false);
-                FutureTask<Void> task = new FutureTask<>(() -> {
-                    do {
-                        if (finished.get()) {
-                            break;
-                        }
-                        if (session == null) {
-                            SQLRecorderLogger.ddlLogger.info("exeCloneFile session was terminated, sessionId");
-                            break;
-                        }
-                        if (parentThread.isInterrupted() || CrossEngineValidator.isJobInterrupted(ec)) {
-                            SQLRecorderLogger.ddlLogger.info(
-                                String.format("exeCloneFile session was cancel, sessionId:%d", session.getSessionId()));
-                            session.cancel();
-                            break;
-                        }
-                        try {
-                            Thread.sleep(100);
-                        } catch (Exception e) {
-                            //ignore
-                        }
-                    } while (true);
-                }, null);
-                Future futureTask =
-                    ec.getExecutorService().submit(ec.getSchemaName(), ec.getTraceId(), AsyncTask.build(task));
-
-                conn.exeCloneFile(builder);
-
-                finished.set(true);
+        try (XConnection conn = (XConnection) (PhysicalBackfillUtils.getXConnectionForStorage(srcDbAndGroup.getKey(),
+            sourceHostIpAndPort.getKey(), sourceHostIpAndPort.getValue(), userInfo.getKey(),
+            userInfo.getValue(), -1))) {
+            do {
                 try {
-                    futureTask.get();
-                } catch (Exception ex) {
+                    copyFileInfo = new StringBuilder();
                     try {
-                        futureTask.cancel(true);
-                    } catch (Throwable ignore) {
-                    }
-                }
-                msg = String.format("already clone the files[%s] for table %s", copyFileInfo, phyTableName);
-                SQLRecorderLogger.ddlLogger.info(msg);
-                success = true;
-            } catch (Exception ex) {
-                msg = String.format("fail to clone those files:%s, [ip:%s,port:%s,db:%s]", copyFileInfo.toString(),
-                    sourceHostIpAndPort.getKey(), sourceHostIpAndPort.getValue().toString(), srcDbAndGroup.getKey());
-                if (ex != null && ex.toString() != null) {
-                    msg += " " + ex.toString();
-                }
-                SQLRecorderLogger.ddlLogger.info(msg);
-                if (tryTime > PhysicalBackfillUtils.MAX_RETRY) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex);
-                }
-                PhysicalBackfillUtils.checkInterrupted(ec, null);
-                tryTime++;
-            } finally {
-                try {
-                    finished.set(true);
-                    if (conn != null && !conn.isClosed()) {
+                        Long flushTableTimeout = OptimizerContext.getContext(schemaName).getParamManager().getLong(ConnectionParams.FLUSH_TABLE_TIMEOUT_FOR_DDL_ON_XPROTO_CONN);
+                        conn.setNetworkTimeoutNanos(flushTableTimeout * 1000000L);
+                        conn.execQuery(String.format(PhysicalBackfillUtils.FLUSH_TABLE_SQL_TEMPLATE,
+                                SqlIdentifierUtil.escapeIdentifierString(phyTableName)));
+                    } finally {
                         try {
-                            conn.execQuery(PhysicalBackfillUtils.UNLOCK_TABLE);
-                        } catch (SQLException e) {
-                            msg = "fail to clone those files:" + copyFileInfo.toString() + " " + e.toString();
-                            SQLRecorderLogger.ddlLogger.info(msg);
-                            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, e);
+                            if(conn != null && !conn.isClosed()) {
+                                conn.setNetworkTimeoutNanos(LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN * 1000000L);
+                            }
+                        } catch (Exception ex) {
+                            // pass
                         }
                     }
-                } catch (SQLException ex) {
-                    msg = "fail to clone those files:" + copyFileInfo.toString() + " " + ex.toString();
+                    PolarxPhysicalBackfill.FileManageOperator.Builder builder =
+                        PolarxPhysicalBackfill.FileManageOperator.newBuilder();
+
+                    PolarxPhysicalBackfill.TableInfo.Builder tableInfoBuilder =
+                        PolarxPhysicalBackfill.TableInfo.newBuilder();
+                    tableInfoBuilder.setTableSchema(srcDbAndGroup.getKey());
+                    tableInfoBuilder.setTableName(phyTableName);
+                    tableInfoBuilder.setPartitioned(hasNoPhyPart);
+                    int i = 0;
+                    for (Map.Entry<String, Pair<String, String>> entry : srcFileAndDirs.entrySet()) {
+                        Pair<String, String> srcFileAndDir = entry.getValue();
+
+                        boolean handleCfgFile = false;
+                        boolean handleIbdFile = false;
+                        boolean needHandleCfpFile = encrypted;
+                        do {
+                            PhysicalBackfillUtils.checkInterrupted(ec, null);
+                            PolarxPhysicalBackfill.FileInfo.Builder srcFileInfoBuilder =
+                                PolarxPhysicalBackfill.FileInfo.newBuilder();
+                            String fileName = srcFileAndDir.getKey();
+                            String directory = srcFileAndDir.getValue();
+
+                            if (!handleCfgFile) {
+                                directory =
+                                    PhysicalBackfillUtils.convertToCfgFileName(directory, PhysicalBackfillUtils.CFG);
+                                handleCfgFile = true;
+                            } else if (needHandleCfpFile) {
+                                needHandleCfpFile = false;
+                                directory =
+                                    PhysicalBackfillUtils.convertToCfgFileName(directory, PhysicalBackfillUtils.CFP);
+                            } else {
+                                handleIbdFile = true;
+                            }
+
+                            srcFileInfoBuilder.setFileName(fileName);
+                            srcFileInfoBuilder.setDirectory(directory);
+                            srcFileInfoBuilder.setPartitionName(entry.getKey());
+
+                            PolarxPhysicalBackfill.FileInfo.Builder tmpFileInfoBuilder =
+                                PolarxPhysicalBackfill.FileInfo.newBuilder();
+                            tmpFileInfoBuilder.setFileName(fileName);
+                            tmpFileInfoBuilder.setDirectory(directory + PhysicalBackfillUtils.TEMP_FILE_POSTFIX);
+                            tmpFileInfoBuilder.setPartitionName(entry.getKey());
+
+                            tableInfoBuilder.addFileInfo(srcFileInfoBuilder.build());
+                            tableInfoBuilder.addFileInfo(tmpFileInfoBuilder.build());
+                            if (i > 0) {
+                                copyFileInfo.append(", ");
+                            }
+                            copyFileInfo.append(directory);
+                            i++;
+                            if (handleIbdFile) {
+                                break;
+                            }
+                        } while (true);
+                    }
+                    builder.setTableInfo(tableInfoBuilder.build());
+
+                    builder.setOperatorType(PolarxPhysicalBackfill.FileManageOperator.Type.COPY_IBD_TO_TEMP_DIR_IN_SRC);
+
+                    Thread parentThread = Thread.currentThread();
+                    XSession session = conn.getSession();
+                    finished.set(false);
+                    FutureTask<Void> task = new FutureTask<>(() -> {
+                        do {
+                            if (finished.get()) {
+                                break;
+                            }
+                            if (session == null) {
+                                SQLRecorderLogger.ddlLogger.info("exeCloneFile session was terminated, sessionId");
+                                break;
+                            }
+                            if (parentThread.isInterrupted() || CrossEngineValidator.isJobInterrupted(ec)) {
+                                SQLRecorderLogger.ddlLogger.info(
+                                    String.format("exeCloneFile session was cancel, sessionId:%d",
+                                        session.getSessionId()));
+                                session.cancel();
+                                break;
+                            }
+                            try {
+                                Thread.sleep(100);
+                            } catch (Exception e) {
+                                //ignore
+                            }
+                        } while (true);
+                    }, null);
+                    Future futureTask =
+                        ec.getExecutorService().submit(ec.getSchemaName(), ec.getTraceId(), AsyncTask.build(task));
+
+                    conn.exeCloneFile(builder);
+
+                    finished.set(true);
+                    try {
+                        futureTask.get();
+                    } catch (Exception ex) {
+                        try {
+                            futureTask.cancel(true);
+                        } catch (Throwable ignore) {
+                        }
+                    }
+                    msg = String.format("already clone the files[%s] for table %s", copyFileInfo, phyTableName);
                     SQLRecorderLogger.ddlLogger.info(msg);
-                    throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex);
+                    success = true;
+                } catch (Exception ex) {
+                    msg = String.format("fail to clone those files:%s, [ip:%s,port:%s,db:%s]", copyFileInfo.toString(),
+                        sourceHostIpAndPort.getKey(), sourceHostIpAndPort.getValue().toString(),
+                        srcDbAndGroup.getKey());
+                    if (ex != null && ex.toString() != null) {
+                        msg += " " + ex.toString();
+                    }
+                    SQLRecorderLogger.ddlLogger.info(msg);
+                    if (tryTime > PhysicalBackfillUtils.MAX_RETRY) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex);
+                    }
+                    PhysicalBackfillUtils.checkInterrupted(ec, null);
+                    tryTime++;
+                } finally {
+                    try {
+                        finished.set(true);
+                        if (conn != null && !conn.isClosed()) {
+                            try {
+                                conn.execQuery(PhysicalBackfillUtils.UNLOCK_TABLE);
+                            } catch (SQLException e) {
+                                msg = "fail to clone those files:" + copyFileInfo.toString() + " " + e.toString();
+                                SQLRecorderLogger.ddlLogger.info(msg);
+                                throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, e);
+                            }
+                        }
+                    } catch (SQLException ex) {
+                        msg = "fail to clone those files:" + copyFileInfo.toString() + " " + ex.toString();
+                        SQLRecorderLogger.ddlLogger.info(msg);
+                        throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex);
+                    }
                 }
-            }
-        } while (!success);
+            } while (!success);
+        } catch (Exception ex) {
+            SQLRecorderLogger.ddlLogger.info(ex.toString());
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex);
+        }
     }
 
     private void updateBackfillStatus(PhysicalBackfillReporter reporter,

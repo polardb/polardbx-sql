@@ -174,7 +174,7 @@ public class CreateSequenceTest extends BaseSequenceTestCase {
         sql = "select " + seqName + ".nextval";
 
         if (seqType.equals("new")) {
-            JdbcUtil.executeUpdateFailed(tddlConnection, sql, "is not found");
+            JdbcUtil.executeUpdateFailed(tddlConnection, sql, "not found");
         } else {
             JdbcUtil.executeUpdateFailed(tddlConnection, sql, "exceeds maximum value allowed");
         }

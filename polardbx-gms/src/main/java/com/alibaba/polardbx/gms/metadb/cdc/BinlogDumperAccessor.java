@@ -54,9 +54,11 @@ public class BinlogDumperAccessor extends AbstractAccessor {
             }
 
             if (!hasPolarxInstId || CollectionUtils.isEmpty(result)) {
+                // 只读实例没有cdc实例，和主实例共用一个cdc实例
                 log.warn("failed to get dumper master with instId, try to get without instId");
                 result = MetaDbUtil.query(SELECT_DUMPER_MASTER_TARGET, BinlogDumperRecord.class, connection);
             }
+
             return CollectionUtils.isEmpty(result) ? Optional.empty() : Optional.of(result.get(0));
         } catch (Exception e) {
             MetaDbLogUtil.META_DB_LOG.error(

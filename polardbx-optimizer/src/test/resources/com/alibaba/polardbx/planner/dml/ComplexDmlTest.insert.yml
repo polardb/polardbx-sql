@@ -62,7 +62,7 @@
 
   plan: |
 
-    phytableoperation(tables="optest_0000.[test_tb_without_pk_00]", sql="insert into ? (`id`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) values(1, ?, null, null, null, ?, null, null, cast(? as datetime)) on duplicate key update `c1` = ?", params="`test_tb_without_pk_00`,0,a,?,0")
+    phytableoperation(tables="optest_0000.[test_tb_without_pk_00]", sql="insert into ? (`id`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) values(1, ?, null, null, null, ?, null, null, cast(? as datetime)) on duplicate key update `c1` = ?, `c8` = current_timestamp(0)", params="`test_tb_without_pk_00`,0,a,?,0")
 
 - sql: |
     insert into test_tb_without_pk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
@@ -144,36 +144,37 @@
 
   plan: |
 
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
     PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_has_uk_03`,3,c")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+
 
 - sql: |
     insert ignore into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
 
   plan: |
 
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
     PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_has_uk_03`,3,c")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
 
 - sql: |
     replace into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
 
   plan: |
 
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
     PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_has_uk_03`,3,c")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
 
 - sql: |
     insert into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp()) on duplicate key update c8=values(c8);
 
   plan: |
 
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_01`,1,a,?")
-    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_02`,2,b")
     PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_03`,3,c")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_01`,1,a,?")
 
 # Table with auto_increment primary key and has no unique key
 
@@ -382,15 +383,15 @@
 
   plan: |
 
-    logicalupsert(sql="insert into ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) values(?, ?, ?, ?, ?, ?, null, null, ?) on duplicate key update `c8` = ?", uniquekeyselect=[select [[c4, c3], [pk]] on test_tb_pk_auto_increment_with_ugsi, select [[c2]] on g_u_c2_a])
+    logicalupsert(sql="insert into ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) values(?, ?, ?, ?, ?, ?, null, null, (? + ?)) on duplicate key update `c8` = ?", uniquekeyselect=[select [[c4, c3], [pk]] on test_tb_pk_auto_increment_with_ugsi, select [[c2]] on g_u_c2_a])
 
 - sql: |
     insert into test_tb_pk_auto_increment_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3);
 
   plan: |
 
-    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_01`,2,1,NULL,NULL,NULL,a,5")
     PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_02]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_02`,3,2,NULL,NULL,NULL,b,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_01`,2,1,NULL,NULL,NULL,a,5")
     PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_03]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_03`,4,3,NULL,NULL,NULL,c,5")
 
 - sql: |
@@ -487,7 +488,7 @@
 
   plan: |
 
-    logicalupsert(sql="insert into ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) values(?, ?, ?, ?, ?, ?, null, null, ?) on duplicate key update `c8` = ?", uniquekeyselect=[select [[c4, c3], [pk]] on test_tb_pk_no_auto_increment_default_1_with_ugsi, select [[c2]] on g_u_c2_c])
+    logicalupsert(sql="insert into ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) values(?, ?, ?, ?, ?, ?, null, null, (? + ?)) on duplicate key update `c8` = ?", uniquekeyselect=[select [[c4, c3], [pk]] on test_tb_pk_no_auto_increment_default_1_with_ugsi, select [[c2]] on g_u_c2_c])
 
 - sql: |
     insert into test_tb_pk_no_auto_increment_default_1_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3);
@@ -592,7 +593,7 @@
   plan: |
     
     phytableoperation(tables="optest_0001.[t1_upsert_27]", sql="insert into ? (`id`, `xx_date`) values(?, ?) on duplicate key update `xx_date` = values(`xx_date`)", params="`t1_upsert_27`,1,2024-01-27 00:00:00.0")
-    
+
 - sql: |
     
     insert into t2_upsert(id, name, xx_date) values (1, "b", "2024-01-27 00:00:00.0") on duplicate key update xx_date=values(xx_date);
@@ -616,3 +617,17 @@
   plan: |
     
     logicalupsert(sql="insert into ? (`id`, `name`, `xx_date`) values(?, ?, ?) on duplicate key update `xx_date` = ?", uniquekeyselect=[select [[id], [name]] on t3_upsert])
+
+# INSERT SELECT JOIN ON [CONDITION] ON DUPLICATE KEY UPDATE
+- sql: |
+    insert into t3_upsert(name, xx_date) select t3_upsert.name, t3_upsert.xx_date from t3_upsert join t3_upsert as t3_upsert_tmp on t3_upsert.id=t3_upsert_tmp.id on duplicate key update xx_date=values(xx_date);
+
+  plan: |
+
+    logicalupsert(table="t3_upsert", columns=recordtype(varchar(32) id, varchar(30) name, date xx_date), uniquekeyselect=[select [[id], [name]] on t3_upsert], mode=single)
+      project(id="null", name="name", xx_date="xx_date")
+        bkajoin(condition="id = id", type="inner")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t3_upsert_[00-30]", shardcount=124, sql="select `id` from `t3_upsert` as `t3_upsert`")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t3_upsert_[00-30]", shardcount=124, sql="select `id`, `name`, `xx_date` from `t3_upsert` as `t3_upsert` where (`id` in (...))")

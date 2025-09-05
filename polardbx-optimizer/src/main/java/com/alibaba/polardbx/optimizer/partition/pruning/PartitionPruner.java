@@ -26,8 +26,8 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.partition.FullScanTableBlackListManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.sharding.result.RelShardInfo;
 import org.apache.calcite.rel.RelNode;
@@ -89,6 +89,7 @@ public class PartitionPruner {
      */
     public static PartPrunedResult doPruningByStepInfo(PartitionPruneStep stepInfo, ExecutionContext context) {
         PartPruneStepPruningContext pruningCtx = PartPruneStepPruningContext.initPruningContext(context);
+        FullScanTableBlackListManager.getInstance().checkIfAllowFullScan(stepInfo);
         boolean enablePartPruning = context.getParamManager().getBoolean(ConnectionParams.ENABLE_PARTITION_PRUNING);
         if (!enablePartPruning) {
             PartitionInfo partInfo = stepInfo.getPartitionInfo();
@@ -102,12 +103,12 @@ public class PartitionPruner {
         }
         pruningCtx.setRootStep(stepInfo);
         PartPrunedResult prunedResult = stepInfo.prunePartitions(context, pruningCtx, null);
-        invalidParitionFilter(stepInfo.getPartitionInfo(), prunedResult);
+        invalidPartitionFilter(stepInfo.getPartitionInfo(), prunedResult);
         PartitionPrunerUtils.logStepExplainInfo(context, prunedResult.getPartInfo(), pruningCtx);
         return prunedResult;
     }
 
-    public static void invalidParitionFilter(PartitionInfo partitionInfo, PartPrunedResult prunedResult) {
+    public static void invalidPartitionFilter(PartitionInfo partitionInfo, PartPrunedResult prunedResult) {
         if (!prunedResult.getPartBitSet().isEmpty()) {
             List<PartitionSpec> phyPartSpecs = partitionInfo.getPartitionBy().getPhysicalPartitions();
             int partCnt = phyPartSpecs.size();
@@ -139,7 +140,7 @@ public class PartitionPruner {
         pruningCtx.setEnableConstExprEvalCache(false);
         PartPrunedResult rs = tupleRouteInfo.routeTuple(tupleIndex, context, pruningCtx);
         pruningCtx.setRootTuple(tupleRouteInfo);
-        invalidParitionFilter(tupleRouteInfo.getPartInfo(), rs);
+        invalidPartitionFilter(tupleRouteInfo.getPartInfo(), rs);
         PartitionPrunerUtils.logStepExplainInfo(context, rs.getPartInfo(), pruningCtx);
         return rs;
     }
@@ -189,21 +190,7 @@ public class PartitionPruner {
                     allTbPrunedResults.add(tbPrunedResult);
                 }
 
-                BitSet bitSet = null;
-                boolean bitSetSame = true;
-                for (PartPrunedResult partPrunedResult : allTbPrunedResults) {
-                    PartitionInfo partitionInfo = partPrunedResult.getPartInfo();
-                    if (partitionInfo.isBroadcastTable()) {
-                        continue;
-                    }
-
-                    if (bitSet == null) {
-                        bitSet = partPrunedResult.getPartBitSet();
-                    } else if (!bitSet.equals(partPrunedResult.getPartBitSet())) {
-                        bitSetSame = false;
-                        break;
-                    }
-                }
+                boolean bitSetSame = checkIfBitSetTheSameForPrunedResults(allTbPrunedResults);
                 if (!bitSetSame) {
                     /**
                      * <pre>
@@ -223,11 +210,11 @@ public class PartitionPruner {
                     List<PartPrunedResult> fullScanResults = new ArrayList<>();
                     for (int i = 0; i < logicalView.getTableNames().size(); i++) {
                         String tblName = logicalView.getTableNames().get(i);
-                        PartitionInfoManager partitionInfoManager =
-                            context.getSchemaManager(logicalView.getSchemaName()).getTddlRuleManager()
-                                .getPartitionInfoManager();
-                        PartitionInfo partInfo =
-                            partitionInfoManager.getPartitionInfo(tblName);
+                        String schemaName = logicalView.getSchemaName();
+                        PartitionInfo partInfo = null;
+                        if (context != null) {
+                            partInfo = context.getSchemaManager(schemaName).getTable(tblName).getPartitionInfo();
+                        }
                         PartitionPruneStep partitionPruneStep =
                             PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(partInfo,
                                 partInfo.getPartitionBy().getPhysicalPartLevel(), true);
@@ -261,6 +248,25 @@ public class PartitionPruner {
         } else {
             throw GeneralUtil.nestedException(new NotSupportException("Not support to non logical view"));
         }
+    }
+
+    private static boolean checkIfBitSetTheSameForPrunedResults(List<PartPrunedResult> allTbPrunedResults) {
+        BitSet bitSet = null;
+        boolean bitSetSame = true;
+        for (PartPrunedResult partPrunedResult : allTbPrunedResults) {
+            PartitionInfo partitionInfo = partPrunedResult.getPartInfo();
+            if (partitionInfo.isBroadcastTable()) {
+                continue;
+            }
+
+            if (bitSet == null) {
+                bitSet = partPrunedResult.getPartBitSet();
+            } else if (!bitSet.equals(partPrunedResult.getPartBitSet())) {
+                bitSetSame = false;
+                break;
+            }
+        }
+        return bitSetSame;
     }
 
     public static List<PartPrunedResult> pruneCciPartitions(RelNode relPlan, ExecutionContext context,

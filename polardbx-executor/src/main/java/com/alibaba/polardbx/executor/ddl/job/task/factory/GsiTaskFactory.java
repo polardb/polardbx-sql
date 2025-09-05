@@ -41,6 +41,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableBackFillT
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableColumnBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableGsiPkRangeBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTablePhysicalPartitionBackFillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterGsiAddLocalIndexAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcGsiDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetCatchUpTask;
@@ -133,6 +134,7 @@ public class GsiTaskFactory {
                                                     Map<String, SQLColumnDefinition> dstColumnNewDefinitions,
                                                     List<String> modifyStringColumns,
                                                     PhysicalPlanData physicalPlanData,
+                                                    PhysicalPlanData physicalPlanDataForLocalIndex,
                                                     TableMeta tableMeta,
                                                     boolean gsiCdcMark,
                                                     boolean onlineModifyColumn,
@@ -197,6 +199,31 @@ public class GsiTaskFactory {
         taskList.add(
             new LogicalTableBackFillTask(schemaName, backfillSourceTableName, indexName, srcVirtualColumns,
                 dstVirtualColumns, modifyStringColumns, false, mirrorCopy, onlineModifyColumn));
+
+        AlterGsiAddLocalIndexAddMetaTask alterGsiAddLocalIndexAddMetaTask = null;
+        AlterGsiAddLocalIndexTask alterGsiPhyTable = null;
+
+        if (!onlineModifyColumn && physicalPlanData.isPopLocalIndex() && physicalPlanDataForLocalIndex != null) {
+            alterGsiPhyTable =
+                new AlterGsiAddLocalIndexTask(schemaName, primaryTableName, indexName,
+                    physicalPlanDataForLocalIndex);
+            List<String> indexes = DdlPhyPlanBuilder.getLocalIndexesFromSql(physicalPlanDataForLocalIndex.getSqlTemplate());
+            alterGsiAddLocalIndexAddMetaTask = new AlterGsiAddLocalIndexAddMetaTask(schemaName, backfillSourceTableName, indexName, indexes,
+                physicalPlanDataForLocalIndex.getDefaultDbIndex(),
+                physicalPlanDataForLocalIndex.getDefaultPhyTableName());
+            taskList.add(alterGsiPhyTable);
+            taskList.add(alterGsiAddLocalIndexAddMetaTask);
+            DdlTask alterGsiUpdateIndexStatusTask = new GsiUpdateIndexStatusTask(
+                schemaName,
+                primaryTableName,
+                indexName,
+                IndexStatus.WRITE_ONLY,
+                IndexStatus.WRITE_ONLY,
+                true
+            ).onExceptionTryRecoveryThenRollback();
+            taskList.add(alterGsiUpdateIndexStatusTask);
+            taskList.add(new TableSyncTask(schemaName, primaryTableName));
+        }
         if (onlineModifyColumn) {
             assert MapUtils.isNotEmpty(dstColumnNewDefinitions);
             DdlTask dropCheckColumnTask = RebuildTableJobFactory.genDropColumn4CheckTasks(schemaName, indexName,
@@ -282,10 +309,14 @@ public class GsiTaskFactory {
         ).onExceptionTryRecoveryThenRollback();
 
         AlterGsiAddLocalIndexTask alterGsiPhyTable = null;
+        AlterGsiAddLocalIndexAddMetaTask alterGsiAddLocalIndexAddMetaTask = null;
         if (physicalPlanDataForLocalIndex != null) {
             alterGsiPhyTable =
                 new AlterGsiAddLocalIndexTask(schemaName, primaryTableName, indexName, physicalPlanDataForLocalIndex
                 );
+            List<String> localIndexes = DdlPhyPlanBuilder.getLocalIndexesFromSql(physicalPlanDataForLocalIndex.getSqlTemplate());
+            alterGsiAddLocalIndexAddMetaTask = new AlterGsiAddLocalIndexAddMetaTask(schemaName, primaryTableName,
+                indexName, localIndexes, physicalPlanDataForLocalIndex.getDefaultDbIndex(), physicalPlanDataForLocalIndex.getDefaultPhyTableName());
         }
 
         executableDdlJob.appendTask(deleteOnlyTask);
@@ -295,7 +326,19 @@ public class GsiTaskFactory {
         if (stayAtDeleteOnly) {
             if (alterGsiPhyTable != null) {
                 executableDdlJob.appendTask(alterGsiPhyTable);
-                executableDdlJob.labelAsTail(alterGsiPhyTable);
+                executableDdlJob.appendTask(alterGsiAddLocalIndexAddMetaTask);
+//                DdlTask alterGsiUpdateIndexStatusTask = new GsiUpdateIndexStatusTask(
+//                    schemaName,
+//                    primaryTableName,
+//                    indexName,
+//                    IndexStatus.WRITE_ONLY,
+//                    IndexStatus.WRITE_ONLY,
+//                    true
+//                ).onExceptionTryRecoveryThenRollback();
+//                DdlTask alterGsiSyncTask = new TableSyncTask(schemaName, primaryTableName);
+//                executableDdlJob.appendTask(alterGsiUpdateIndexStatusTask);
+//                executableDdlJob.appendTask(alterGsiSyncTask);
+                executableDdlJob.labelAsTail(alterGsiAddLocalIndexAddMetaTask);
             } else {
                 executableDdlJob.labelAsTail(tableSyncTask);
             }
@@ -307,14 +350,15 @@ public class GsiTaskFactory {
         if (stayAtWriteOnly) {
             if (alterGsiPhyTable != null) {
                 executableDdlJob.appendTask(alterGsiPhyTable);
-                executableDdlJob.labelAsTail(alterGsiPhyTable);
+                executableDdlJob.appendTask(alterGsiAddLocalIndexAddMetaTask);
+                executableDdlJob.labelAsTail(alterGsiAddLocalIndexAddMetaTask);
             } else {
                 executableDdlJob.labelAsTail(tableSyncTask);
             }
             return executableDdlJob;
         }
         String backFillSourceTableName = mirrorCopy ? oldIndexName : primaryTableName;
-        generateLogicalTableGsiBackfillTask(executableDdlJob, alterGsiPhyTable, schemaName, backFillSourceTableName,
+        generateLogicalTableGsiBackfillTask(executableDdlJob, alterGsiPhyTable, alterGsiAddLocalIndexAddMetaTask, schemaName, backFillSourceTableName,
             indexName,
             virtualColumns,
             backfillColumnMap, modifyStringColumns, false, mirrorCopy,
@@ -340,6 +384,7 @@ public class GsiTaskFactory {
 
     public static Boolean generateLogicalTableGsiBackfillTask(ExecutableDdlJob executableDdlJob,
                                                               DdlTask alterGsiPhyTable,
+                                                              DdlTask alterGsiAddMetaTask,
                                                               String schemaName, String backfillSourceTableName,
                                                               String indexName,
                                                               Map<String, String> virtualColumns,
@@ -473,6 +518,18 @@ public class GsiTaskFactory {
         Boolean withLocalIndexTask = false;
         if (alterGsiPhyTable != null) {
             executableDdlJob.addTaskRelationship(checkTask, alterGsiPhyTable);
+            executableDdlJob.addTaskRelationship(alterGsiPhyTable, alterGsiAddMetaTask);
+            DdlTask alterGsiUpdateIndexStatusTask = new GsiUpdateIndexStatusTask(
+                schemaName,
+                backfillSourceTableName,
+                indexName,
+                IndexStatus.WRITE_ONLY,
+                IndexStatus.WRITE_ONLY,
+                true
+            ).onExceptionTryRecoveryThenRollback();
+            DdlTask alterGsiTableSyncTask = new TableSyncTask(schemaName, backfillSourceTableName);
+            executableDdlJob.addTaskRelationship(alterGsiAddMetaTask, alterGsiUpdateIndexStatusTask);
+            executableDdlJob.addTaskRelationship(alterGsiUpdateIndexStatusTask, alterGsiTableSyncTask);
             withLocalIndexTask = true;
         }
 
@@ -517,6 +574,7 @@ public class GsiTaskFactory {
             indexName,
             sourcePhyTableNames,
             targetTableLocations,
+            modifyStringColumns,
             ComplexTaskMetaManager.ComplexTaskType.ONLINE_MODIFY_COLUMN,
             changeSetId
         );
@@ -670,11 +728,13 @@ public class GsiTaskFactory {
                                                                       String primaryTableName,
                                                                       String indexName,
                                                                       List<String> columns,
-                                                                      List<String> backfillColumns) {
+                                                                      List<String> backfillColumns,
+                                                                      Map<String, String> isNullable) {
         List<DdlTask> taskList = new ArrayList<>();
 
         // Insert meta
-        DdlTask insertColumnMetaTask = new GsiInsertColumnMetaTask(schemaName, primaryTableName, indexName, columns);
+        DdlTask insertColumnMetaTask =
+            new GsiInsertColumnMetaTask(schemaName, primaryTableName, indexName, columns, isNullable);
         taskList.add(insertColumnMetaTask);
 
         // Add column

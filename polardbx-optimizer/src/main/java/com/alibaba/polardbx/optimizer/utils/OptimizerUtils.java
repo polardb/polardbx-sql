@@ -439,7 +439,7 @@ public class OptimizerUtils {
         if (!DynamicConfig.getInstance().isEnablePruningIn()) {
             return null;
         }
-        Set<Integer> shardIndexes = lv.getPushDownOpt().getShardRelatedInTypeParamIndexes();
+        Set<Integer> shardIndexes = lv.getPushDownOpt().getShardRelatedInTypeParamIndexes(context);
         if (shardIndexes != null) {
             Pair<Integer, RawString>[] rawStrings = findAllRawStrings(shardIndexes, context);
             int maxPruneTime = context.getParamManager().getInt(ConnectionParams.IN_PRUNE_MAX_TIME);
@@ -502,13 +502,18 @@ public class OptimizerUtils {
         return null;
     }
 
+    /**
+     * pruning for columnar table for each version
+     *
+     * @return schema TSO -> pruned partition name set
+     */
     public static SortedMap<Long, Set<String>> pruningInValueForColumnar(LogicalView lv,
                                                                          ExecutionContext context,
                                                                          SortedMap<Long, PartitionInfo> multiVersionPartitionInfo) {
         if (!DynamicConfig.getInstance().isEnablePruningIn()) {
             return null;
         }
-        Set<Integer> shardIndexes = lv.getPushDownOpt().getShardRelatedInTypeParamIndexes();
+        Set<Integer> shardIndexes = lv.getPushDownOpt().getShardRelatedInTypeParamIndexes(context);
         if (shardIndexes != null) {
             // TODO(siyun): refactor duplicated codes
             Pair<Integer, RawString>[] rawStrings = findAllRawStrings(shardIndexes, context);
@@ -553,7 +558,7 @@ public class OptimizerUtils {
                             PartitionPruner.doPruningByStepInfo(fullScanStep, context);
                         lv.filterBySelectedPartition(tablePrunedResult);
 
-                        allPruningResults.put(tso, tablePrunedResult.getPrunedParttions().stream().map(
+                        allPruningResults.put(tso, tablePrunedResult.getPrunedPartitions().stream().map(
                             PhysicalPartitionInfo::getPartName
                         ).collect(Collectors.toSet()));
                     } else {
@@ -680,7 +685,7 @@ public class OptimizerUtils {
             // transform bitset to PartPrunedResult
             PartPrunedResult partPrunedResultTmp = partPrunedResultsCache.get(0).copy();
             partPrunedResultTmp.setPartBitSet(entry.getKey().get(0));
-            for (PhysicalPartitionInfo physicalPartitionInfo : partPrunedResultTmp.getPrunedParttions()) {
+            for (PhysicalPartitionInfo physicalPartitionInfo : partPrunedResultTmp.getPrunedPartitions()) {
                 partNames.add(physicalPartitionInfo.getPartName());
             }
         }

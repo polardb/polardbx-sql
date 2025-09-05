@@ -1,7 +1,7 @@
 package com.alibaba.polardbx.executor.columnar.pruning.index;
 
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import org.junit.Assert;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
@@ -206,5 +206,10 @@ public class LongSortKeyIndexTest {
         sortKeyIndex.pruneRange(20000, 10000, rs);
         rs.stream().forEachOrdered(System.out::println);
         Assert.assertTrue(rs.getCardinality() == 0);
+    }
+
+    @Test
+    public void testSize() {
+        Assert.assertEquals(data.length * 8, sortKeyIndex.getSizeInBytes());
     }
 }

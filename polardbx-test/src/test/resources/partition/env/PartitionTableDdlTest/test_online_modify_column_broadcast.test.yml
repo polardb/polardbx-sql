@@ -1,0 +1,50 @@
+drop table if exists b1;
+drop table if exists b2;
+drop table if exists b3;
+drop table if exists b4;
+
+drop tablegroup if exists broadcast1;
+drop tablegroup if exists broadcast2;
+
+create tablegroup broadcast1;
+create tablegroup broadcast2;
+
+create table b1(a int primary key, b int) single tablegroup = broadcast1;
+create table b2(a bit(10) primary key, b int) single tablegroup = broadcast1;
+
+create table b3(a int primary key, b int) single tablegroup = broadcast2;
+create table b4(a bit(10) primary key, b int) single tablegroup = broadcast2;
+
+insert into b1 values(1,1);
+insert into b2 values(2,2);
+insert into b3 values(3,3);
+insert into b4 values(4,4);
+
+alter table b1 modify column a bit(10), ALGORITHM=OMC;
+alter table b2 modify column a int, ALGORITHM=OMC;
+
+show full create table b1;
+show full create table b2;
+
+alter table b1 modify column b bigint, ALGORITHM=OMC;
+alter table b2 modify column b bigint, ALGORITHM=OMC;
+
+show full create table b1;
+show full create table b2;
+
+alter table b3 modify column a bit(10), ALGORITHM=OMC;
+alter table b4 modify column a int, ALGORITHM=OMC;
+
+show full create table b3;
+show full create table b4;
+
+alter table b3 modify column b bigint, ALGORITHM=OMC;
+alter table b4 modify column b bigint, ALGORITHM=OMC;
+
+show full create table b3;
+show full create table b4;
+
+select * from b1;
+select * from b2;
+select * from b3;
+select * from b4;

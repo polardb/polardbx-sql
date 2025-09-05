@@ -2,13 +2,14 @@ package com.alibaba.polardbx.qatest.columnar.dql;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
-import org.apache.commons.lang.StringUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+
+import static com.alibaba.polardbx.qatest.columnar.dql.FullTypeTest.waitForRowCountEquals;
 
 public class PairWiseJoinTest extends ColumnarReadBaseTestCase {
     private static final String TABLE_1 = "test_broadcast_under_pairwise_1";
@@ -23,7 +24,7 @@ public class PairWiseJoinTest extends ColumnarReadBaseTestCase {
     private static final String INSERT_DATA = "insert into %s values (%s, '%s')";
 
     @Before
-    public void prepare() {
+    public void prepare() throws InterruptedException {
         dropTable();
         prepareData();
     }
@@ -58,7 +59,7 @@ public class PairWiseJoinTest extends ColumnarReadBaseTestCase {
         JdbcUtil.executeSuccess(tddlConnection, String.format(DROP_TABLE, TABLE_3));
     }
 
-    private void prepareData() {
+    private void prepareData() throws InterruptedException {
         JdbcUtil.executeSuccess(tddlConnection, String.format(CREATE_TABLE, TABLE_1));
         JdbcUtil.executeSuccess(tddlConnection, String.format(CREATE_TABLE, TABLE_2));
         JdbcUtil.executeSuccess(tddlConnection, String.format(CREATE_TABLE, TABLE_3));
@@ -75,6 +76,8 @@ public class PairWiseJoinTest extends ColumnarReadBaseTestCase {
             "c1", "c1", 4);
         ColumnarUtils.createColumnarIndex(tddlConnection, "col_" + TABLE_3, TABLE_3,
             "c1", "c1", 4);
+
+        waitForRowCountEquals(tddlConnection, TABLE_3, "col_" + TABLE_3);
     }
 
     private void injectStatistics() throws SQLException {

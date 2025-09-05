@@ -72,10 +72,9 @@ public class AlterTableDropPartition2Test extends DDLBaseNewDBTestCase {
         sql = String.format(CREATE_TABLE_PATTERN1, tb1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = "/*+TDDL:CMD_EXTRA(TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='WRITE_REORG')*/alter table " + tb1
-            + " drop subpartition p1sp1";
-        String ignoreErr =
-            "The DDL job has been paused or cancelled. Please use SHOW DDL";
+        sql = "alter table " + tb1
+            + " drop subpartition p1sp2";
+        String ignoreErr = "The DDL job has been cancelled or interrupted";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sql,
@@ -86,7 +85,7 @@ public class AlterTableDropPartition2Test extends DDLBaseNewDBTestCase {
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.toString(), trace.size(), is(4));
 
-        sql = "insert into " + tb1 + " values (1000,1000,'2019-01-01','a','b')";
+        sql = "insert into " + tb1 + " values (1001,1000,'2019-01-01','a','b')";
         JdbcUtil.executeFailed(tddlConnection, sql, "Table has no partition for the values");
     }
 
@@ -100,10 +99,9 @@ public class AlterTableDropPartition2Test extends DDLBaseNewDBTestCase {
         sql = String.format(CREATE_TABLE_PATTERN2, tb1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = "/*+TDDL:CMD_EXTRA(TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='WRITE_REORG')*/alter table " + tb1
-            + " drop subpartition sp1";
-        String ignoreErr =
-            "The DDL job has been paused or cancelled. Please use SHOW DDL";
+        sql = "alter table " + tb1
+            + " drop subpartition sp2";
+        String ignoreErr = "The DDL job has been cancelled or interrupted";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sql,
@@ -114,7 +112,7 @@ public class AlterTableDropPartition2Test extends DDLBaseNewDBTestCase {
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.toString(), trace.size(), is(2));
 
-        sql = "insert into " + tb1 + " values (1,2,'2019-01-01','a','b')";
+        sql = "insert into " + tb1 + " values (1001,2,'2019-01-01','a','b')";
         JdbcUtil.executeFailed(tddlConnection, sql, "Table has no partition for the values");
     }
 

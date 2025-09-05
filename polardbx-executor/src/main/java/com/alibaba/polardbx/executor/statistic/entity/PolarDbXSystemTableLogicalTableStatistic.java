@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.util.JdbcUtils;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
@@ -209,7 +211,10 @@ public class PolarDbXSystemTableLogicalTableStatistic implements SystemTableTabl
     }
 
     @Override
-    public void batchReplace(final List<SystemTableTableStatistic.Row> rowList) {
+    public void batchReplace(final List<SystemTableTableStatistic.Row> rowList) throws SQLException {
+        if (FailPoint.isKeyEnable(FailPointKey.FP_INJECT_IGNORE_PERSIST_TABLE_STATISTIC)){
+            throw new SQLException("ignore persist table statistic");
+        }
         if (!innerBatchReplace(rowList)) {
             createTableIfNotExist();
             innerBatchReplace(rowList);
@@ -220,7 +225,7 @@ public class PolarDbXSystemTableLogicalTableStatistic implements SystemTableTabl
      * @param rowList the row list that need to replace
      * @return return false when table_statistics doesn't exist, otherwise return true
      */
-    private boolean innerBatchReplace(final List<SystemTableTableStatistic.Row> rowList) {
+    private boolean innerBatchReplace(final List<SystemTableTableStatistic.Row> rowList) throws SQLException {
         if (!canWrite()) {
             return true;
         }
@@ -264,14 +269,10 @@ public class PolarDbXSystemTableLogicalTableStatistic implements SystemTableTabl
         } catch (SQLException e) {
             if (e.getErrorCode() == 1146) {
                 logger.error("batch replace " + TABLE_NAME + " error, we will try again", e);
-                return false;
             } else {
                 logger.error("batch replace " + TABLE_NAME + " error, sql = " + sql, e);
-                return true;
             }
-        } catch (Exception e) {
-            logger.error("batch replace " + TABLE_NAME + " error, sql = " + sql, e);
-            return true;
+            throw e;
         } finally {
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);

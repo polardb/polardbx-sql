@@ -36,3 +36,6 @@ test_compressed_table
 test_create_table_with_blank
 test_identifier_with_special_character
 test_fulltext_with_parser
+test_omc_with_clustered_index
+test_online_modify_column_single
+test_online_modify_column_broadcast

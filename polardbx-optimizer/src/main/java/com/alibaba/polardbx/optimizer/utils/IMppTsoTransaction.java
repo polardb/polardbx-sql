@@ -20,4 +20,11 @@ import java.util.function.Consumer;
 
 public interface IMppTsoTransaction {
     long nextTimestamp(Consumer<Long> updateGetTsoTime);
+
+    /**
+     * Use a new snapshot sequence for this trx.
+     */
+    default void resendSnapshotTimestamp() {
+        // do nothing
+    }
 }

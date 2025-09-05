@@ -145,6 +145,11 @@ public interface ITransaction {
     void releaseAutoSavepoint();
 
     /**
+     * Rollback and release all dirty read connections if no write connection is used.
+     */
+    void releaseDirtyReadConnections();
+
+    /**
      * A trx is under committing iff all of its branches
      * are prepared but some of them are not yet committed.
      * A trx under committing can only be committed.

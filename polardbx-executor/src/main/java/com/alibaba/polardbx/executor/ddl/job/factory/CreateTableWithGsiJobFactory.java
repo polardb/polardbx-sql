@@ -40,10 +40,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPre
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import org.apache.calcite.rel.core.DDL;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @author guxu
@@ -54,7 +51,7 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
     private final DDL ddl;
     private final CreateTableWithGsiPreparedData preparedData;
 
-    Map<String, List<List<String>>> primaryTableTopology;
+    TreeMap<String, List<List<String>>> primaryTableTopology;
     List<PhyDdlTableOperation> primaryTablePhysicalPlans;
     Map<String, Map<String, List<List<String>>>> indexTableTopologyMap;
 
@@ -77,7 +74,7 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
 
         createTableWithGsiBuilder.build();
 
-        Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
+        TreeMap<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
 
         Map<String, Map<String, List<List<String>>>> indexTableTopologyMap =

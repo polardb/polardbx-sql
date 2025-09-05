@@ -47,9 +47,9 @@ public class UnlockTableSyncTask extends BaseSyncTask {
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
         GsiValidator.validateEnableMDL(executionContext);
+        long uniqueConnId = executionContext.getConnId() + Long.MAX_VALUE;
 
         try {
-
             LOGGER.info(
                 String.format("unlock table after physical cutover for primary table: %s.%s", schemaName,
                     primaryTableName)
@@ -60,7 +60,7 @@ public class UnlockTableSyncTask extends BaseSyncTask {
             SyncManagerHelper.sync(
                 new UnlockTableSyncAction(schemaName,
                     primaryTableName,
-                    executionContext.getConnId(),
+                    uniqueConnId,
                     executionContext.getTraceId()
                 ),
                 schemaName,

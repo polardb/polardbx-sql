@@ -285,13 +285,16 @@ public class SqlSelect extends SqlCall {
      * if it is set concurrently, make sure the param index is identical
      */
     public void setComputedFetch(SqlNode computedFetch) {
-        assert computedFetch instanceof SqlDynamicParam;
         if (this.computedFetch != null) {
             Preconditions.checkArgument(((SqlDynamicParam) this.computedFetch).index ==
                 ((SqlDynamicParam) computedFetch).index, "Computed fetch should be set at the exact same index");
         } else {
             this.computedFetch = computedFetch;
         }
+    }
+
+    public SqlNode getComputedFetch() {
+        return computedFetch;
     }
 
     public boolean isDynamicFetch() {

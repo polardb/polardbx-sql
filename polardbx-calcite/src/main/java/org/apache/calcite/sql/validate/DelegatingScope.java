@@ -293,11 +293,6 @@ public abstract class DelegatingScope implements SqlValidatorScope {
         }
         // fall through
         default: {
-            String funcName = identifier.names.get(identifier.names.size() - 1);
-            if (funcName.equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME) ||
-                funcName.equalsIgnoreCase(SqlFunction.CURRVAL_FUNC_NAME)) {
-                return SqlQualified.create(this, 1, null, identifier);
-            }
             SqlValidatorNamespace fromNs = null;
             Path fromPath = null;
             RelDataType fromRowType = null;

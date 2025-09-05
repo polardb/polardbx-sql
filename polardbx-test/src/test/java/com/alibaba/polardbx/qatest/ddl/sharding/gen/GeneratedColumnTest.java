@@ -160,11 +160,13 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
 
         // modify ref column
         alterSql = String.format("alter table %s modify column b bigint, algorithm=omc", tableName);
-        Assert.assertTrue(JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_OPTIMIZER"));
+        Assert.assertTrue(
+            JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_ONLINE_MODIFY_COLUMN"));
 
         // change ref column
         alterSql = String.format("alter table %s change column b d bigint, algorithm=omc", tableName);
-        Assert.assertTrue(JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_OPTIMIZER"));
+        Assert.assertTrue(
+            JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_ONLINE_MODIFY_COLUMN"));
 
         // modify gen column
         alterSql = String.format("alter table %s modify column c bigint", tableName);
@@ -176,11 +178,13 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
 
         // modify gen column
         alterSql = String.format("alter table %s modify column c bigint, algorithm=omc", tableName);
-        Assert.assertTrue(JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_OPTIMIZER"));
+        Assert.assertTrue(
+            JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_ONLINE_MODIFY_COLUMN"));
 
         // change gen column
         alterSql = String.format("alter table %s change column c d bigint, algorithm=omc", tableName);
-        Assert.assertTrue(JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_OPTIMIZER"));
+        Assert.assertTrue(
+            JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_ONLINE_MODIFY_COLUMN"));
 
         // drop ref column
         alterSql = String.format("alter table %s drop column b", tableName);
@@ -204,11 +208,12 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
 
         // modify to gen column
         alterSql = String.format("alter table %s modify column e int as (a+b) logical, algorithm=omc", tableName);
-        Assert.assertTrue(JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_OPTIMIZER"));
+        Assert.assertTrue(
+            JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_ONLINE_MODIFY_COLUMN"));
 
         // change to gen column
         alterSql = String.format("alter table %s change column e f int as (a+b) logical, algorithm=omc", tableName);
-        Assert.assertTrue(JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_OPTIMIZER"));
+        Assert.assertTrue(JdbcUtil.executeUpdateFailedReturn(tddlConnection, alterSql).contains("ERR_ONLINE_MODIFY_COLUMN"));
     }
 
     @Test

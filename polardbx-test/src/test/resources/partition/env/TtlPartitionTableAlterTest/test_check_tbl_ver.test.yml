@@ -1,0 +1,53 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false;
+
+drop table if exists newttl_t1;
+CREATE TABLE `newttl_t1` (
+`notify_id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '',
+`order_id` varchar(64) NOT NULL COMMENT '',
+`order_type` tinyint(6) NOT NULL COMMENT '',
+`mch_order_no` varchar(64) NOT NULL COMMENT '',
+`mch_no` varchar(64) NOT NULL COMMENT '',
+`isv_no` varchar(64) DEFAULT NULL COMMENT '',
+`app_id` varchar(64) NOT NULL COMMENT '',
+`notify_url` text NOT NULL COMMENT '',
+`res_result` text COMMENT '',
+`notify_count` int(11) NOT NULL DEFAULT '0' COMMENT '',
+`notify_count_limit` int(11) NOT NULL DEFAULT '6' COMMENT '',
+`state` tinyint(6) NOT NULL DEFAULT '1' COMMENT '',
+`last_notify_time` datetime DEFAULT NULL COMMENT '',
+`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+PRIMARY KEY USING BTREE (`notify_id`),
+UNIQUE KEY `_local_Uni_OrderId_Type` USING BTREE (`order_id`, `order_type`)
+) ENGINE = InnoDB DEFAULT  COMMENT ''
+PARTITION BY KEY(notify_id)
+PARTITIONS 8;
+
+ALTER TABLE newttl_t1 MODIFY TTL SET TTL_EXPR = created_at EXPIRE AFTER 3 DAY TIMEZONE '-03:00',TTL_JOB = CRON '0 0 15 */1 * ? *' TIMEZONE '+08:00', ARCHIVE_TABLE_PRE_ALLOCATE=6, ARCHIVE_TABLE_POST_ALLOCATE=6;
+
+/*+TDDL:cmd_extra(ENABLE_ASYNC_DDL=true, PURE_ASYNC_DDL_MODE=true)*/ create table newttl_t1_arc like newttl_t1 engine='columnar' archive_mode='ttl';
+## error_msg: $# too old #$
+ALTER TABLE newttl_t1 MODIFY TTL SET TTL_ENABLE='ON';
+
+drop table newttl_t1_arc;
+
+/*+TDDL:cmd_extra(ENABLE_ASYNC_DDL=true, PURE_ASYNC_DDL_MODE=true)*/ create table newttl_t1_arc like newttl_t1 engine='columnar' archive_mode='ttl';
+## error_msg: $# too old #$
+ALTER TABLE newttl_t1 REMOVE TTL;
+
+drop table newttl_t1_arc;
+drop table newttl_t1;
+
+
+
+
+
+
+
+

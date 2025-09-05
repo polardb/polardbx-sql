@@ -1,0 +1,51 @@
+drop table if exists clustered_gsi_add_column_t1;
+
+create table clustered_gsi_add_column_t1 (
+  `a` int primary key, 
+  `b` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, 
+  `c` int,
+  CLUSTERED INDEX `idx1` (`b`)
+    PARTITION BY KEY(`b`),
+  CLUSTERED UNIQUE INDEX `idx2` (`c`)
+    PARTITION BY KEY(`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+partition by key(`a`);
+
+alter table clustered_gsi_add_column_t1 split partition p1;
+
+show full create table clustered_gsi_add_column_t1;
+
+insert into clustered_gsi_add_column_t1 values 
+(1, '2021-01-10 01:01:05', 1), 
+(2, '2022-02-10 02:02:04', 2), 
+(3, '2023-03-10 03:03:03', 3), 
+(4, '2024-04-10 04:04:02', 4), 
+(5, '2025-05-10 05:05:01', 5);
+
+select * from clustered_gsi_add_column_t1 order by a desc;
+
+alter table clustered_gsi_add_column_t1 add column `d` bigint default 23;
+show full create table clustered_gsi_add_column_t1;
+select * from clustered_gsi_add_column_t1 order by a desc;
+
+alter table clustered_gsi_add_column_t1 drop column d;
+show full create table clustered_gsi_add_column_t1;
+
+alter table clustered_gsi_add_column_t1 add column e timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+show full create table clustered_gsi_add_column_t1;
+select a,b,c from clustered_gsi_add_column_t1 order by a desc;
+
+alter table clustered_gsi_add_column_t1 drop column e;
+show full create table clustered_gsi_add_column_t1;
+
+alter table clustered_gsi_add_column_t1 add column `f` int GENERATED ALWAYS AS (a) logical;
+alter table clustered_gsi_add_column_t1 add column `f2` int GENERATED ALWAYS AS (a) virtual;
+alter table clustered_gsi_add_column_t1 add column `f3` int GENERATED ALWAYS AS (a) stored;
+show full create table clustered_gsi_add_column_t1;
+select * from clustered_gsi_add_column_t1 order by a desc;
+alter table clustered_gsi_add_column_t1 drop column f;
+alter table clustered_gsi_add_column_t1 drop column f2;
+alter table clustered_gsi_add_column_t1 drop column f3;
+
+show full create table clustered_gsi_add_column_t1;
+select * from clustered_gsi_add_column_t1 order by a desc;

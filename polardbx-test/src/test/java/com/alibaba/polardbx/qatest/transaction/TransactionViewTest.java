@@ -21,11 +21,11 @@ public class TransactionViewTest extends ReadBaseTestCase {
         "(id int primary key) partition by key(id)";
     private static final String INSERT_DATA = "insert into " + TABLE_NAME + " values (0), (1), (2)";
     private static final String SELECT_INNODB_TRX =
-        "select count(0) from information_schema.innodb_trx where trx_id = '%s'";
+        "/*+TDDL:workload_type=tp*/select count(0) from information_schema.innodb_trx where trx_id = '%s'";
     private static final String SELECT_INNODB_LOCKS =
-        "select count(0) from information_schema.innodb_locks where lock_table like '%%%s%%'";
+        "/*+TDDL:workload_type=tp*/select count(0) from information_schema.innodb_locks where lock_table like '%%%s%%'";
     private static final String SELECT_INNODB_LOCK_WAITS =
-        "select count(0) from information_schema.innodb_lock_waits where blocking_trx_id = '%s'";
+        "/*+TDDL:workload_type=tp*/select count(0) from information_schema.innodb_lock_waits where blocking_trx_id = '%s'";
 
     @Before
     public void before() {

@@ -30,6 +30,7 @@ import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.orc.TypeDescription;
 
+import java.nio.ByteBuffer;
 import java.sql.Blob;
 import java.sql.SQLException;
 import java.time.ZoneId;
@@ -135,7 +136,10 @@ class BlobColumnProvider implements ColumnProvider<Blob> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        // For blob, the ctor only set the reference, so we need to allocate a new array and copy the contents
+        ByteBuffer byteBuffer = row.getBytes(columnId);
+        byte[] bytes = new byte[byteBuffer.remaining()];
+        byteBuffer.get(bytes);
         blockBuilder.writeBlob(new com.alibaba.polardbx.optimizer.core.datatype.Blob(bytes));
     }
 }

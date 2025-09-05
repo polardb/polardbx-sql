@@ -18,18 +18,25 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 /**
  * Boolean Block Builder
  *
  */
 public class BooleanBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(BooleanBlockBuilder.class).instanceSize();
 
-    private final BooleanArrayList values;
+    private final MemoryCountableBooleanArrayList values;
 
     public BooleanBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new BooleanArrayList(capacity);
+        this.values = new MemoryCountableBooleanArrayList(capacity);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + values.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

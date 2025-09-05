@@ -59,6 +59,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLJoinTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplaceStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelect;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectGroupByClause;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
@@ -73,6 +74,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlInsertSta
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlUpdateStatement;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithSomethingVisitor;
@@ -735,6 +737,10 @@ public final class FastSqlConstructUtils {
                 final SqlNode funNode = buildHintFunctionNode(context, function, hintType, ec);
 
                 if (hintType == HintType.CMD_INDEX) {
+                    // independent group for CMD_INDEX
+                    funNodes.add(SqlNodeList.of(funNode));
+                    // do not set using outline hint so that this query will be plan cached
+                } else if (hintType == HintType.CMD_PAGING_INDEX) {
                     // independent group for CMD_INDEX
                     funNodes.add(SqlNodeList.of(funNode));
                     // do not set using outline hint so that this query will be plan cached
@@ -1418,4 +1424,33 @@ public final class FastSqlConstructUtils {
         partitionBy.accept(visitor);
         return visitor.getSqlNode();
     }
+
+    public static SQLTableSource findTableSourceWithColumn(ExecutionContext ec, SQLTableSource tableSource,
+                                                           String colName) {
+        if (tableSource == null) {
+            return null;
+        }
+
+        if (tableSource instanceof SQLExprTableSource) {
+            TableMeta tableMeta = ec.getSchemaManager(((SQLExprTableSource) tableSource).getSchema())
+                .getTable(((SQLExprTableSource) tableSource).getTableName());
+            if (tableMeta.containsColumn(colName)) {
+                return tableSource;
+            }
+        } else if (tableSource instanceof SQLJoinTableSource) {
+            SQLJoinTableSource joinTableSource = (SQLJoinTableSource) tableSource;
+            SQLTableSource left = joinTableSource.getLeft();
+            SQLTableSource right = joinTableSource.getRight();
+            SQLTableSource leftResult = findTableSourceWithColumn(ec, left, colName);
+            SQLTableSource rightResult = findTableSourceWithColumn(ec, right, colName);
+            return leftResult == null ? rightResult : leftResult;
+        } else if (tableSource instanceof SQLSubqueryTableSource) {
+            SQLSelect select = ((SQLSubqueryTableSource) tableSource).getSelect();
+            return findTableSourceWithColumn(ec, select.getQueryBlock().getFrom(), colName);
+        }
+
+        return null;
+
+    }
+
 }

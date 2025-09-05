@@ -1,0 +1,35 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+
+create table my_ttl_tg_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+alter table my_ttl_tg_t1 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' archive_table_pre_allocate = 2 archive_table_post_allocate = 2;
+create table my_arc_tg_t1 like my_ttl_tg_t1 engine='columnar' archive_mode='ttl';
+
+create table my_ttl_tg_t2(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+alter table my_ttl_tg_t2 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' archive_table_pre_allocate = 2 archive_table_post_allocate = 2;
+create table my_arc_tg_t2 like my_ttl_tg_t2 engine='columnar' archive_mode='ttl';
+
+alter table my_ttl_tg_t1 cleanup expired data;
+alter table my_ttl_tg_t2 cleanup expired data;
+
+alter table my_ttl_tg_t2 modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE = 4 ARCHIVE_TABLE_POST_ALLOCATE = 4;
+alter table my_ttl_tg_t2 cleanup expired data;
+
+show create table my_ttl_tg_t1;
+show create table my_ttl_tg_t2;
+
+drop table my_ttl_tg_t1;
+drop table my_ttl_tg_t2;

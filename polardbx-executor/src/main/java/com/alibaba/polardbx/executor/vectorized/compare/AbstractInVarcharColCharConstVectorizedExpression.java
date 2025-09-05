@@ -251,7 +251,10 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
                         int j = sel[i];
 
                         Slice lSlice = ((Slice) leftInputVectorSlot.elementAt(j));
-                        Comparable sortKey = compatible ? this.collationHandler.getSortKey(lSlice, 1024) : lSlice;
+                        Comparable sortKey= null;
+                        if (lSlice != null) {
+                            sortKey = compatible ? this.collationHandler.getSortKey(lSlice, 1024) : lSlice;
+                        }
 
                         output[j] = anyMatch(sortKey);
                     }
@@ -259,7 +262,10 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
                     for (int i = 0; i < batchSize; i++) {
 
                         Slice lSlice = ((Slice) leftInputVectorSlot.elementAt(i));
-                        Comparable sortKey = compatible ? this.collationHandler.getSortKey(lSlice, 1024) : lSlice;
+                        Comparable sortKey= null;
+                        if (lSlice != null) {
+                            sortKey = compatible ? this.collationHandler.getSortKey(lSlice, 1024) : lSlice;
+                        }
 
                         output[i] = anyMatch(sortKey);
                     }

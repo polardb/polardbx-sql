@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
+import com.alibaba.polardbx.common.charset.WrappedCharset;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
@@ -43,6 +44,7 @@ import org.apache.orc.ColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.time.ZoneId;
 import java.util.Map;
@@ -53,9 +55,15 @@ class VarcharColumnProvider implements ColumnProvider<String> {
     private static final Charset DEFAULT_CHARSET = CharsetName.defaultCharset().toJavaCharset();
     public final BiFunction<byte[], Integer, byte[]> collationHandlerFunction;
     private final Charset sourceCharset;
+    private final boolean isDefaultCharset;
 
     VarcharColumnProvider(CollationName collationName) {
         sourceCharset = CollationName.getCharsetOf(collationName).toJavaCharset();
+        if (sourceCharset instanceof WrappedCharset) {
+            isDefaultCharset = ((WrappedCharset) sourceCharset).getOriginalCharset().equals(DEFAULT_CHARSET);
+        } else {
+            isDefaultCharset = sourceCharset.equals(DEFAULT_CHARSET);
+        }
         CollationHandler collationHandler = CharsetFactory.INSTANCE.createCollationHandler(collationName);
 
         collationHandlerFunction = (bytes, length) -> {
@@ -187,12 +195,13 @@ class VarcharColumnProvider implements ColumnProvider<String> {
         } else {
             // Write directly (Should convert to UTF-8)
             // The format in binlog is original bytes in character set.
-            byte[] bytes = row.getBytes(columnId);
-            if (sourceCharset.equals(DEFAULT_CHARSET)) {
-                ((SliceBlockBuilder) blockBuilder).writeBytes(bytes);
+            ByteBuffer bytes = row.getBytes(columnId);
+            if (isDefaultCharset) {
+                ((SliceBlockBuilder) blockBuilder).writeBytes(bytes.array(), bytes.position(), bytes.remaining());
             } else {
-                ((SliceBlockBuilder) blockBuilder).writeBytes(
-                    new String(bytes, sourceCharset).getBytes(DEFAULT_CHARSET));
+                ByteBuffer outputBuffer = DEFAULT_CHARSET.encode(sourceCharset.decode(bytes));
+                ((SliceBlockBuilder) blockBuilder).writeBytes(outputBuffer.array(), outputBuffer.position(),
+                    outputBuffer.remaining());
             }
         }
     }

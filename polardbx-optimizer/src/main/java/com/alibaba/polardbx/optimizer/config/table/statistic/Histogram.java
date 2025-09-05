@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.serializer.SerializeConfig;
 import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -58,9 +59,9 @@ public class Histogram {
         return dataType;
     }
 
-    public void buildFromData(Object[] data) {
+    public boolean buildFromData(Object[] data) {
         if (data == null || data.length == 0) {
-            return;
+            return false;
         }
 
         Arrays.sort(data, new Comparator<Object>() {
@@ -85,6 +86,7 @@ public class Histogram {
                 buckets.add(newBucket(data[i], bucket.preSum + bucket.count));
             }
         }
+        return true;
     }
 
     private Bucket newBucket(Object value, int preSum) {
@@ -405,10 +407,8 @@ public class Histogram {
                 bucketJson.put("upper", bucket.upper.toString());
                 bucketJson.put("lower", bucket.lower.toString());
             } else {
-                bucketJson.put("upper",
-                    JSON.toJSONString(bucket.upper, SerializerFeature.DisableCircularReferenceDetect));
-                bucketJson.put("lower",
-                    JSON.toJSONString(bucket.lower, SerializerFeature.DisableCircularReferenceDetect));
+                bucketJson.put("upper", bucket.upper);
+                bucketJson.put("lower", bucket.lower);
             }
             bucketsJsonArray.add(bucketJson);
         }

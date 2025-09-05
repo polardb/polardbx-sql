@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import org.apache.calcite.util.Pair;
 
 import java.util.List;
 import java.util.Map;
@@ -51,7 +52,9 @@ public class AlterTableGroupFastChecker extends FastChecker {
                                       PhyTableOperation planIdleSelectSrc,
                                       PhyTableOperation planIdleSelectDst,
                                       PhyTableOperation planSelectSampleSrc,
-                                      PhyTableOperation planSelectSampleDst) {
+                                      PhyTableOperation planSelectSampleDst,
+                                      Map<Pair<String, String>, List<Pair<String, String>>> dstToSrcDbAndTablesMap,
+                                      boolean isMirrorCheck) {
         super(schemaName, schemaName, srcLogicalTableName, dstLogicalTableName, srcPhyDbAndTables,
             dstPhyDbAndTables,
             srcColumns, dstColumns, srcPks, dstPks,
@@ -66,11 +69,16 @@ public class AlterTableGroupFastChecker extends FastChecker {
             planIdleSelectSrc,
             planIdleSelectDst,
             planSelectSampleSrc,
-            planSelectSampleDst);
+            planSelectSampleDst,
+            dstToSrcDbAndTablesMap,
+            isMirrorCheck);
     }
 
-    public static FastChecker create(String schemaName, String tableName, Map<String, Set<String>> srcPhyDbAndTables,
+    public static FastChecker create(String schemaName, String tableName,
+                                     Map<String, Set<String>> srcPhyDbAndTables,
                                      Map<String, Set<String>> dstPhyDbAndTables,
+                                     Map<Pair<String, String>, List<Pair<String, String>>> srcTarPhyTableMap,
+                                     boolean isMirrorCheck,
                                      ExecutionContext ec) {
         // Build select plan
         final SchemaManager sm = ec.getSchemaManager(schemaName);
@@ -105,7 +113,9 @@ public class AlterTableGroupFastChecker extends FastChecker {
             builder.buildIdleSelectForChecker(baseTableMeta, baseTableColumns),
 
             builder.buildSqlSelectForSample(baseTableMeta, baseTablePks),
-            builder.buildSqlSelectForSample(baseTableMeta, baseTablePks)
+            builder.buildSqlSelectForSample(baseTableMeta, baseTablePks),
+            srcTarPhyTableMap,
+            isMirrorCheck
         );
     }
 }

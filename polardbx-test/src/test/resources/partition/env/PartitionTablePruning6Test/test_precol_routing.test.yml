@@ -1,0 +1,60 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table precol_routing_t1(
+  a varchar(8),
+  b varchar(8),
+  c varchar(8),
+  d varchar(8)
+)
+partition by key(a,b,c)
+partitions 8;
+
+set sql_mode='';
+insert into precol_routing_t1(a,b,c,d) values ('1234567810', '1234567810', '1234567810', '1234567810');
+set ENABLE_FAST_PREFIX_PART_COL_EQ_COND_ROUTING=false;
+## error_msg: $# more than one partitions #$
+select * from precol_routing_t1 where a='1234567810' and 3000>1500;
+set ENABLE_FAST_PREFIX_PART_COL_EQ_COND_ROUTING=true;
+select * from precol_routing_t1 where a='1234567810' and 3000>2000;
+select * from precol_routing_t1 where a='12345678';
+
+CREATE TABLE `precol_routing_t2` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(8) DEFAULT NULL,
+`c` varchar(16) DEFAULT NULL,
+`d` varchar(16) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`,`d`)
+PARTITIONS 8
+(PARTITION `p1` VALUES LESS THAN (-6917529027641081843,9223372036854775807,9223372036854775807) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (-4611686018427387893,9223372036854775807,9223372036854775807) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (-2305843009213693943,9223372036854775807,9223372036854775807) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (415880693547541444,-2305843009213693943,9223372036854775807) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (415880693547541444,4611686018427387907,9223372036854775807) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (415880693547541444,9223372036854775807,9223372036854775807) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (6917529027641081857,9223372036854775807,9223372036854775807) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (9223372036854775807,9223372036854775807,9223372036854775807) ENGINE = InnoDB);
+
+set sql_mode='';
+insert into precol_routing_t2(a,b,c,d) values ('2234567810', '2234567810', '2234567810', '2234567810');
+set ENABLE_FAST_PREFIX_PART_COL_EQ_COND_ROUTING=false;
+## error_msg: $# more than one partitions #$
+select * from precol_routing_t2 where a='2234567810' and b='2234567810' and c='2234567810' and 2000>1000;
+set ENABLE_FAST_PREFIX_PART_COL_EQ_COND_ROUTING=true;
+select * from precol_routing_t2 where a='2234567810' and b='2234567810' and c='2234567810' and 2000>1500;
+select * from precol_routing_t2 where a='22345678' and b='22345678';
+
+
+insert into precol_routing_t2(a,b,c,d) values ('4234567810', '4234567810', '4234567810', '4234567810');
+select * from precol_routing_t2 where a='4234567810' and b='4234567810';
+select * from precol_routing_t2 where a='42345678' and b='42345678';
+
+drop table precol_routing_t1;
+drop table precol_routing_t2;
+
+
+
+
+
+
+

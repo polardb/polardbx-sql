@@ -320,9 +320,13 @@ public class GsiCheckTest extends DDLBaseNewDBTestCase {
             checkResults.stream()
                 .filter(res -> res.contains("ORPHAN") && res.contains("\"id\":" + results.get(1).get(0)))
                 .count());
-        Assert.assertEquals(1,
+        Assert.assertEquals(2,
             checkResults.stream()
                 .filter(res -> res.contains("CONFLICT") && res.contains("\"id\":" + results.get(2).get(0)))
+                .count());
+        Assert.assertEquals(1,
+            checkResults.stream()
+                .filter(res -> res.contains("GSI_CONFLICT") && res.contains("\"id\":" + results.get(2).get(0)))
                 .count());
 
         // Test correction.
@@ -586,6 +590,11 @@ public class GsiCheckTest extends DDLBaseNewDBTestCase {
                 checkResults.stream()
                     .filter(
                         res -> res.contains("CONFLICT") && res.contains("\"id\":" + idAndInt32results.get(1).get(0)))
+                    .count());
+            Assert.assertEquals(1,
+                checkResults.stream()
+                    .filter(
+                        res -> res.contains("GSI_CONFLICT") && res.contains("\"id\":" + idAndInt32results.get(1).get(0)))
                     .count());
         }
     }

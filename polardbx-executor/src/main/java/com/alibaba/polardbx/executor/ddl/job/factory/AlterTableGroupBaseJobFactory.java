@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -83,7 +84,7 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
     protected final AlterTableGroupBasePreparedData preparedData;
     protected final Map<String, AlterTableGroupItemPreparedData> tablesPrepareData;
     protected final Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap;
-    protected final Map<String, Map<String, List<List<String>>>> tablesTopologyMap;
+    protected final Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap;
     protected final Map<String, Map<String, Set<String>>> targetTablesTopology;
     protected final Map<String, Map<String, Set<String>>> sourceTablesTopology;
     protected final Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations;
@@ -94,7 +95,7 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
     public AlterTableGroupBaseJobFactory(DDL ddl, AlterTableGroupBasePreparedData preparedData,
                                          Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                          Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                         Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                         Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                          Map<String, Map<String, Set<String>>> targetTablesTopology,
                                          Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                          Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -128,7 +129,7 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
                 preparedData.getTableGroupName()));
         boolean emptyTaskAdded = false;
         final boolean useChangeSet = ChangeSetUtils.isChangeSetProcedure(executionContext);
-        for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
+        for (Map.Entry<String, TreeMap<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             AlterTableGroupSubTaskJobFactory subTaskJobFactory;
             String logicalTableName = tablesPrepareData.get(entry.getKey()).getTableName();
             TableMeta tm = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
@@ -435,7 +436,8 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
         EmptyTableGroupValidateTask emptyTableGroupValidateTask =
             new EmptyTableGroupValidateTask(preparedData.getSchemaName(), implicitTableGroup);
         SubJobTask subJobAddToImplicitTableGroup =
-            new SubJobTask(preparedData.getSchemaName(), String.format(SET_TARGET_TABLE_GROUP, implicitTableGroup),
+            new SubJobTask(preparedData.getSchemaName(),
+                String.format(SET_TARGET_TABLE_GROUP, preparedData.getTableName(), implicitTableGroup),
                 null);
         SubJobTask redoTask =
             new SubJobTask(preparedData.getSchemaName(), preparedData.getSourceSql(), null);

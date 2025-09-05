@@ -17,14 +17,12 @@
 package com.alibaba.polardbx.executor.statistic.ndv;
 
 import com.alibaba.polardbx.druid.util.StringUtils;
-import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
+import com.alibaba.polardbx.executor.gms.util.StatisticFullProcessUtils;
+import com.alibaba.polardbx.executor.gms.util.StatisticSubProcessUtils;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableNDVSketchStatistic;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
-import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticTrace;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchService;
@@ -200,7 +198,7 @@ public class NDVSketch implements NDVSketchService {
 
     @Override
     public boolean sampleColumns(String schema, String logicalTableName) {
-        return StatisticUtils.sampleOneTable(schema, logicalTableName);
+        return StatisticFullProcessUtils.sampleOneTable(schema, logicalTableName);
     }
 
     @Override
@@ -253,12 +251,7 @@ public class NDVSketch implements NDVSketchService {
         boolean hasUpdate = ndvShardSketch.updateAllShardParts(ec);
         if (hasUpdate) {
             /** sync other nodes */
-            SyncManagerHelper.syncWithDefaultDB(
-                new UpdateStatisticSyncAction(
-                    schema,
-                    tableName,
-                    null),
-                SyncScope.ALL);
+            StatisticSubProcessUtils.syncUpdateStatistic(schema, tableName, null, ec);
         }
     }
 

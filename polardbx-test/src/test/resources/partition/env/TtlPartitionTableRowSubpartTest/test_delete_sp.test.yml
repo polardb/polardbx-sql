@@ -1,0 +1,52 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false;
+
+create table sp_ki_rd_t1
+(
+a int,
+b datetime,
+c varchar(32)
+)
+partition by key(a)
+partitions 4
+subpartition by range columns(b)
+(
+subpartition sp1 values less than('2024-01-01'),
+subpartition sp2 values less than('2024-02-01'),
+subpartition sp3 values less than('2024-03-01')
+);
+
+alter table sp_ki_rd_t1 modify ttl
+set
+ttl_expr = `b` expire after 2 day timezone '+08:00',
+archive_table_pre_allocate = 3,
+archive_table_post_allocate = 4;
+
+create table p_ki_t1
+(
+a int,
+b datetime,
+c varchar(32)
+)
+partition by key(a)
+partitions 4
+;
+
+alter table p_ki_t1 modify ttl
+set
+ttl_expr = `b` expire after 2 day timezone '+08:00',
+archive_table_pre_allocate = 3,
+archive_table_post_allocate = 4;
+
+alter table sp_ki_rd_t1 cleanup expired data;
+
+alter table p_ki_t1 cleanup expired data;
+
+drop table sp_ki_rd_t1;
+drop table p_ki_t1;
+

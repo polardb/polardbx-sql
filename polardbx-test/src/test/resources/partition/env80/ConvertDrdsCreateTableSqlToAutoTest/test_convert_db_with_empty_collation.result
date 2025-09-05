@@ -1,0 +1,10 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `1234056789`;
+create database if not exists `a_b_c_1_234_`;
+create database `1234056789` as a_b_c_1_234_;
+RESULT
+ALL SUCCESS
+
+use polardbx;
+drop database if exists `1234056789`;

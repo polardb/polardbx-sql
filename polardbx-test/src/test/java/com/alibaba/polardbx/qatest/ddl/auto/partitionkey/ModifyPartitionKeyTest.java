@@ -498,7 +498,7 @@ public class ModifyPartitionKeyTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format(
-            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and cardinality >= 0",
             tddlDatabase1, tableName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
@@ -514,12 +514,12 @@ public class ModifyPartitionKeyTest extends DDLBaseNewDBTestCase {
         execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = String.format(
-            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and cardinality >= 0",
             tddlDatabase1, tableName);
         ResultSet rs1 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
             Assert.assertTrue(rs1.next());
-            Assert.assertEquals(rs1.getInt(1), 1);
+            Assert.assertEquals(2, rs1.getInt(1));
         } catch (SQLException e) {
             throw new RuntimeException("", e);
         } finally {

@@ -63,7 +63,7 @@ public class OmcFastChecker extends FastChecker {
             planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
             planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
             planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
-            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
+            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst, null, false);
     }
 
     public static FastChecker create(String schemaName, String tableName, String indexName,
@@ -184,6 +184,10 @@ public class OmcFastChecker extends FastChecker {
         int srcTableTaskCount = 0, dstTableTaskCount = 0;
         final Map mdcContext = MDC.getCopyOfContextMap();
 
+        FastCheckerThreadPool threadPool = FastCheckerThreadPool.getInstance();
+        List<String> storageInstNames = allGroups.stream().map(o -> mapping.get(o)).collect(Collectors.toList());
+        threadPool.initializeExecutorsForInsts(storageInstNames);
+
         for (Map.Entry<String, Set<String>> entry : srcDbAndTb.entrySet()) {
             String srcDb = entry.getKey();
             for (String srcTb : entry.getValue()) {
@@ -234,7 +238,6 @@ public class OmcFastChecker extends FastChecker {
         );
 
         //submit tasks to fastChecker threadPool
-        FastCheckerThreadPool threadPool = FastCheckerThreadPool.getInstance();
         List<Pair<String, Runnable>> allTasksByStorageInstId = new ArrayList<>();
         for (Map.Entry<String, List<FutureTask<Pair<HashCheckResult, Boolean>>>> entry : allFutureTasksByGroup.entrySet()) {
             String groupName = entry.getKey();

@@ -41,6 +41,7 @@ import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
@@ -131,8 +132,8 @@ class LongColumnProvider implements ColumnProvider<Long> {
         if (row.isNullAt(columnId)) {
             blockBuilder.appendNull();
         } else {
-            byte[] bytes = row.getBytes(columnId);
-            long longVal = ColumnProvider.longFromByte(bytes, bytes.length);
+            ByteBuffer bytes = row.getBytes(columnId);
+            long longVal = ColumnProvider.longFromByte(bytes);
             blockBuilder.writeLong(longVal);
         }
     }

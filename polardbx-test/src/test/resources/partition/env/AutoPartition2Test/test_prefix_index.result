@@ -1,0 +1,63 @@
+DROP TABLE IF EXISTS prefix_index_test_t1
+CREATE TABLE prefix_index_test_t1 (
+	a int PRIMARY KEY,
+	b text,
+	c int,
+	INDEX(c, b(10)),
+	UNIQUE KEY (c, b(20))
+)
+SHOW FULL CREATE TABLE prefix_index_test_t1
+Table,Create Table
+prefix_index_test_t1,CREATE PARTITION TABLE `prefix_index_test_t1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* c_$ */ `c` (`c`, `b`(10))
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* c_2_$ */ `c_2` (`c`, `b`(20))
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_c_2` (`c`, `b`(20)),
+	LOCAL KEY `_local_c` (`c`, `b`(10))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE prefix_index_test_t1
+	PARTITIONS 4
+SHOW FULL CREATE TABLE prefix_index_test_t1
+Table,Create Table
+prefix_index_test_t1,CREATE PARTITION TABLE `prefix_index_test_t1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* c_$ */ `c` (`c`, `b`(10))
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS 4,
+	UNIQUE GLOBAL INDEX /* c_2_$ */ `c_2` (`c`, `b`(20))
+		PARTITION BY KEY(`c`)
+		PARTITIONS 4,
+	UNIQUE LOCAL KEY `_local_c_2` (`c`, `b`(20)),
+	LOCAL KEY `_local_c` (`c`, `b`(10))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+ALTER TABLE prefix_index_test_t1
+PARTITION BY KEY (c)
+SHOW FULL CREATE TABLE prefix_index_test_t1
+Table,Create Table
+prefix_index_test_t1,CREATE TABLE `prefix_index_test_t1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE LOCAL KEY `c_2` USING BTREE (`c`, `b`(20)),
+	LOCAL KEY `c` USING BTREE (`c`, `b`(10))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+/* tablegroup = `tg` */

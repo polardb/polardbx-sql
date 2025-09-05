@@ -48,7 +48,8 @@ public enum SqlType {
     ALTER(84),
     GENERIC_DDL(85),
     UNARCHIVE(86),
-    ARCHIVE(86);
+    ARCHIVE(86),
+    CHECK_TABLEGROUP(87);
 
     private int i;
 

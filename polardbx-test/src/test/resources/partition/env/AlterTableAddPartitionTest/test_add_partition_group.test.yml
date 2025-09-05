@@ -1,0 +1,331 @@
+## test hash/one col/int
+
+## test drop partition for range
+drop table if exists tbl_rng10;
+drop table if exists tbl_rng20;
+drop tablegroup if exists rg_tg1;
+create tablegroup rg_tg1;
+create table if not exists tbl_rng10 (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p4 values less than (500)
+);
+create table if not exists tbl_rng20 (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p4 values less than (500)
+);
+alter table tbl_rng10 set tablegroup=rg_tg1;
+alter table tbl_rng20 set tablegroup=rg_tg1;
+
+insert into tbl_rng10 values(10),(100),(200),(300);
+insert into tbl_rng20 values(10),(100),(200),(300);
+alter tablegroup rg_tg1 add partition(partition p5 values less than (800));
+insert into tbl_rng10 values(11),(101),(201),(301);
+insert into tbl_rng20 values(11),(101),(201),(301);
+alter tablegroup rg_tg1 drop partition p4;
+insert into tbl_rng10 values(12),(102),(202);
+insert into tbl_rng20 values(12),(102),(202);
+show create table tbl_rng10;
+show create table tbl_rng20;
+select * from tbl_rng10 order by a;
+select * from tbl_rng20 order by a;
+
+drop table if exists tbl_list10;
+drop table if exists tbl_list20;
+drop tablegroup if exists ls_tg1;
+create tablegroup ls_tg1;
+create table if not exists tbl_list10 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+partition p2 values in (100,101),
+partition p3 values in (200,201),
+partition p4 values in (300)
+);
+create table if not exists tbl_list20 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+partition p2 values in (100,101),
+partition p3 values in (200,201),
+partition p4 values in (300)
+);
+alter table tbl_list10 set tablegroup=ls_tg1;
+alter table tbl_list20 set tablegroup=ls_tg1;
+insert into tbl_list10 values(10),(100),(200),(300);
+insert into tbl_list20 values(10),(100),(200),(300);
+alter tablegroup ls_tg1 add partition(partition p5 values in (301,302));
+alter tablegroup ls_tg1 add partition(partition p6 values in (901,1202));
+insert into tbl_list10 values(11),(101),(301);
+insert into tbl_list20 values(11),(101),(301);
+alter tablegroup ls_tg1 drop partition p4;
+insert into tbl_list10 values(201);
+insert into tbl_list20 values(201);
+show create table tbl_list10;
+show create table tbl_list20;
+select * from tbl_list10 order by a;
+select * from tbl_list20 order by a;
+
+drop table if exists h_r_ntp10;
+drop table if exists h_r_ntp20;
+drop tablegroup if exists hr_tg1;
+create tablegroup hr_tg1;
+create table if not exists h_r_ntp10 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values less than ( to_days('2020-01-01') ),
+subpartition p1sp2 values less than ( to_days('2041-01-01') )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( to_days('2020-01-01') ),
+subpartition p2sp2 values less than ( to_days('2021-01-01') ),
+subpartition p2sp3 values less than ( to_days('2041-01-01') )
+)
+);
+
+create table if not exists h_r_ntp20 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values less than ( to_days('2020-01-01') ),
+subpartition p1sp2 values less than ( to_days('2041-01-01') )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( to_days('2020-01-01') ),
+subpartition p2sp2 values less than ( to_days('2021-01-01') ),
+subpartition p2sp3 values less than ( to_days('2041-01-01') )
+)
+);
+
+alter table h_r_ntp10 set tablegroup=hr_tg1;
+alter table h_r_ntp20 set tablegroup=hr_tg1;
+
+insert into h_r_ntp10 values(1,1,'2010-01-01','a','aa');
+insert into h_r_ntp10 values(2,2,'2020-01-01','b','bb');
+insert into h_r_ntp10 values(3,1,'2040-01-01','a','aa');
+insert into h_r_ntp20 values(1,1,'2010-01-01','a','aa');
+insert into h_r_ntp20 values(2,2,'2020-01-01','b','bb');
+insert into h_r_ntp20 values(3,1,'2040-01-01','a','aa');
+alter tablegroup hr_tg1 modify partition p1 add subpartition (subpartition p1sp4 values less than ( to_days('2050-01-01') ));
+alter tablegroup hr_tg1 modify partition p2 add subpartition (subpartition p2sp4 values less than ( to_days('2050-01-01') ));
+insert into h_r_ntp10 values(4,1,'2010-01-01','a','aa');
+insert into h_r_ntp10 values(5,2,'2020-01-01','b','bb');
+insert into h_r_ntp10 values(6,1,'2049-01-01','a','aa');
+insert into h_r_ntp20 values(4,1,'2010-01-01','a','aa');
+insert into h_r_ntp20 values(5,2,'2020-01-01','b','bb');
+insert into h_r_ntp20 values(6,1,'2040-01-01','a','aa');
+alter tablegroup hr_tg1 drop subpartition p1sp2;
+insert into h_r_ntp10 values(7,1,'2010-01-01','a','aa');
+insert into h_r_ntp20 values(7,1,'2010-01-01','a','aa');
+alter tablegroup hr_tg1 drop subpartition p2sp3;
+insert into h_r_ntp10 values(8,1,'2010-01-01','a','aa');
+insert into h_r_ntp20 values(70,1,'2010-01-01','a','aa');
+show full create table h_r_ntp10;
+show full create table h_r_ntp20;
+select * from h_r_ntp10 order by a,b,c,d,e;
+select * from h_r_ntp20 order by a,b,c,d,e;
+
+drop table if exists h_l_tp10;
+drop table if exists h_l_tp20;
+drop tablegroup if exists hl_tg1;
+create tablegroup hl_tg1;
+create table if not exists h_l_tp10 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01'),to_days('2010-01-01') ),
+subpartition sp2 values in ( to_days('2040-01-01') )
+);
+create table if not exists h_l_tp20 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01'),to_days('2010-01-01') ),
+subpartition sp2 values in ( to_days('2040-01-01') )
+);
+alter table h_l_tp10 set tablegroup=hl_tg1;
+alter table h_l_tp20 set tablegroup=hl_tg1;
+insert into h_l_tp10 values(1,1,'2010-01-01','a','aa');
+insert into h_l_tp10 values(2,2,'2020-01-01','b','bb');
+insert into h_l_tp20 values(3,1,'2040-01-01','a','aa');
+insert into h_l_tp20 values(1,1,'2010-01-01','a','aa');
+insert into h_l_tp20 values(2,2,'2020-01-01','b','bb');
+insert into h_l_tp20 values(3,1,'2040-01-01','a','aa');
+alter tablegroup hl_tg1 add subpartition (subpartition sp3 values in ( to_days('2050-01-01') ));
+insert into h_l_tp10 values(10,1,'2010-01-01','a','aa');
+insert into h_l_tp10 values(20,2,'2020-01-01','b','bb');
+insert into h_l_tp10 values(20,2,'2050-01-01','b','bb');
+alter tablegroup hl_tg1 add subpartition (subpartition sp4 values in ( default ));
+insert into h_l_tp20 values(30,1,'2040-01-01','a','aa');
+insert into h_l_tp20 values(100,1,'2010-01-01','a','aa');
+insert into h_l_tp20 values(200,2,'2020-01-01','b','bb');
+insert into h_l_tp20 values(300,1,'2040-01-01','a','aa');
+insert into h_l_tp20 values(20,2,'2050-01-01','b','bb');
+
+show full create table h_l_tp10;
+show full create table h_l_tp20;
+select * from h_l_tp10 order by a,b,c,d,e;
+select * from h_l_tp20 order by a,b,c,d,e;
+
+drop table if exists r_l_ntp10;
+drop table if exists r_l_ntp20;
+drop tablegroup if exists rl_tg1;
+create tablegroup rl_tg1;
+create table if not exists r_l_ntp10 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values in ( 1000, 2000),
+subpartition p1sp2 values in ( 3000, 4000, 5000,6000 )
+),
+partition p2 values less than ( to_days('2041-01-01') ) (
+subpartition p2sp1 values in ( 1000, 2000),
+subpartition p2sp2 values in ( 3000, 4000),
+subpartition p2sp3 values in ( 5000,6000 )
+)
+);
+create table if not exists r_l_ntp20 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a)
+(
+partition p1 values less than ( to_days('2020-01-01') ) (
+subpartition p1sp1 values in ( 1000, 2000),
+subpartition p1sp2 values in ( 3000, 4000, 5000,6000 )
+),
+partition p2 values less than ( to_days('2041-01-01') ) (
+subpartition p2sp1 values in ( 1000, 2000),
+subpartition p2sp2 values in ( 3000, 4000),
+subpartition p2sp3 values in ( 5000, 6000 )
+)
+);
+alter table r_l_ntp10 set tablegroup=rl_tg1;
+alter table r_l_ntp20 set tablegroup=rl_tg1;
+insert into r_l_ntp10 values(1000,1,'2010-01-01','a','aa');
+insert into r_l_ntp10 values(2000,2,'2020-01-01','b','bb');
+insert into r_l_ntp10 values(3000,1,'2040-01-01','a','aa');
+insert into r_l_ntp20 values(2000,1,'2010-01-01','a','aa');
+insert into r_l_ntp20 values(4000,2,'2020-01-01','b','bb');
+insert into r_l_ntp20 values(5000,1,'2040-01-01','a','aa');
+alter tablegroup rl_tg1 modify partition p2 add subpartition (subpartition p2sp4 values in (7000));
+alter tablegroup rl_tg1 modify partition p1 add subpartition (subpartition p1sp3 values in (7000));
+insert into r_l_ntp10 values(1000,1,'2010-01-01','a','aa');
+insert into r_l_ntp10 values(2000,2,'2020-01-01','b','bb');
+insert into r_l_ntp10 values(3000,1,'2040-01-01','a','aa');
+insert into r_l_ntp20 values(2000,1,'2010-01-01','a','aa');
+insert into r_l_ntp20 values(4000,2,'2020-01-01','b','bb');
+insert into r_l_ntp20 values(5000,1,'2040-01-01','a','aa');
+insert into r_l_ntp20 values(7000,1,'2040-01-01','a','aa');
+
+alter tablegroup rl_tg1 add partition (partition p3 values less than ( to_days('2050-01-01') ));
+insert into r_l_ntp10 values(1000,1,'2010-01-01','a','aa');
+insert into r_l_ntp10 values(2000,2,'2020-01-01','b','bb');
+insert into r_l_ntp10 values(3000,1,'2040-01-01','a','aa');
+insert into r_l_ntp20 values(2000,1,'2010-01-01','a','aa');
+insert into r_l_ntp20 values(4000,2,'2020-01-01','b','bb');
+insert into r_l_ntp20 values(9000,1,'2049-01-01','a','aa');
+alter tablegroup rl_tg1 drop partition p2;
+show full create table r_l_ntp10;
+show full create table r_l_ntp20;
+select * from r_l_ntp10 order by a,b,c,d,e;
+select * from r_l_ntp20 order by a,b,c,d,e;
+
+drop table if exists rc_lc_tp10;
+drop table if exists rc_lc_tp20;
+drop tablegroup if exists rclc_tg1;
+create tablegroup rclc_tg1;
+create table if not exists rc_lc_tp10 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( (2000,2) )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( '2041-01-01','abc' )
+);
+create table if not exists rc_lc_tp20 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( (2000,2) )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( '2041-01-01','abc' )
+);
+alter table rc_lc_tp10 set tablegroup=rclc_tg1;
+alter table rc_lc_tp20 set tablegroup=rclc_tg1;
+insert into rc_lc_tp10 values(1000,2000,'2010-01-01','a','aa');
+insert into rc_lc_tp10 values(2000,2,'2020-01-01','b','bb');
+insert into rc_lc_tp20 values(1000,2000,'2040-01-01','a','aa');
+insert into rc_lc_tp20 values(2000,2,'2020-01-01','b','bb');
+alter tablegroup rclc_tg1 add partition (partition p3 values less than ( '2050-01-01','abc') );
+insert into rc_lc_tp10 values(1000,2000,'2010-01-01','a','aa');
+insert into rc_lc_tp10 values(2000,2,'2020-01-01','b','bb');
+insert into rc_lc_tp10 values(2000,2,'2049-01-01','b','bb');
+alter tablegroup rclc_tg1 add subpartition (subpartition sp3 values in ((4000,2)));
+insert into rc_lc_tp20 values(1000,2000,'2040-01-01','a','aa');
+insert into rc_lc_tp20 values(4000,2,'2020-01-01','b','bb');
+show full create table rc_lc_tp10;
+show full create table rc_lc_tp20;
+select * from rc_lc_tp10 order by a,b,c,d,e;
+select * from rc_lc_tp20 order by a,b,c,d,e;

@@ -27,6 +27,8 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
 import com.alibaba.polardbx.executor.balancer.Balancer;
+import com.alibaba.polardbx.executor.balancer.action.ActionMovePartition;
+import com.alibaba.polardbx.executor.balancer.action.ActionMovePartitions;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
 import com.alibaba.polardbx.executor.balancer.policy.PolicyDrainNode;
@@ -55,6 +57,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlRebalance;
 import org.apache.commons.collections.CollectionUtils;
@@ -69,6 +72,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.balancer.action.ActionUtils.addConcurrentMovePartitionsTasksBetween;
+import static com.alibaba.polardbx.executor.balancer.action.ActionUtils.isMovePartitionAction;
 
 /**
  * Rebalance command.
@@ -195,17 +201,40 @@ public class LogicalRebalanceHandler extends LogicalCommonDdlHandler {
         }
 
         List<DdlTask> tasks = new ArrayList<>();
-        for (BalanceAction action : actions) {
-            ExecutableDdlJob subJob = action.toDdlJob(ec);
-            if (subJob != null) {
+        for (int i = 0; i < actions.size(); ) {
+            BalanceAction action = actions.get(i);
+            ExecutableDdlJob subJob = null;
+            if (!isMovePartitionAction(action)) {
+                subJob = action.toDdlJob(ec);
+            }
+            if (subJob != null || isMovePartitionAction(action)) {
                 if (CollectionUtils.isNotEmpty(tasks)) {
                     job.addSequentialTasks(tasks);
                     tasks = new ArrayList<>();
                 }
-
-                job.appendJob(subJob);
+                if (isMovePartitionAction(action)) {
+                    List<BalanceAction> movePartitionsActions = new ArrayList<>();
+                    String schema = action.getSchema();
+                    while (isMovePartitionAction(action)) {
+                        movePartitionsActions.add(action);
+                        i++;
+                        if (actions.size() <= i) {
+                            break;
+                        }
+                        action = actions.get(i);
+                    }
+                    ActionMovePartitions actionMovePartitions =
+                        ActionUtils.mergeActionMovePartitions(schema, movePartitionsActions);
+                    DdlTask emptyTask = new EmptyTask(schema);
+                    addConcurrentMovePartitionsTasksBetween(job, emptyTask, Lists.newArrayList(actionMovePartitions),
+                        ec);
+                } else {
+                    job.appendJob(subJob);
+                    i++;
+                }
             } else if (action instanceof DdlTask) {
                 tasks.add((DdlTask) action);
+                i++;
             } else {
                 throw new UnsupportedOperationException("action is not DdlTask: " + action);
             }

@@ -51,6 +51,10 @@ public abstract class AbstractScalarFunction implements IScalarFunction {
         this.resultType = resultType;
     }
 
+    public AbstractScalarFunction() {
+
+    }
+
     public abstract String[] getFunctionNames();
 
     @Override

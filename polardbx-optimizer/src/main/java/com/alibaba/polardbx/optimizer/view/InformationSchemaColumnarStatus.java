@@ -70,13 +70,15 @@ public class InformationSchemaColumnarStatus extends VirtualView {
     @Override
     boolean indexableColumn(int i) {
         // TABLE_SCHEMA && TABLE_NAME
-        return i == getTsoIndex() || i == getSchemaIndex() || i == getTableIndex() || i == getIndexNameIndex();
+        return i == getTsoIndex() || i == getSchemaIndex() || i == getTableIndex() || i == getIndexNameIndex()
+            || i == getIndexIdIndex();
     }
 
     private static final List<Integer> INDEXABLE_COLUMNS;
 
     static {
-        INDEXABLE_COLUMNS = Lists.newArrayList(getTsoIndex(), getSchemaIndex(), getTableIndex(), getIndexNameIndex());
+        INDEXABLE_COLUMNS = Lists.newArrayList(getTsoIndex(), getSchemaIndex(), getTableIndex(), getIndexNameIndex(),
+            getIndexIdIndex());
     }
 
     @Override
@@ -98,5 +100,9 @@ public class InformationSchemaColumnarStatus extends VirtualView {
 
     static public int getIndexNameIndex() {
         return 3;
+    }
+
+    static public int getIndexIdIndex() {
+        return 4;
     }
 }

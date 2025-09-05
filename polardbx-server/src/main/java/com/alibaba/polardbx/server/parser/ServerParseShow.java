@@ -63,6 +63,7 @@ public final class ServerParseShow {
     public static final int CACHE_FILE_STATS = 34;
     public static final int COMPATIBILITY_LEVEL = 35;
     public static final int FULL_COLUMNAR_STATUS = 36;
+    public static final int SQL_ENGINE_ALERT = 37;
     public static final char[] _COMPATIBILITY_LEVEL = "COMPATIBILITY_LEVEL".toCharArray();
 
     public static final Set<Integer> PREPARE_UNSUPPORTED_SHOW_TYPE;
@@ -295,6 +296,9 @@ public final class ServerParseShow {
                 } else {
                     return OTHER;
                 }
+            case 'q':
+            case 'Q':
+                return sqlEngineAlertCheck(stmt, offset);
             default:
                 return OTHER;
             }
@@ -351,6 +355,42 @@ public final class ServerParseShow {
             if ((c1 == 'L' || c1 == 'l') && (c2 == 'O' || c2 == 'o') && (c3 == 'W' || c3 == 'w')
                 && (stmt.length() == ++offset || ParseUtil.isEOF(stmt.charAt(offset)))) {
                 return SLOW;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int sqlEngineAlertCheck(ByteString stmt, int offset) {
+        String goal = "ql_engine";
+        offset++;
+        if (stmt.length() >= offset + goal.length()) {
+            String subString = stmt.substring(offset, offset + goal.length());
+            if (goal.equalsIgnoreCase(subString)) {
+                offset += goal.length();
+                while (stmt.length() > offset) {
+                    switch (stmt.charAt(offset)) {
+                    case ' ':
+                    case '\t':
+                    case '\r':
+                    case '\n':
+                        break;
+                    case 'A':
+                    case 'a': {
+                        String newGoal = "lert";
+                        offset++;
+                        if (stmt.length() >= offset + newGoal.length()) {
+                            String newSubString = stmt.substring(offset, offset + newGoal.length());
+                            if (newGoal.equalsIgnoreCase(newSubString)) {
+                                return SQL_ENGINE_ALERT;
+                            }
+                        }
+                        return OTHER;
+                    }
+                    default:
+                        return OTHER;
+                    }
+                    offset++;
+                }
             }
         }
         return OTHER;

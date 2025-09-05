@@ -35,6 +35,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -50,7 +51,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author luoyanxin
@@ -93,8 +93,8 @@ public class AlterTableRenamePartitionJobFactory extends AlterTableGroupBaseJobF
     protected ExecutableDdlJob renameAndMoveToExistTableGroup() {
         boolean enablePreemptiveMdl =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
         Map<String, Long> tablesVersion = getTablesVersion();
 
@@ -105,8 +105,7 @@ public class AlterTableRenamePartitionJobFactory extends AlterTableGroupBaseJobF
             alterTableRenamePartitionPreparedData.getChangePartitionsPair(),
             alterTableRenamePartitionPreparedData.isSubPartitionRename());
         DdlTask syncTask = new TableSyncTask(preparedData.getSchemaName(), tablesVersion.keySet().iterator().next(),
-            enablePreemptiveMdl, initWait, interval,
-            TimeUnit.MILLISECONDS);
+            enablePreemptiveMdl, preemptiveTime);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 
@@ -180,8 +179,9 @@ public class AlterTableRenamePartitionJobFactory extends AlterTableGroupBaseJobF
     protected ExecutableDdlJob renameInOriginTableGroup() {
         boolean enablePreemptiveMdl =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+
 
         Map<String, Long> tablesVersion = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -211,8 +211,7 @@ public class AlterTableRenamePartitionJobFactory extends AlterTableGroupBaseJobF
             preparedData.getTableGroupName(), alterTableRenamePartitionPreparedData.getChangePartitionsPair(),
             alterTableRenamePartitionPreparedData.isSubPartitionRename());
         DdlTask syncTask =
-            new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, enablePreemptiveMdl, initWait, interval,
-                TimeUnit.MILLISECONDS);
+            new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, enablePreemptiveMdl, preemptiveTime);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 

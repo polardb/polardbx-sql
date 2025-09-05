@@ -25,10 +25,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Getter
 @TaskName(name = "OptimizeTablePhyDdlTask")
@@ -59,7 +56,7 @@ public class OptimizeTablePhyDdlTask extends BasePhyDdlTask {
          *
          * </pre>
          */
-        List<Map<String, List<List<String>>>> topos = this.physicalPlanData.partitionTableTopology(parallelism);
+        List<TreeMap<String, List<List<String>>>> topos = this.physicalPlanData.partitionTableTopology(parallelism);
         List<List<Map<Integer, ParameterContext>>> params =
             this.physicalPlanData.partitionParamsList(parallelism);
 
@@ -70,7 +67,7 @@ public class OptimizeTablePhyDdlTask extends BasePhyDdlTask {
         List<OptimizeTablePhyDdlTask> result = new ArrayList<>();
         for (int i = 0; i < topos.size(); i++) {
             PhysicalPlanData p = this.physicalPlanData.clone();
-            Map<String, List<List<String>>> topoMap = topos.get(i);
+            TreeMap<String, List<List<String>>> topoMap = topos.get(i);
             p.setTableTopology(topoMap);
 
             List<Map<Integer, ParameterContext>> paramList = new ArrayList<>();

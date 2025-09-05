@@ -37,6 +37,7 @@ import com.alibaba.polardbx.executor.mpp.operator.PipelineDepTree;
 import com.alibaba.polardbx.executor.mpp.operator.TaskStats;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
+import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -48,6 +49,7 @@ import com.alibaba.polardbx.optimizer.statis.TaskMemoryStatisticsGroup;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Futures;
@@ -110,6 +112,7 @@ public class SqlTask {
     private long queryStart = -1;
     private Session session;
     private volatile long trxId = -1;
+    private final Object trxGuard = new Object();
     private String schema;
     private ColumnarTracer columnarTracer;
 
@@ -471,7 +474,7 @@ public class SqlTask {
         }
     }
 
-    private TaskInfo createTaskInfoWithTaskStats(TaskHolder taskHolder) {
+    protected TaskInfo createTaskInfoWithTaskStats(TaskHolder taskHolder) {
         TaskStats taskStats = getTaskStats(taskHolder);
         Set<Integer> noMoreSplits = getNoMoreSplits(taskHolder);
         TaskStatus taskStatus = createTaskStatus(taskHolder, Optional.empty());
@@ -541,9 +544,15 @@ public class SqlTask {
                         InternalNodeManager manager = ServiceProvider.getInstance().getServer().getNodeManager();
                         this.columnarTracer = new ColumnarTracer(manager.getCurrentNode().getHostPort());
                     }
-                    trxId = TrxIdGenerator.getInstance().nextId();
-                    //set columnarTracer to ExecutionContext
-                    session = sessionRepresentation.toSession(taskId, queryContext, trxId, columnarTracer);
+                    synchronized (trxGuard) {
+                        if (isDone()) {
+                            // aborted before start, this RuntimeException is handled by catch clause
+                            throw new RuntimeException(String.format("Task %s has aborted", getTaskId()));
+                        }
+                        trxId = TrxIdGenerator.getInstance().nextId();
+                        //set columnarTracer to ExecutionContext
+                        session = sessionRepresentation.toSession(taskId, queryContext, trxId, columnarTracer);
+                    }
                     queryContext.registerTaskMemoryPool(session.getClientContext().getMemoryPool());
 
                     isMPPMetricEnabled = isSQLMetricEnabled(
@@ -562,9 +571,9 @@ public class SqlTask {
             }
             if (taskExecution != null) {
                 taskExecution.addSources(sources);
+                taskExecution.addBloomFilter(bloomFilterInfos);
             }
 
-            taskExecution.addBloomFilter(bloomFilterInfos);
         } catch (Error e) {
             failed(e);
             throw e;
@@ -638,7 +647,7 @@ public class SqlTask {
         return taskId.toString();
     }
 
-    private static final class TaskHolder {
+    protected static final class TaskHolder {
         private final SqlTaskExecution taskExecution;
         private final TaskInfo finalTaskInfo;
         private final SqlTaskIoStats finalIoStats;
@@ -877,10 +886,32 @@ public class SqlTask {
         return deps;
     }
 
+    /**
+     * Task state has changed before clean()
+     */
     public void clean() {
-        if (trxId != -1) {
-            ExecutorContext.getContext(schema).getTransactionManager().unregister(trxId);
-            trxId = -1;
+        synchronized (trxGuard) {
+            if (trxId != -1) {
+                ExecutorContext context = ExecutorContext.getContext(schema);
+                ITransactionManager transactionManager = context.getTransactionManager();
+                transactionManager.unregister(trxId);
+                trxId = -1;
+            }
         }
+    }
+
+    @VisibleForTesting
+    protected long getTrxId() {
+        return trxId;
+    }
+
+    @VisibleForTesting
+    protected AtomicReference<TaskHolder> getTaskHolderReference() {
+        return taskHolderReference;
+    }
+
+    @VisibleForTesting
+    protected OutputBuffer getOutputBuffer() {
+        return outputBuffer;
     }
 }

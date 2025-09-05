@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
+import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
@@ -36,6 +37,7 @@ import com.alibaba.polardbx.common.utils.time.parser.NumericTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.type.BasicTypeBuilders;
@@ -68,6 +70,8 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -241,6 +245,22 @@ public class DataTypeUtil {
             break;
         }
         return mysqlDateTime;
+    }
+
+    public static MysqlDateTime getNow(int scale, ExecutionContext executionContext) {
+        // get zoned now datetime
+        ZonedDateTime zonedDateTime;
+        if (executionContext.getTimeZone() != null) {
+            ZoneId zoneId = executionContext.getTimeZone().getZoneId();
+            zonedDateTime = ZonedDateTime.now(zoneId);
+        } else {
+            zonedDateTime = ZonedDateTime.now();
+        }
+
+        // round to scale.
+        MysqlDateTime t = MySQLTimeTypeUtil.fromZonedDatetime(zonedDateTime);
+        t = MySQLTimeCalculator.timeTruncate(t, scale);
+        return t;
     }
 
     /**
@@ -1006,5 +1026,14 @@ public class DataTypeUtil {
             }
         }
         return false;
+    }
+
+    public static boolean isChar(DataType dataType) {
+        return dataType.getSqlType() == Types.CHAR ||
+            dataType.getSqlType() == Types.VARCHAR ||
+            dataType.getSqlType() == Types.LONGVARCHAR ||
+            dataType.getSqlType() == Types.NCHAR ||
+            dataType.getSqlType() == Types.NVARCHAR ||
+            dataType.getSqlType() == Types.LONGNVARCHAR;
     }
 }

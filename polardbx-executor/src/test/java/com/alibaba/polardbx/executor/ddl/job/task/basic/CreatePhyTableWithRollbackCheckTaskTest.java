@@ -25,11 +25,7 @@ import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.FutureTask;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -98,7 +94,7 @@ public class CreatePhyTableWithRollbackCheckTaskTest {
                 DropPhyTableBuilder.class);) {
             Mockito.when(ScaleOutUtils.checkTableExistence(anyString(), anyString(), anyString()))
                 .thenReturn(true).thenReturn(true);
-            Mockito.when(DropPhyTableBuilder.createBuilder(anyString(), anyString(), anyBoolean(), any(HashMap.class),
+            Mockito.when(DropPhyTableBuilder.createBuilder(anyString(), anyString(), anyBoolean(), any(TreeMap.class),
                     any(ExecutionContext.class)))
                 .thenReturn(builder);
             Mockito.when(builder.build()).thenReturn(builder);

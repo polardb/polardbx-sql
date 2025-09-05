@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.util.Arrays;
 
@@ -193,8 +194,11 @@ public class ByteArrayBlock extends AbstractCommonBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data) + sizeOf(offsets);
-        elementUsedBytes = Byte.BYTES * positionCount + sizeOf(data) + Integer.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE +
+            +VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(offsets))
+            + VMSupport.align((int) sizeOf(data));
+        estimatedSize = elementUsedBytes;
     }
 }
 

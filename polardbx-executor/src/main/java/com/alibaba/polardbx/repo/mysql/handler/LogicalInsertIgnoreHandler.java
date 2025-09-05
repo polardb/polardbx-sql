@@ -774,7 +774,9 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
             TableColumnUtils.getColumnMultiWriteMapping(tableMeta.getTableColumnMeta());
         if (MapUtils.isNotEmpty(columnMapping)) {
             insertColumns = insertColumns.stream().map(e -> columnMapping.getOrDefault(e.toLowerCase(), e))
-                .collect(Collectors.toList());
+                .filter(e -> tableMeta.getColumn(e) != null).collect(Collectors.toList());
+            selectColumns = selectColumns.stream().map(e -> columnMapping.getOrDefault(e.toLowerCase(), e))
+                .filter(e -> tableMeta.getColumn(e) != null).collect(Collectors.toList());
         }
 
         // 下面这一大段很复杂的代码-- 非常不宜阅读
@@ -854,14 +856,17 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, executionContext);
         final int maxSqlUnionCount = executionContext.getParamManager().getInt(ConnectionParams.DML_GET_DUP_UNION_SIZE);
         final boolean useIn = executionContext.getParamManager().getBoolean(ConnectionParams.DML_GET_DUP_USING_IN);
+        final boolean useUnionEqual =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_GET_DUP_USING_UNION_EQUAL);
         final int maxSqlInCount = executionContext.getParamManager().getInt(ConnectionParams.DML_GET_DUP_IN_SIZE);
         // Use IN instead of UNION may cause more deadlocks
         // Ref: https://dev.mysql.com/doc/refman/5.7/en/innodb-locks-set.html
         // If it's select with value index, we can not use IN because each select has its own value index
 
-        selects = withValueIndex || !useIn ?
+        selects = withValueIndex || !useIn || useUnionEqual?
             builder.buildSelectUnionAndParam(insertIgnore, ukColumnsList, tableMeta, lockMode, values, insertColumns,
-                lookUpUniqueKey, lookUpUniqueKeyIndex, selectColumns, withValueIndex, maxSqlUnionCount, fullTableScan) :
+                lookUpUniqueKey, lookUpUniqueKeyIndex, selectColumns, withValueIndex, maxSqlUnionCount, fullTableScan,
+                useUnionEqual) :
             builder.buildSelectInAndParam(insertIgnore, ukColumnsList, ukNameList, tableMeta, lockMode, values,
                 insertColumns, lookUpUniqueKey, lookUpUniqueKeyIndex, selectColumns, maxSqlInCount, fullTableScan);
 

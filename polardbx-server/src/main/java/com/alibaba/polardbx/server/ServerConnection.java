@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.server;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.PolarPrivileges;
+import com.alibaba.polardbx.cdc.CdcDumpStreamObserver;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.audit.ConnectionInfo;
@@ -77,6 +77,7 @@ import com.alibaba.polardbx.gms.privilege.ActiveRoles;
 import com.alibaba.polardbx.gms.privilege.PolarAccount;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.TPreparedStatement;
@@ -145,6 +146,7 @@ import com.alibaba.polardbx.rpc.cdc.DumpRequest;
 import com.alibaba.polardbx.rpc.cdc.DumpStream;
 import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
 import com.alibaba.polardbx.server.conn.ResultSetCachedObj;
+import com.alibaba.polardbx.server.encdb.EncdbResultSet;
 import com.alibaba.polardbx.server.encdb.EncdbRuleSpreader;
 import com.alibaba.polardbx.server.encdb.EncdbServer;
 import com.alibaba.polardbx.server.encdb.EncdbSessionState;
@@ -168,8 +170,6 @@ import com.alibaba.polardbx.transaction.trx.ReadOnlyTsoTransaction;
 import com.alibaba.polardbx.transaction.trx.XATsoTransaction;
 import com.google.common.base.Preconditions;
 import com.taobao.tddl.common.privilege.PrivilegePoint;
-import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -726,6 +726,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     public synchronized void setAutocommit(boolean autocommit, boolean isBegin) {
+        if (isTrxFatal()) {
+            close();
+        }
 
         // 新事务开始，清掉txId, 保留 BEGIN/START TRANSACTION 的 txId
         if (this.autocommit != autocommit && !isBegin) {
@@ -846,60 +849,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
         CountDownLatch countDownLatch = new CountDownLatch(1);
         MySQLMessage mm = new MySQLMessage(data);
         FrontendConnection connection = this;
-        StreamObserver<DumpStream> observer = new StreamObserver<DumpStream>() {
-            @SneakyThrows
-            @Override
-            public void onNext(DumpStream dumpStream) {
-                byte[] data = CdcDirectByteOutput.unsafeFetch(dumpStream.getPayload());
-                PacketOutputProxyFactory.getInstance().createProxy(connection).writeArrayAsPacket(data);
-            }
 
-            @Override
-            public void onError(Throwable t) {
-                try {
-                    if (t instanceof StatusRuntimeException) {
-                        final Status status = ((StatusRuntimeException) t).getStatus();
-                        if (status.getCode() == Status.Code.CANCELLED && status.getCause() == null) {
-                            if (cdcLogger.isInfoEnabled()) {
-                                cdcLogger.info("binlog dump canceled by remote [" + host + ":" + port + "]...");
-                            }
-                            return;
-                        }
-                        cdcLogger.error("[" + host + ":" + port + "] binlog dump from cdc failed", t);
-                        if (status.getCode() == Status.Code.INVALID_ARGUMENT) {
-                            final String description = status.getDescription();
-                            JSONObject obj = JSON.parseObject(description);
-                            cdcLogger.error("[" + host + ":" + port + "] binlog dump from cdc failed with " + obj);
-                            writeErrMessage((Integer) obj.get("error_code"), null, (String) obj.get("error_message"));
-                        } else if (status.getCode() == Status.Code.UNAVAILABLE) {
-                            cdcLogger.error("[" + host + ":" + port
-                                + "] binlog dump from cdc failed cause of UNAVAILABLE, please try later");
-                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, "please try later...");
-                        } else {
-                            cdcLogger.error("[" + host + ":" + port
-                                + "] binlog dump from cdc failed cause of unknown, please try later");
-                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
-                        }
-                    } else {
-                        cdcLogger.error("binlog dump from cdc failed", t);
-                        writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
-                    }
-                } catch (Throwable th) {
-                    cdcLogger.error("binlog dump from cdc failed with Throwable", th);
-                    writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, th.getMessage());
-                } finally {
-                    countDownLatch.countDown();
-                }
-            }
-
-            @Override
-            public void onCompleted() {
-                if (cdcLogger.isInfoEnabled()) {
-                    cdcLogger.info("binlog dump finished at this time");
-                }
-                countDownLatch.countDown();
-            }
-        };
         mm.position(5);
         int position = mm.readInt();
         mm.position(11);
@@ -920,8 +870,18 @@ public final class ServerConnection extends FrontendConnection implements Resche
             streamName = fileName.substring(0, idx);
         }
         proxy = new CdcRpcClient.CdcRpcStreamingProxy(streamName);
-        proxy.dump(DumpRequest.newBuilder().setFileName(fileName).setPosition(position).setRegistered(registerSlave)
-            .setExt(JSON.toJSONString(getUserDefVariables())).setStreamName(streamName).build(), observer);
+        StreamObserver<DumpStream> observer = new CdcDumpStreamObserver(connection, countDownLatch);
+        Map<String, Object> ext = new HashMap<>(getUserDefVariables());
+        ext.put("trace_id", traceId);
+        ext.put("id", id);
+
+        // 在获取下一个dumper target之前，先要等待上一个获取到的dumper target 发送完第一个包以更新dumper的统计信息
+        cdcLogger.info("get lock for GET_DUMPER_TARGET");
+        proxy.dump(
+            DumpRequest.newBuilder().setFileName(fileName).setPosition(position)
+                .setRegistered(registerSlave)
+                .setExt(JSON.toJSONString(ext)).setStreamName(streamName).build(),
+            observer);
         try {
             countDownLatch.await();
         } catch (InterruptedException e) {
@@ -977,6 +937,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
             handler = (null == handler) ? new ServerResultHandler(hasMore, statementId, flags) : handler;
         }
 
+        final ExecutionContext ec = getExecutionContext();
+        if (ec != null) {
+            ec.setMultiStmtHasMore(hasMore);
+        }
         return innerExecute(sql, params, handler, null);
     }
 
@@ -1145,6 +1109,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
             return false;
         }
 
+        if (isTrxFatal()) {
+            close();
+        }
+
         statementExecuting.set(true);
 
         // process sql mock
@@ -1311,8 +1279,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     needRescheduled = true;
                 }
                 if (rescheduled) {
-                    needRescheduled = needRescheduled && ec != null && ec.getCclContext() != null && ec.getCclContext()
-                        .isReschedule();
+                    // May CCL reschedule or switchover reschedule.
+                    needRescheduled =
+                        needRescheduled && ec != null && ((ec.getCclContext() != null && ec.getCclContext()
+                            .isReschedule()) || (rescheduleTask != null && rescheduleTask.isSwitchoverReschedule()));
                     if (needRescheduled) {
                         rescheduleParam =
                             RescheduleParam.builder().sql(sql).params(params).handler(handler).dataContext(dataContext)
@@ -1473,6 +1443,48 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
     }
 
+    private boolean isTrxFatal() {
+        return DynamicConfig.getInstance().isEnableCloseConnectionWhenTrxFatal()
+            && null != this.conn && null != this.conn.getTrx()
+            && null != this.conn.getTrx().getCrucialError();
+    }
+
+    private ResultSet mayMatchEncRule(ResultSet rs, ExecutionContext ec) throws SQLException {
+        if (InstConfUtil.getBool(ConnectionParams.ENABLE_ENCDB)) {
+            ExecutionPlan executionPlan = ec.getFinalPlan();
+
+            if (executionPlan.isExplain()) {
+                return rs;
+            }
+
+            if (executionPlan.getTableSet() != null &&
+                !EncdbRuleManager.getInstance().getRuleMatchTree().fastMatch(executionPlan.getTableSet(), schema)) {
+                return rs;
+            }
+
+            if (!executionPlan.getAst().isA(SqlKind.QUERY)) {
+                return rs;
+            }
+
+            if (executionPlan.getOriginColumnNames() == null) {
+                executionPlan.setOriginColumnNames(CalciteUtils.buildOriginColumnNames(executionPlan.getPlan()));
+            }
+
+            //检查是否有对当前用户匹配的加密列
+            PolarAccount account = PolarAccount.newBuilder().setUsername(user).setHost(host).build();
+            boolean[] colEncBitmap = EncdbRuleManager.getInstance().getRuleMatchTree()
+                .getColumnEncBitmap(executionPlan.getOriginColumnNames(), account);
+
+            if (colEncBitmap != null) {
+                if (rs.getMetaData().getColumnCount() == colEncBitmap.length) {
+                    return new EncdbResultSet(rs, colEncBitmap, getEncdbSessionState());
+                }
+                logger.warn("result set is inconsistent with column encryption bitmap, then give up encryption");
+            }
+        }
+        return rs;
+    }
+
     private void releaseAutoSavepoint() {
         if (null != conn && null != conn.getTrx()) {
             conn.getTrx().releaseAutoSavepoint();
@@ -1599,6 +1611,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
     private void afterExecution(ExecutionContext ec, ByteString sql, List<Pair<Integer, ParameterContext>> params,
                                 SchemaConfig schema, long lastAffectedRows, String trxPolicy, long startExecTimeNano,
                                 Throwable exception, int errorCode) {
+        //do not profile and log the query when the query will be rescheduled.
+        if (exception instanceof CclRescheduleException) {
+            return;
+        }
+
         if (DynamicConfig.getInstance().enableExtremePerformance()) {
             try {
                 this.conn.feedBackPlan(exception);
@@ -1617,11 +1634,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
             workloadType = WorkloadType.TP;
         }
 
-        //do not profile and log the query when the query will be rescheduled.
-        if (exception instanceof CclRescheduleException) {
-            return;
-        }
-
         long finishFetchSqlRsNano = System.nanoTime();
         double executeTimeMs = (finishFetchSqlRsNano - this.conn.getLastExecutionBeginNano()) / 1e6;
 
@@ -1638,6 +1650,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 planId = baselineIdAndPlanId.getValue();
             }
         }
+
+        // always record planId for columnar plan
+        planId = (planId == null && ec.isUseColumnar()) ? PlanInfo.genPlanId(ec.getFinalPlan()) : planId;
         boolean sqlMetricEnabled = ExecUtils.isSQLMetricEnabled(ec);
         RuntimeStatistics runtimeStat = (RuntimeStatistics) ec.getRuntimeStatistics();
         LogUtils.QueryMetrics metrics =
@@ -1882,7 +1897,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
     private void cclMetrics(ExecutionContext ec, LogUtils.QueryMetrics metrics) {
         CclContext cclContext = ec.getCclContext();
-        if (isRescheduled()) {
+        if (isRescheduled() && !rescheduleTask.isSwitchoverReschedule()) {
             metrics.cclMetric =
                 new CclMetric(CclMetric.RESCHEDULE, rescheduleTask.getWaitEndTs() - rescheduleTask.getWaitStartTs(),
                     rescheduleTask.getCclRuleInfo().getCclRuleRecord().id, rescheduleTask.isHitCache());
@@ -1958,6 +1973,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
      * 提交事务
      */
     public synchronized boolean commit(boolean hasMore) {
+        if (isTrxFatal()) {
+            close();
+        }
+
         long transStartTime = getTransactionBeginTime();
 
         if (conn != null && conn.getExecutionContext() != null) {
@@ -2256,7 +2275,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
         currentRescheduleTask.setWaitEndTs(System.currentTimeMillis());
         boolean active = currentRescheduleTask.getActivation().compareAndSet(false, true);
         if (active) {
-            this.executingFuture = processor.getHandler().submit(this.schema, null, () -> {
+            final Future<?> prev = this.executingFuture.get();
+            final Future<?> task = processor.getHandler().submit(this.schema, null, () -> {
                 try {
                     if (!rescheduled || this.isClosed()) {
                         throw new TddlNestableRuntimeException("can not be rescheduled.");
@@ -2275,11 +2295,20 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     if (function != null) {
                         function.apply(currentRescheduleTask.getCclRuleInfo());
                     }
-                    setRescheduled(false, null);
+                    // only clear when same task(will reschedule again when switchover)
+                    if (currentRescheduleTask == this.rescheduleTask) {
+                        setRescheduled(false, null);
+                    }
                 }
             });
+            this.executingFuture.compareAndSet(prev, task);
         }
         return active;
+    }
+
+    @Override
+    protected void showCloseInfo(Throwable t) {
+        logger.warn("Connection force closed. " + traceId, t);
     }
 
     @Override
@@ -2293,6 +2322,17 @@ public final class ServerConnection extends FrontendConnection implements Resche
         this.rescheduleTask = rescheduleTask;
         if (!this.rescheduled) {
             this.rescheduleParam = null;
+        }
+        // set/clear switchover reschedule time
+        final ExecutionContext ec = this.getExecutionContext();
+        if (null == rescheduleTask) {
+            if (ec != null) {
+                ec.setFirstSwitchoverWaitTime(0);
+                ec.getSwitchoverPerfCollections().clear();
+            }
+        } else if (rescheduleTask.isSwitchoverReschedule() && ec != null && 0 == ec.getFirstSwitchoverWaitTime()) {
+            ec.setFirstSwitchoverWaitTime(rescheduleTask.getWaitStartTs());
+            ec.getSwitchoverPerfCollections().clear();
         }
     }
 
@@ -2314,7 +2354,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
         if (currentRescheduleTask != null) {
             boolean active = currentRescheduleTask.getActivation().compareAndSet(false, true);
             if (active) {
-                currentRescheduleTask.getCclRuleInfo().getStayCount().decrementAndGet();
+                if (!currentRescheduleTask.isSwitchoverReschedule()) {
+                    currentRescheduleTask.getCclRuleInfo().getStayCount().decrementAndGet();
+                }
                 if (killQuery) {
                     handleError(errorCode, new TddlNestableRuntimeException("The query is cancelled."));
                 }
@@ -2449,7 +2491,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 conn.kill();
             }
 
-            Future f = executingFuture;
+            Future f = executingFuture.get();
             if (f != null) {
                 // Finally, cancel(interrupt) the thread in which innerExecute() is executing.
                 f.cancel(true);
@@ -2503,6 +2545,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     if (conn.getExecutionContext().getDdlContext() != null) {
                         conn.getExecutionContext().getDdlContext().setClientConnectionResetAsTrue();
                     }
+                    DbTopologyManager.killDdlQueryByConnId(conn.getId());
                     return true;
                 }
                 CobarServer.getInstance().getKillExecutor().execute(() -> {
@@ -2516,7 +2559,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                                     conn.kill();
                                 }
 
-                                Future f = executingFuture;
+                                Future f = executingFuture.get();
                                 if (f != null) {
                                     f.cancel(true);
                                     futureCancelErrorCode = null;

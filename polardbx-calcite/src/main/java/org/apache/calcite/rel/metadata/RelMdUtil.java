@@ -449,6 +449,8 @@ public class RelMdUtil {
                 sel *= .5;
             } else if (pred.isA(SqlKind.LIKE)) {
                 sel *= .05;
+            } else if (pred.isA(SqlKind.PRE_FILTER)) {
+                sel *= 1;
             } else {
                 sel *= .25;
             }

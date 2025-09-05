@@ -31,6 +31,7 @@ import org.junit.Test;
 import org.junit.runners.Parameterized;
 
 import java.sql.ResultSet;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -386,6 +387,26 @@ public class GsiWithSequenceTest extends GsiDMLTest {
         assertIndexSame(baseOneTableName);
 
         assertRouteCorrectness(baseOneTableName);
+    }
+
+    @Test
+    public void insertIgnoreLastInsertIdTest() throws Exception {
+        // Check last_insert_id for INSERT IGNORE
+        String sql = MessageFormat
+            .format("insert ignore into {0} (varchar_test, integer_test) values(?,?)",
+                baseOneTableName);
+        List<Object> param = new ArrayList<>();
+        param.add(columnDataGenerator.varchar_testValue);
+        param.add(columnDataGenerator.integer_testValue);
+        String returnedLastInsertId =
+            String.valueOf(JdbcUtil.updateDataTddlAutoGen(tddlConnection, sql, param, "pk"));
+        String lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+
+        String pk = JdbcUtil.executeQueryAndGetFirstStringResult(
+            "select pk from " + baseOneTableName + " limit 1", tddlConnection);
+        Assert.assertEquals(lastInsertId, pk);
+        Assert.assertEquals(lastInsertId, returnedLastInsertId);
     }
 
     private void assertLastInsertId() {

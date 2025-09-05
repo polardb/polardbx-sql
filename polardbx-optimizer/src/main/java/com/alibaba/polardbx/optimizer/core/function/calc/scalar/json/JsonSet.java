@@ -29,6 +29,7 @@ import com.alibaba.polardbx.optimizer.json.JsonPathExprStatement;
 import com.alibaba.polardbx.optimizer.json.JsonUtil;
 import com.alibaba.polardbx.optimizer.json.exception.JsonParserException;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
+import io.airlift.slice.Slice;
 
 import java.util.List;
 
@@ -124,6 +125,9 @@ public class JsonSet extends JsonExtraFunction {
                     nextVal = JSON.parse(DataTypeUtil.convert(operandTypes.get(i), DataTypes.StringType, args[i]));
                 } catch (Exception e) {
                     // Ignore this error due to the value of json could be a string
+                    if (args[i] instanceof Slice){
+                        nextVal = DataTypeUtil.convert(getOperandType(i), DataTypes.StringType, args[i]);
+                    }
                 }
                 if (nextVal == null) {
                     nextVal = args[i];

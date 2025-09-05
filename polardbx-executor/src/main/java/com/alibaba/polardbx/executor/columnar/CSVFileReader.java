@@ -63,4 +63,8 @@ public interface CSVFileReader extends Closeable {
 
     Chunk nextUntilPosition(long pos);
 
+    default Chunk nextUntilPosition(long pos, int expectedRowCount) {
+        return nextUntilPosition(pos);
+    }
+
 }

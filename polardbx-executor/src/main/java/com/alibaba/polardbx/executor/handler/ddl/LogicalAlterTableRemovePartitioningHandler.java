@@ -94,9 +94,10 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
             logicalAlterTableRemovePartitioning.getCreateGlobalIndexesPreparedData();
 
         Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData = new HashMap<>();
+        Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareDataForLocalIndex = new HashMap<>();
 
         Map<String, Boolean> relatedTableGroupInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        globalIndexPreparedDataList.forEach(o->relatedTableGroupInfo.putAll(o.getRelatedTableGroupInfo()));
+        globalIndexPreparedDataList.forEach(o -> relatedTableGroupInfo.putAll(o.getRelatedTableGroupInfo()));
         Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap =
             new TreeMap<>(String::compareToIgnoreCase);
         for (CreateGlobalIndexPreparedData createGsiPreparedData : globalIndexPreparedDataList) {
@@ -108,6 +109,8 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
                 executionContext).build();
             indexTablePreparedDataMap.put(createGsiPreparedData.getIndexTableName(), createGsiPreparedData);
             globalIndexPrepareData.put(createGsiPreparedData, builder.genPhysicalPlanData());
+            PhysicalPlanData phyPlanBuilderForLocalIndex = DdlPhyPlanBuilder.getPhysicalPlanDataForLocalIndex(builder, false);
+            globalIndexPrepareDataForLocalIndex.put(createGsiPreparedData, phyPlanBuilderForLocalIndex);
         }
 
         return new RemovePartitioningJobFactory(
@@ -115,6 +118,7 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
             ast.getPrimaryTableName(),
             ast.getLogicalSecondaryTableName(),
             globalIndexPrepareData,
+            globalIndexPrepareDataForLocalIndex,
             dropGsiColumns,
             executionContext
         ).create();
@@ -189,7 +193,7 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
             String newGsiName = genGlobalIndexName(schema, indexName, executionContext);
             SqlIdentifier tableGroupName = null;
             boolean withImplicitTableGroup = false;
-            if(ast.getIndexTableGroupMap().get(indexName) != null) {
+            if (ast.getIndexTableGroupMap().get(indexName) != null) {
                 tableGroupName = new SqlIdentifier(ast.getIndexTableGroupMap().get(indexName), SqlParserPos.ZERO);
                 withImplicitTableGroup = true;
             }
@@ -201,7 +205,7 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
                 indexMeta.isUniqueIndex(),
                 primaryTableInfo.getKey(),
                 primaryTableInfo.getValue(),
-                    tableGroupName,
+                tableGroupName,
                 withImplicitTableGroup
             );
 

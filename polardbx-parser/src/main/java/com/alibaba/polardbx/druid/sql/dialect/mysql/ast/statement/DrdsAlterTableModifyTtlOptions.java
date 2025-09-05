@@ -29,6 +29,8 @@ public class DrdsAlterTableModifyTtlOptions extends MySqlObjectImpl implements S
     protected SQLExpr ttlExpr;
     protected SQLExpr ttlJob;
     protected SQLExpr ttlFilter;
+    protected SQLExpr ttlCleanup;
+    protected SQLExpr ttlPartInterval;
 
     protected SQLExpr archiveTableSchema;
     protected SQLExpr archiveTableName;
@@ -56,6 +58,18 @@ public class DrdsAlterTableModifyTtlOptions extends MySqlObjectImpl implements S
 
             if (this.ttlJob != null) {
                 this.ttlJob.accept(visitor);
+            }
+
+            if (this.ttlFilter != null) {
+                this.ttlFilter.accept(visitor);
+            }
+
+            if (this.ttlCleanup != null) {
+                this.ttlCleanup.accept(visitor);
+            }
+
+            if (this.ttlPartInterval != null) {
+                this.ttlPartInterval.accept(visitor);
             }
 
             if (this.archiveKind != null) {
@@ -143,5 +157,21 @@ public class DrdsAlterTableModifyTtlOptions extends MySqlObjectImpl implements S
 
     public void setTtlFilter(SQLExpr ttlFilter) {
         this.ttlFilter = ttlFilter;
+    }
+
+    public SQLExpr getTtlCleanup() {
+        return ttlCleanup;
+    }
+
+    public void setTtlCleanup(SQLExpr ttlCleanup) {
+        this.ttlCleanup = ttlCleanup;
+    }
+
+    public SQLExpr getTtlPartInterval() {
+        return ttlPartInterval;
+    }
+
+    public void setTtlPartInterval(SQLExpr ttlPartInterval) {
+        this.ttlPartInterval = ttlPartInterval;
     }
 }

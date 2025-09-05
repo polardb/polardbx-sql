@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
@@ -28,8 +29,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import com.google.common.base.Preconditions;
 import io.airlift.slice.SliceOutput;
-import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.sql.Date;
 import java.util.TimeZone;
@@ -48,6 +49,7 @@ public class DateBlock extends AbstractCommonBlock {
 
     private final long[] packed;
 
+    @FieldMemoryCounter(false)
     private final TimeZone timezone;
 
     private int[] selection;
@@ -320,7 +322,10 @@ public class DateBlock extends AbstractCommonBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(packed);
-        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(packed))
+            + (selection == null ? 0 : VMSupport.align((int) sizeOf(selection)));
+        estimatedSize = elementUsedBytes;
     }
 }

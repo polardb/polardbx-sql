@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.ShortType;
 import org.junit.Assert;
@@ -34,7 +35,8 @@ public class ShortBlockTest extends BaseBlockTest {
     @Test
     public void testSizeInBytes() {
         ShortBlock shortBlock = new ShortBlock(new ShortType(), 1024);
-        Assert.assertEquals(3072, shortBlock.getElementUsedBytes());
+        MemoryCountable.checkDeviation(shortBlock, .05d, true);
+        Assert.assertEquals(3160, shortBlock.getElementUsedBytes());
     }
 
     @Test
@@ -62,7 +64,9 @@ public class ShortBlockTest extends BaseBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         Block block = blockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertEquals(values.length, block.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -88,6 +92,8 @@ public class ShortBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+        MemoryCountable.checkDeviation(anotherBuilder, .05d, true);
+        MemoryCountable.checkDeviation(anotherBuilder.build(), .05d, true);
 
         ShortBlock shortBlock = (ShortBlock) block;
         ShortBlock newBlock1 = new ShortBlock(DataTypes.ShortType, block.getPositionCount());
@@ -101,6 +107,8 @@ public class ShortBlockTest extends BaseBlockTest {
             assertEquals(hashCodes1[i], newBlock1.hashCode(i));
             assertEquals(hashCodes2[i], newBlock1.hashCode(i));
         }
+        MemoryCountable.checkDeviation(newBlock1, .05d, true);
+        MemoryCountable.checkDeviation(shortBlock, .05d, true);
 
         int[] sel = new int[] {1, 2, 3};
         ShortBlock newBlock2 = new ShortBlock(DataTypes.ShortType, block.getPositionCount());

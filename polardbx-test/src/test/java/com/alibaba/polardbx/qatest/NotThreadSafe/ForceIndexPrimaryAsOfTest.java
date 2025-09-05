@@ -80,7 +80,11 @@ public class ForceIndexPrimaryAsOfTest extends ReadBaseTestCase {
                         System.out.println(explainResult);
                         found |= StringUtils.containsIgnoreCase(explainResult, "force index(primary)");
                     }
-                    Assert.assertTrue(found, "not found force index in explain result.");
+                    if (isMySQL80()) {
+                        Assert.assertTrue(!found, "found force index in explain result for 8032.");
+                    } else {
+                        Assert.assertTrue(found, "not found force index in explain result.");
+                    }
                 }
 
                 JdbcUtil.executeQueryFaied(tddlConnection, sql,

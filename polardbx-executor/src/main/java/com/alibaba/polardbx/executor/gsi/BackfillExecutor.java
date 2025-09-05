@@ -175,11 +175,6 @@ public class BackfillExecutor {
 
     public int mirrorCopyGsiBackfill(String schemaName, String primaryTable, String indexName, boolean useChangeSet,
                                      boolean useBinary, boolean onlineModifyColumn, ExecutionContext baseEc) {
-        final long batchSize = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_BATCH_SIZE);
-        final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_LIMITATION);
-        final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_MIN);
-        final long parallelism = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_PARALLELISM);
-
         if (null == baseEc.getServerVariables()) {
             baseEc.setServerVariables(new HashMap<>());
         }
@@ -192,8 +187,8 @@ public class BackfillExecutor {
             GsiUtils.getPhysicalTableMapping(schemaName, primaryTable, indexName, null, null);
 
         OmcMirrorCopyExtractor extractor =
-            OmcMirrorCopyExtractor.create(schemaName, primaryTable, indexName, batchSize, speedMin, speedLimit,
-                parallelism, tableNameMapping, sourcePhyTables, useChangeSet, useBinary, onlineModifyColumn, baseEc);
+            OmcMirrorCopyExtractor.create(schemaName, primaryTable, indexName, tableNameMapping, sourcePhyTables,
+                useChangeSet, useBinary, onlineModifyColumn, baseEc);
         extractor.loadBackfillMeta(executionContext);
 
         final AtomicInteger affectRows = new AtomicInteger();

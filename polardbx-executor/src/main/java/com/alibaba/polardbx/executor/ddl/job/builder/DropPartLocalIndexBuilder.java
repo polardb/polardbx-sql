@@ -32,6 +32,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * drop local index on part of the physical tables
@@ -42,7 +43,7 @@ public class DropPartLocalIndexBuilder extends DropLocalIndexBuilder {
                                                           String logicalTableName,
                                                           String indexName,
                                                           String sql,
-                                                          Map<String, List<List<String>>> tableTopology,
+                                                          TreeMap<String, List<List<String>>> tableTopology,
                                                           PartitionInfo partitionInfo,
                                                           ExecutionContext executionContext) {
         ReplaceTableNameWithQuestionMarkVisitor visitor =

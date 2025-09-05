@@ -17,7 +17,7 @@ import static com.alibaba.polardbx.qatest.BaseTestCase.getPolardbxConnection0;
 public class ChoosePlanByCostTest {
 
     private static final String DB = ChoosePlanByCostTest.class.getSimpleName();
-    private static final String TB = "order";
+    private static final String TB = "order1";
 
     private static final String CREATE_TABLE_FORMATTED =
         "CREATE TABLE IF NOT EXISTS `%s` (\n"
@@ -46,7 +46,7 @@ public class ChoosePlanByCostTest {
         + "Action:getRowCount\n"
         + "StatisticValue:10000\n"
         + "\n"
-        + "Catalog:ChoosePlanByCostTest,order,buyer_id,123\n"
+        + "Catalog:ChoosePlanByCostTest,order1,buyer_id,123\n"
         + "Action:getFrequency\n"
         + "StatisticValue:10000\n"
         + "\n"
@@ -54,11 +54,11 @@ public class ChoosePlanByCostTest {
         + "Action:getRangeCount\n"
         + "StatisticValue:10000\n"
         + "\n"
-        + "Catalog:chooseplanbycosttest,order,seller_id,1_null\n"
+        + "Catalog:chooseplanbycosttest,order1,seller_id,1_null\n"
         + "Action:getRangeCount\n"
         + "StatisticValue:10000\n"
         + "\n"
-        + "Catalog:ChoosePlanByCostTest,order\n"
+        + "Catalog:ChoosePlanByCostTest,order1\n"
         + "Action:getRowCount\n"
         + "StatisticValue:10000\n"
         + "\n"
@@ -66,7 +66,7 @@ public class ChoosePlanByCostTest {
         + "Action:getRowCount\n"
         + "StatisticValue:10000\n"
         + "\n"
-        + "Catalog:ChoosePlanByCostTest,order,id\n"
+        + "Catalog:ChoosePlanByCostTest,order1,id\n"
         + "Action:getCardinality\n"
         + "StatisticValue:10000\n"
         + "'";

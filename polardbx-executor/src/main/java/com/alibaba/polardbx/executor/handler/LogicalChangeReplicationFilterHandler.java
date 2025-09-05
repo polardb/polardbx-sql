@@ -60,7 +60,7 @@ public class LogicalChangeReplicationFilterHandler extends LogicalReplicationBas
                 JSON.toJSONString(sqlNode.getParams()), 10000);
         } catch (Exception e) {
             cdcLogger.error("change replication filter error!", e);
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e, e.getMessage());
         }
         ResultCode<?> httpResult = JSON.parseObject(res, ResultCode.class);
         if (httpResult.getCode() != CdcConstants.SUCCESS_CODE) {

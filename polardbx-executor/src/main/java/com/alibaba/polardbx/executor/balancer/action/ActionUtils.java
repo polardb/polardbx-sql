@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.balancer.action;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
@@ -32,10 +33,11 @@ import com.alibaba.polardbx.executor.ddl.job.factory.oss.UnArchiveJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.UnArchiveJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.ResourceContainer;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
-import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
-import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
@@ -49,6 +51,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalMoveDatabases;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRefreshTopology;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalUnArchive;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.rel.ddl.AlterTableGroupDropPartition;
@@ -60,6 +63,11 @@ import org.apache.calcite.rel.ddl.RefreshTopology;
 import org.apache.calcite.rel.ddl.UnArchive;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlNode;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.MOVE_PARTITION_BEFORE_CHECK;
 
 /**
  * @since 2021/03
@@ -99,14 +107,41 @@ public class ActionUtils {
     }
 
     public static ExecutableDdlJob convertToDelegatorJob(String schema, String sql) {
-        return convertToDelegatorJob(schema, sql, null);
+        return convertToDelegatorJob(schema, sql, null, null, null, null);
     }
 
     public static ExecutableDdlJob convertToDelegatorJob(String schema, String sql,
                                                          CostEstimableDdlTask.CostInfo costInfo) {
+        return convertToDelegatorJob(schema, sql, null, null, null, costInfo);
+    }
+
+    public static DdlEngineResources buildResourceRequired(String schema, String tableGroupName,
+                                                           List<String> partitionNames
+        , List<String> resources, String sql) {
+        DdlEngineResources resourceRequired = new DdlEngineResources();
+        String owner = String.format("schema:%s, sql:%s", schema, sql);
+        for (String resource : resources) {
+            if (resource.equalsIgnoreCase(MOVE_PARTITION_BEFORE_CHECK)) {
+                String subJobOwner = DdlEngineResources.concatSubJobOwner(schema, tableGroupName, partitionNames);
+                resourceRequired.requestPhaseLock(resource, 100L, subJobOwner, ResourceContainer.PHASE_LOCK_START);
+            } else {
+                resourceRequired.requestForce(resource, 100L, owner);
+            }
+        }
+        return resourceRequired;
+    }
+
+    public static ExecutableDdlJob convertToDelegatorJob(String schema, String sql, List<String> resources,
+                                                         String tableGroupName, List<String> partitionNames,
+                                                         CostEstimableDdlTask.CostInfo costInfo) {
         ExecutableDdlJob job = new ExecutableDdlJob();
         SubJobTask delegator = new SubJobTask(schema, sql, null);
         delegator.setCostInfo(costInfo);
+        if (resources != null) {
+            DdlEngineResources ddlEngineResources =
+                buildResourceRequired(schema, tableGroupName, partitionNames, resources, sql);
+            delegator.setResourceAcquired(ddlEngineResources);
+        }
         job.addTask(delegator);
         job.labelAsHead(delegator);
         job.labelAsTail(delegator);
@@ -183,5 +218,43 @@ public class ActionUtils {
 
     public static String genRebalanceTenantResourceName(String tenantName) {
         return LockUtil.genRebalanceResourceName(RebalanceTarget.TENANT, tenantName);
+    }
+
+    public static void addConcurrentMovePartitionsTasksBetween(ExecutableDdlJob job, DdlTask tailTask,
+                                                               List<BalanceAction> movePartitionsActions,
+                                                               ExecutionContext ec) {
+        DdlTask head = job.getTail();
+        for (BalanceAction action : movePartitionsActions) {
+            ExecutableDdlJob subJob = action.toDdlJob(ec);
+            job.combineTasks(subJob);
+            job.addTaskRelationship(head, subJob.getHead());
+            job.addTaskRelationship(subJob.getTail(), tailTask);
+        }
+        job.labelAsTail(tailTask);
+    }
+
+    public static Boolean isMovePartitionAction(BalanceAction action) {
+        return action instanceof ActionMovePartition || action instanceof ActionMovePartitions;
+    }
+
+    public static ActionMovePartitions mergeActionMovePartitions(String schema,
+                                                                 List<BalanceAction> actionMovePartitions) {
+        List<Pair<String, List<ActionMovePartition>>> actionMovePartitionsMap = new ArrayList<>();
+        for (BalanceAction action : actionMovePartitions) {
+            if (!action.getSchema().equalsIgnoreCase(schema)) {
+                throw new RuntimeException("unsupported action in schema: " + action);
+            }
+            if (action instanceof ActionMovePartition) {
+                actionMovePartitionsMap.add(Pair.of(((ActionMovePartition) action).getTableGroupName(),
+                    Lists.newArrayList((ActionMovePartition) action)));
+            } else if (action instanceof ActionMovePartitions) {
+                ActionMovePartitions actionMovePartition = (ActionMovePartitions) action;
+                actionMovePartitionsMap.addAll(actionMovePartition.getActions());
+            } else {
+                throw new RuntimeException("unsupported action here, expected move partition: " + action);
+            }
+        }
+        ActionMovePartitions actionMovePartitionsResult = new ActionMovePartitions(schema, actionMovePartitionsMap);
+        return actionMovePartitionsResult;
     }
 }

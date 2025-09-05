@@ -60,7 +60,7 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
         final long beforeTxid = IdGenerator.assembleId(beforeTimeMillis, 0, 0);
 
         for (ITransaction tran : transactions) {
-            if (!tran.isDistributed() || tran.isAsyncCommit()) {
+            if (tran.isAsyncCommit()) {
                 continue;
             }
             // Do deadlock detection only for transactions that take longer than 1s.
@@ -71,8 +71,7 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
             final String sql = tran.getExecutionContext().getOriginSql();
             final String truncatedSql = (sql == null) ? "" : sql.substring(0, Math.min(sql.length(), 4096));
             ExecutionContext ec = tran.getExecutionContext();
-            final boolean isDdl;
-            isDdl = null != ec && null != ec.getFinalPlan() && ec.getFinalPlan().is(DDL_STATEMENT);
+            final boolean isDdl = null != ec && null != ec.getDdlContext();
 
             tran.getConnectionHolder().handleConnIds((group, connId) -> {
                 result.addRow(new Object[] {

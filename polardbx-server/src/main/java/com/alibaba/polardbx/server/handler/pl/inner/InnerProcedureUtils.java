@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.server.handler.pl.inner;
 
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCallStatement;
@@ -15,6 +16,8 @@ public class InnerProcedureUtils {
     public static final String COLUMNAR_SET_CONFIG = "columnar_set_config";
     public static final String COLUMNAR_ROLLBACK = "columnar_rollback";
     public static final String COLUMNAR_GENERATE_SNAPSHOTS = "columnar_generate_snapshots";
+    public static final String COLUMNAR_AUTO_SNAPSHOT_CONFIG =
+        TddlConstants.COLUMNAR_AUTO_SNAPSHOT_CONFIG.toLowerCase();
 
     public static boolean isInnerProcedure(SQLCallStatement stmt) {
         SQLName procedureName = stmt.getProcedureName();

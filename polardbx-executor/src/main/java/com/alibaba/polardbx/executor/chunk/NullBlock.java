@@ -79,4 +79,9 @@ public class NullBlock implements Block {
     public boolean mayHaveNull() {
         return true;
     }
+
+    @Override
+    public long getMemoryUsage() {
+        return getElementUsedBytes();
+    }
 }

@@ -190,30 +190,36 @@ public class PartTupleRouteFunction extends PartRouteFunction {
         for (int i = 0; i < partColCnt; i++) {
             PartClauseExprExec partClauseExprExec = partClauseExprExecArr[i];
 
-            /**
-             * Eval the  expression value of the partition column
-             */
-            PartitionField partField = partClauseExprExec.evalPredExprVal(context, pruningCtx, null);
+            PartitionBoundVal onePartColVal = null;
+            PartitionBoundValueKind valueKind = partClauseExprExec.getValueKind();
+            if (valueKind == PartitionBoundValueKind.DATUM_NORMAL_VALUE) {
+                /**
+                 * Eval the  expression value of the partition column
+                 */
+                PartitionField partField = partClauseExprExec.evalPredExprVal(context, pruningCtx, null);
 
-            /**
-             * Eval the partIntFunc value for the partition column if partIntFunc exists
-             */
-            PartitionField newPartField;
-            PartitionIntFunction partIntFunc = partClauseExprExec.getPartIntFunc();
+                /**
+                 * Eval the partIntFunc value for the partition column if partIntFunc exists
+                 */
+                PartitionField newPartField;
+                PartitionIntFunction partIntFunc = partClauseExprExec.getPartIntFunc();
 
-            if (partIntFunc != null) {
-                newPartField = PartitionPrunerUtils
-                    .evalPartFuncVal(partField, partIntFunc, getStrategy(), context, null,
-                        PartFieldAccessType.DML_PRUNING);
+                if (partIntFunc != null) {
+                    newPartField = PartitionPrunerUtils
+                        .evalPartFuncVal(partField, partIntFunc, getStrategy(), context, null,
+                            PartFieldAccessType.DML_PRUNING);
+                } else {
+                    newPartField = partField;
+                }
+
+                /**
+                 * Construct the PartitionBoundVal
+                 */
+                onePartColVal = PartitionBoundVal.createPartitionBoundVal(newPartField,
+                    PartitionBoundValueKind.DATUM_NORMAL_VALUE);
             } else {
-                newPartField = partField;
+                onePartColVal = PartitionBoundVal.createAnyValue();
             }
-
-            /**
-             * Construct the PartitionBoundVal
-             */
-            PartitionBoundVal onePartColVal = PartitionBoundVal.createPartitionBoundVal(newPartField,
-                PartitionBoundValueKind.DATUM_NORMAL_VALUE);
 
             datumValArr[i] = onePartColVal;
         }

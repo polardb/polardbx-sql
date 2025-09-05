@@ -110,7 +110,7 @@ public class TwoPhaseDdlManager {
 
     public static int FINISH_DDL_WAIT_TIME = 100;
 
-    public static long EMIT_PHYSICAL_DDL_CHECK_INTERVAL_MS = 200L;
+    public static long EMIT_PHYSICAL_DDL_CHECK_INTERVAL_MS = 100L;
 
     public static Map<Long, TwoPhaseDdlManager> globalTwoPhaseDdlManagerMap = new ConcurrentHashMap<>();
 

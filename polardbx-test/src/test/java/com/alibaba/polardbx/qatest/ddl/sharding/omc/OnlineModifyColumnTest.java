@@ -716,4 +716,34 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    @Test
+    public void testDrdsClusteredIndexWithOmc() {
+        String tableName = "omc_clustered_drds_table";
+        String indexName = "omc_clustered_drds_index";
+        dropTableIfExists(tableName);
+        String sql = String.format("create table %s ("
+            + "a int primary key, "
+            + "b int, "
+            + "c int, "
+            + "d int,"
+            + "index idx_b(b),"
+            + "clustered index %s(c) dbpartition by hash(c)"
+            + ") dbpartition by hash(a)", tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column b bigint null,", tableName) + USE_OMC_ALGORITHM;
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+
+        sql = String.format("select count(1) from metadb.indexes where table_schema = '%s' and table_name='%s'",
+            tddlDatabase1, indexName);
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getLong(1), 3);
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+    }
 }

@@ -53,12 +53,12 @@ public final class Pair<K, V> {
         if (key == null) {
             hash += HASH_CONST;
         } else {
-            hash = hash << 5 + hash << 1 + hash + key.hashCode();
+            hash = (hash << 5) + (hash << 1) + hash + key.hashCode();
         }
         if (value == null) {
             hash += HASH_CONST;
         } else {
-            hash = hash << 5 + hash << 1 + hash + value.hashCode();
+            hash = (hash << 5) + (hash << 1) + hash + value.hashCode();
         }
         return hash;
     }

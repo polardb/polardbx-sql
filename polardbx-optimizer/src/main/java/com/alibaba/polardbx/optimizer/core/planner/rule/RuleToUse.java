@@ -66,6 +66,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFBuil
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFBuilderProjectTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFilterJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFilterProjectTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalSortSemiJoinToMaterializedSemiJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPAggJoinToToHashGroupJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPJoinTableLookupToBKAJoinTableLookupRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalAggToHashAggRule;
@@ -262,6 +263,7 @@ public class RuleToUse {
         SubQueryToSemiJoinRule.PROJECT,
         CorrelateProjectRule.INSTANCE,
         FilterConditionSimplifyRule.INSTANCE,
+        FilterLookupTableRule.INSTANCE,
         ProjectToWindowRule.PROJECT,
         ProjectToWindowRule.INSTANCE
     );
@@ -401,6 +403,10 @@ public class RuleToUse {
         ProjectMergeRule.INSTANCE
     );
 
+    public static final ImmutableList<RelOptRule> PROJECT_MERGE_RULE = ImmutableList.of(
+        ProjectMergeRule.INSTANCE
+    );
+
     public static final ImmutableList<RelOptRule> CBO_TOO_MANY_JOIN_REORDER_RULE = ImmutableList.of(
         JoinCommuteRule.SWAP_OUTER
     );
@@ -459,6 +465,7 @@ public class RuleToUse {
         SMPLogicalJoinToHashJoinRule.OUTER_INSTANCE,
         LogicalJoinToSortMergeJoinRule.INSTANCE,
         SMPLogicalSemiJoinToMaterializedSemiJoinRule.INSTANCE,
+        SMPLogicalSortSemiJoinToMaterializedSemiJoinRule.INSTANCE,
         SMPSemiJoinTableLookupToMaterializedSemiJoinTableLookupRule.INSTANCE,
         SMPLogicalSemiJoinToSemiNLJoinRule.INSTANCE,
         SMPLogicalSemiJoinToSemiHashJoinRule.INSTANCE,
@@ -484,6 +491,8 @@ public class RuleToUse {
         CBOPushJoinRule.INSTANCE,
         // Push Agg
         CBOPushAggRule.LOGICALVIEW,
+        //Push TopN and Agg
+        CBOPushTopnAndAggRule.INSTANCE,
         // Join Window Transpose
         CBOJoinWindowTransposeRule.INSTANCE,
         // Agg Join Transpose

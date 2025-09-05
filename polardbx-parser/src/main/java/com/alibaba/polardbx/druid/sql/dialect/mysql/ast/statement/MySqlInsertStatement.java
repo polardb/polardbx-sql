@@ -34,6 +34,7 @@ public class MySqlInsertStatement extends SQLInsertStatement {
     private boolean fulltextDictionary = false; // for adb
     private boolean overwrite = false; // for adb
     private boolean ifNotExists = false; //for adb
+    private boolean hasArgsInFunction = false;
 
     protected List<SQLCommentHint> hints;
 
@@ -202,5 +203,13 @@ public class MySqlInsertStatement extends SQLInsertStatement {
     @Override
     public void setOverwrite(boolean overwrite) {
         this.overwrite = overwrite;
+    }
+
+    public boolean isHasArgsInFunction() {
+        return hasArgsInFunction;
+    }
+
+    public void setHasArgsInFunction(boolean hasArgsInFunction) {
+        this.hasArgsInFunction = hasArgsInFunction;
     }
 }

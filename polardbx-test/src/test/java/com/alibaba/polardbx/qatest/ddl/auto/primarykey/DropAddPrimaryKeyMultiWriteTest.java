@@ -4,6 +4,7 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.hamcrest.Matchers;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -768,8 +769,9 @@ public class DropAddPrimaryKeyMultiWriteTest extends DDLBaseNewDBTestCase {
         //预期：select + insert + insert
         sql = String.format("INSERT IGNORE INTO %s VALUES ('567', 5, 6)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
-        trace = getTrace(tddlConnection);
-        Assert.assertThat(trace.size(), is(6));
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = true : primary(1) + gsi(1) + insert(4)
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = false : gsi(1) + insert(4)
+        checkTraceRowCount(Matchers.lessThanOrEqualTo(6));
 
         //预期：select + delete + delete + insert + insert
         sql = String.format("INSERT INTO %s VALUES ('567', 5, 6) ON DUPLICATE KEY UPDATE a = '678'", tableName);
@@ -782,7 +784,9 @@ public class DropAddPrimaryKeyMultiWriteTest extends DDLBaseNewDBTestCase {
         sql = String.format("REPLACE INTO %s VALUES ('567', 5, 6)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        Assert.assertThat(trace.size(), is(6));
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = true : primary(1) + gsi(1) + insert(4)
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = false : gsi(1) + insert(4)
+        checkTraceRowCount(Matchers.lessThanOrEqualTo(6));
 
         //预期：select + delete + insert + replace
         sql = String.format("INSERT IGNORE INTO %s VALUES ('678', 6 ,7)", tableName);

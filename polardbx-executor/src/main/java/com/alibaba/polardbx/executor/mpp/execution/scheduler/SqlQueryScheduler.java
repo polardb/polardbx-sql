@@ -79,7 +79,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.ABORTED;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.CANCELED;
@@ -545,13 +544,18 @@ public class SqlQueryScheduler {
                     ImmutableMap<Integer, Boolean> parentStageIds = childParents.stream()
                         .map(stageId -> stageId.getId()).collect(
                             ImmutableCollectors.toImmutableMap(stageId -> stageId, stageId -> false));
-                    // schedule under remote pairwise should rely on partition count not task's num
-                    int bufferCount = fragment.isRemotePairWise() ? partitioningHandle.getPartitionCount() : -1;
                     outputBufferManager =
-                        new BroadcastOutputBufferManager(new HashMap<>(parentStageIds), bufferCount,
-                            childStage::setOutputBuffers);
+                        new BroadcastOutputBufferManager(new HashMap<>(parentStageIds), childStage::setOutputBuffers);
                 } else {
-                    int partitionCount = partitioningHandle.getPartitionCount();
+                    int partitionCount;
+                    if (partitioningHandle.isRemotePairWise()) {
+                        // task ID under partition-wise mode is determined by (physicalPartitionID % nodeCount)
+                        // so we just assign a max count here
+                        partitionCount = nodeSelector.getOrderedNode().size();
+                        partitioningHandle.setPartitionCount(partitionCount);
+                    } else {
+                        partitionCount = partitioningHandle.getPartitionCount();
+                    }
                     outputBufferManager =
                         new PartitionedOutputBufferManager(childParents, childStageHasMultiParent, partitionCount,
                             childStage::setOutputBuffers
@@ -618,27 +622,9 @@ public class SqlQueryScheduler {
                 }
 
                 for (OutputBufferManager child : childOutputBufferManagers) {
-                    List<OutputBuffers.OutputBufferId> tempBuffers = newOutputBuffers;
-                    // NOTE: here, buffer ids should have same stage id
-                    if (child instanceof BroadcastOutputBufferManager
-                        && ((BroadcastOutputBufferManager) child).getBufferCount() > 0
-                        && !newOutputBuffers.isEmpty()) {
-                        tempBuffers = getFullBuffer(newOutputBuffers.get(0).getStageId(),
-                            ((BroadcastOutputBufferManager) child).getBufferCount());
-                    }
-                    child.addOutputBuffers(stageId, tempBuffers, noMoreTasks);
+                    child.addOutputBuffers(stageId, newOutputBuffers, noMoreTasks);
                 }
             }
-        }
-
-        /**
-         * @param stageId stage id used to create output buffer
-         * @param bufferCount all buffers to create
-         */
-        private List<OutputBuffers.OutputBufferId> getFullBuffer(int stageId,
-                                                                 int bufferCount) {
-            return IntStream.range(0, bufferCount).boxed().map(idx -> new OutputBuffers.OutputBufferId(stageId, idx))
-                .collect(Collectors.toList());
         }
     }
 }

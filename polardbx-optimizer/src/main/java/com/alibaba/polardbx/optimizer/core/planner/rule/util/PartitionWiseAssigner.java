@@ -25,13 +25,14 @@ import com.alibaba.polardbx.optimizer.core.rel.PhysicalProject;
 import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.core.rel.mpp.ColumnarExchange;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelDistributionTraitDef;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelPartitionWise;
 import org.apache.calcite.rel.RelPartitionWises;
 import org.apache.calcite.rel.RelShuttleImpl;
-import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalProject;
 
@@ -40,106 +41,101 @@ import java.util.List;
 import java.util.Map;
 
 public class PartitionWiseAssigner {
-    private RelNode root;
-
-    boolean joinKeepPartition;
-
-    public PartitionWiseAssigner(RelNode root, boolean joinKeepPartition) {
-        this.root = root;
-        this.joinKeepPartition = joinKeepPartition;
-    }
-
-    public RelNode assign() {
+    public static RelNode assign(RelNode root, boolean joinKeepPartition) {
+        // deduce RelPartitionWise for non-leaf node
         BottomUpAssign bottomUpAssign = new BottomUpAssign(joinKeepPartition);
         RelNode newRoot = root.accept(bottomUpAssign);
-        TopDownAssign topDownAssign = new TopDownAssign(newRoot);
+        // deduce RelPartitionWise for leaf node
+        TopDownAssign topDownAssign = new TopDownAssign();
         return newRoot.accept(topDownAssign);
     }
 
+    /**
+     * A bottomUp visitor to assign RelPartitionWise to physical relNode
+     * hashJoin, semiHashJoin, hashGroupJoin, sortWindow, hashWindow and hashAgg.
+     * Possible RelPartitionWiseImpls are RelPartitionWises.LOCAL and RelPartitionWise.ANY.
+     * A physical relNode is RelPartitionWises.LOCAL only if all inputs provide partition-wise.
+     * Note that the RelPartitionWise of tableScan is not set in this visitor.
+     */
     static public class BottomUpAssign extends RelShuttleImpl {
-        private Map<Integer, Boolean> partitionWise;
-
-        boolean joinKeepPartition;
+        private final RelPartitionWise defaultValue = RelPartitionWises.ANY;
+        // map relNode.id to a RelPartitionWise the relNode can provide
+        private final Map<Integer, RelPartitionWise> providePartitionWise;
+        boolean joinProvidePartitionWise;
 
         public BottomUpAssign(boolean joinKeepPartition) {
-            partitionWise = Maps.newHashMap();
-            this.joinKeepPartition = joinKeepPartition;
+            this.providePartitionWise = Maps.newHashMap();
+            this.joinProvidePartitionWise = joinKeepPartition;
         }
 
         protected RelNode visitChild(RelNode parent, int i, RelNode child) {
             RelNode node = super.visitChild(parent, i, child);
-            partitionWise.put(node.getId(), false);
+            // node doesn't provide partition-wise by default
+            providePartitionWise.put(node.getId(), defaultValue);
             return node;
         }
 
         @Override
         public RelNode visit(TableScan scan) {
             RelDistribution distribution = scan.getTraitSet().getTrait(RelDistributionTraitDef.INSTANCE);
-            partitionWise.put(scan.getId(), distribution != null && distribution.isShardWise());
+            // leaf of tree, isShardWise means partition-wise
+            providePartitionWise.put(scan.getId(), distribution != null && distribution.isShardWise() ?
+                RelPartitionWises.LOCAL : defaultValue);
             return scan;
         }
 
         @Override
         public RelNode visit(LogicalProject project) {
             RelNode node = visitChildren(project);
-            passPartition(node);
+            // logicalProject provides partition-wise
+            providePartitionWise.put(node.getId(),
+                providePartitionWise.getOrDefault(node.getInput(0).getId(), defaultValue));
             return node;
         }
 
         public RelNode visit(RelNode other) {
-            if (other instanceof HashJoin
-                || other instanceof SemiHashJoin) {
-                RelNode node = visitChildren(other);
-                boolean localWise = true;
-                for (RelNode child : node.getInputs()) {
-                    localWise &= partitionWise.get(child.getId());
+            if (other instanceof HashJoin) {
+                HashJoin hashJoin = (HashJoin) visitChildren(other);
+                // reverse outer join doesn't support local partition-wise, nor provide partition-wise info
+                if (hashJoin.getJoinType().isOuterJoin() && hashJoin.isOuterBuild()) {
+                    return hashJoin;
                 }
-                if (other instanceof HashJoin && ((HashJoin) other).isOuterBuild()) {
-                    localWise = false;
+                // try local partition-wise first
+                RelNode localPartitionWiseNode = convertToLocalPartitionWise(hashJoin);
+                if (localPartitionWiseNode != null) {
+                    return localPartitionWiseNode;
                 }
-                if (localWise) {
-                    node = node.copy(node.getTraitSet().replace(RelPartitionWises.LOCAL), node.getInputs())
-                        .setHints(node.getHints());
-                    partitionWise.put(node.getId(), false);
-                    return node;
+                // not local partition-wise, hashJoin provides partition-wise info of probe side
+                if (joinProvidePartitionWise && (!hashJoin.isOuterBuild())) {
+                    providePartitionWise.put(hashJoin.getId(),
+                        providePartitionWise.getOrDefault(hashJoin.getProbeNode().getId(), defaultValue));
                 }
+                return hashJoin;
+            }
 
-                if (joinKeepPartition) {
-                    // if hash table build with outer side, we cannot keep partition info
-                    boolean outerBuild = false;
-                    if (node instanceof HashJoin) {
-                        outerBuild = ((HashJoin) node).isOuterBuild();
-                    } else {
-                        outerBuild = ((SemiHashJoin) node).isOuterBuild();
-                    }
-                    if (outerBuild) {
-                        return node;
-                    }
-
-                    // keep partition info of join result as probe side
-                    RelNode probeNode = null;
-                    if (other instanceof HashJoin) {
-                        probeNode = ((HashJoin) node).getProbeNode();
-                    } else {
-                        probeNode = ((SemiHashJoin) node).getProbeNode();
-                    }
-                    partitionWise.put(node.getId(), partitionWise.getOrDefault(probeNode.getId(), true));
+            if (other instanceof SemiHashJoin) {
+                SemiHashJoin semiHashJoin = (SemiHashJoin) visitChildren(other);
+                // try local partition-wise first
+                RelNode localPartitionWiseNode = convertToLocalPartitionWise(semiHashJoin);
+                if (localPartitionWiseNode != null) {
+                    return localPartitionWiseNode;
                 }
-                return node;
+                // not local partition-wise, semiHashJoin provides partition-wise info of probe side
+                if (joinProvidePartitionWise && (!semiHashJoin.isOuterBuild())) {
+                    providePartitionWise.put(semiHashJoin.getId(),
+                        providePartitionWise.getOrDefault(semiHashJoin.getProbeNode().getId(), defaultValue));
+                }
+                return semiHashJoin;
             }
 
             if (other instanceof HashGroupJoin
                 || other instanceof HashWindow
                 || other instanceof SortWindow) {
                 RelNode node = visitChildren(other);
-                boolean localWise = true;
-                for (RelNode child : node.getInputs()) {
-                    localWise &= partitionWise.get(child.getId());
-                }
-                if (localWise) {
-                    node = node.copy(node.getTraitSet().replace(RelPartitionWises.LOCAL), node.getInputs())
-                        .setHints(node.getHints());
-                    partitionWise.put(node.getId(), false);
+                // try local partition-wise
+                RelNode localPartitionWiseNode = convertToLocalPartitionWise(node);
+                if (localPartitionWiseNode != null) {
+                    return localPartitionWiseNode;
                 }
                 return node;
             }
@@ -147,11 +143,9 @@ public class PartitionWiseAssigner {
             if (other instanceof HashAgg) {
                 RelNode node = visitChildren(other);
                 if (!((HashAgg) other).isPartial()) {
-                    boolean localWise = partitionWise.get(((HashAgg) node).getInput().getId());
-                    if (localWise) {
-                        node = node.copy(node.getTraitSet().replace(RelPartitionWises.LOCAL), node.getInputs())
-                            .setHints(node.getHints());
-                        partitionWise.put(node.getId(), false);
+                    RelNode localPartitionWiseNode = convertToLocalPartitionWise(node);
+                    if (localPartitionWiseNode != null) {
+                        return localPartitionWiseNode;
                     }
                 }
                 return node;
@@ -159,49 +153,61 @@ public class PartitionWiseAssigner {
 
             if (other instanceof PhysicalProject) {
                 RelNode node = visitChildren(other);
-                passPartition(node);
+                // PhysicalProject provides partition-wise
+                providePartitionWise.put(node.getId(),
+                    providePartitionWise.getOrDefault(node.getInput(0).getId(), defaultValue));
                 return node;
+            }
+
+            if (other.getInputs().isEmpty()) {
+                // leaf node except tableScan doesn't provide partition-wise
+                providePartitionWise.put(other.getId(), defaultValue);
             }
 
             return visitChildren(other);
         }
 
-        private void passPartition(RelNode node) {
-            partitionWise.put(node.getId(), partitionWise.getOrDefault(node.getInput(0).getId(), true));
-        }
-    }
-
-    enum ExchangeMode {
-        ANY, REMOTE, ALL;
-
-        public static ExchangeMode removeLocal(ExchangeMode mode) {
-            switch (mode) {
-            case ALL:
-            case REMOTE:
-                return REMOTE;
-            case ANY:
-            default:
-                return mode;
+        /**
+         * Guts of the visitor, trying to convert RelPartitionWise.ANY to RelPartitionWises.LOCAL
+         *
+         * @param node node whose RelPartitionWise to be converted
+         * @return converted node if success, null other.
+         */
+        private RelNode convertToLocalPartitionWise(RelNode node) {
+            // all inputs provide partition-wise
+            for (RelNode child : node.getInputs()) {
+                if (providePartitionWise.get(child.getId()) != RelPartitionWises.LOCAL) {
+                    return null;
+                }
             }
+            node = node.copy(node.getTraitSet().replace(RelPartitionWises.LOCAL), node.getInputs())
+                .setHints(node.getHints());
+            // local partition-wise doesn't provide partition-wise
+            providePartitionWise.put(node.getId(), defaultValue);
+            return node;
         }
     }
 
+    /**
+     * A topDown visitor, which has two goals:
+     * 1. assign RelPartitionWise to tableScan
+     * 2. set keepPartition for hashJoin and semiHashJoin.
+     * Possible RelPartitionWiseImpls for tableScan are
+     * RelPartitionWise.ALL, RelPartitionWise.REMOTE and RelPartitionWise.ANY.
+     * A tableScan is RelPartitionWises.ALL only if it is required to provide partition-wise.
+     */
     static public class TopDownAssign extends RelShuttleImpl {
+        private final RelPartitionWise defaultValue = RelPartitionWises.REMOTE;
+        // map relNode.id to a RelPartitionWise the relNode is required to provide
+        private final Map<Integer, RelPartitionWise> requiredPartitionWise;
 
-        private Map<Integer, ExchangeMode> partitionWise;
-
-        private Map<Integer, Boolean> keepPartition;
-
-        public TopDownAssign(RelNode root) {
-            partitionWise = Maps.newHashMap();
-            keepPartition = Maps.newHashMap();
-            partitionWise.put(root.getId(), ExchangeMode.REMOTE);
-            keepPartition.put(root.getId(), false);
+        public TopDownAssign() {
+            this.requiredPartitionWise = Maps.newHashMap();
         }
 
         protected RelNode visitChild(RelNode parent, int i, RelNode child) {
-            partitionWise.putIfAbsent(parent.getId(), ExchangeMode.removeLocal(getCurrentMode(parent)));
-            keepPartition.putIfAbsent(parent.getId(), false);
+            // child is not required to provide local partition-wise by default
+            requiredPartitionWise.putIfAbsent(child.getId(), removeLocal(getCurrentMode(parent)));
             stack.push(parent);
             try {
                 RelNode child2 = child.accept(this);
@@ -209,8 +215,7 @@ public class PartitionWiseAssigner {
                     final List<RelNode> newInputs = new ArrayList<>(parent.getInputs());
                     newInputs.set(i, child2);
                     RelNode newNode = parent.copy(parent.getTraitSet(), newInputs).setHints(parent.getHints());
-                    partitionWise.put(newNode.getId(), partitionWise.get(parent.getId()));
-                    keepPartition.put(newNode.getId(), keepPartition.get(parent.getId()));
+                    requiredPartitionWise.put(newNode.getId(), requiredPartitionWise.get(parent.getId()));
                     return newNode;
                 }
                 return parent;
@@ -224,63 +229,54 @@ public class PartitionWiseAssigner {
             if (!(scan instanceof LogicalView)) {
                 return scan;
             }
+            // Guts of the visitor
             LogicalView lv = (LogicalView) scan;
-            switch (getCurrentMode(lv)) {
-            case ALL:
-                return lv.copy(scan.getTraitSet().replace(RelPartitionWises.ALL));
-            case REMOTE:
-                if (keepPartition.getOrDefault(scan.getId(), false)) {
-                    return lv.copy(scan.getTraitSet().replace(RelPartitionWises.ALL));
-                } else {
-                    return lv.copy(scan.getTraitSet().replace(RelPartitionWises.REMOTE));
-                }
-            case ANY:
-            default:
-                return scan;
+            RelPartitionWise currentMode = getCurrentMode(lv);
+            if (currentMode == RelPartitionWises.ALL ||
+                currentMode == RelPartitionWises.REMOTE) {
+                return lv.copy(scan.getTraitSet().replace(currentMode));
             }
+            Preconditions.checkArgument(currentMode == RelPartitionWises.ANY);
+            return scan;
         }
 
         @Override
         public RelNode visit(LogicalProject project) {
-            partitionWise.put(project.getId(), getCurrentMode(project));
-            if (keepPartition.getOrDefault(project.getId(), false)) {
-                acquireKeepPartition(project.getInput());
-            }
+            requiredPartitionWise.put(getFirstChildId(project), getCurrentMode(project));
             return visitChildren(project);
         }
 
         public RelNode visit(RelNode other) {
             if (other instanceof ColumnarExchange) {
-                partitionWise.put(other.getId(), ExchangeMode.ANY);
-                keepPartition.put(other.getId(), false);
+                // set required PartitionWise of child to be ANY
+                requiredPartitionWise.put(getFirstChildId(other), RelPartitionWises.ANY);
                 return visitChildren(other);
             }
 
-            if (other instanceof HashJoin
-                || other instanceof SemiHashJoin) {
-                boolean keepPartInfo = keepPartition.getOrDefault(other.getId(), false);
-                if (other instanceof HashJoin) {
-                    ((HashJoin) other).setKeepPartition(keepPartInfo);
-                } else {
-                    ((SemiHashJoin) other).setKeepPartition(keepPartInfo);
-                }
+            if (other instanceof HashJoin) {
+                generateChildRequiredPartitionWise(other);
                 if (other.getTraitSet().getPartitionWise().isTop()) {
-                    if (keepPartInfo) {
-                        if (other instanceof HashJoin) {
-                            acquireKeepPartition(((HashJoin) other).getProbeNode());
-                        } else {
-                            acquireKeepPartition(((SemiHashJoin) other).getProbeNode());
-                        }
+                    HashJoin hashJoin = (HashJoin) other;
+                    // if non-local partition-wise hash join is required to provide RelPartitionWises.ALL,
+                    // probe side is required to provide RelPartitionWises.ALL, and hash join should keep partition
+                    if (getCurrentMode(other) == RelPartitionWises.ALL) {
+                        requiredPartitionWise.put(hashJoin.getProbeNode().getId(), RelPartitionWises.ALL);
+                        hashJoin.setKeepPartition(true);
                     }
-                    partitionWise.put(other.getId(), ExchangeMode.REMOTE);
-                } else {
-                    if (other.getTraitSet().getPartitionWise().isLocalPartition()) {
-                        acquireKeepPartition(((Join) other).getOuter());
-                        acquireKeepPartition(((Join) other).getInner());
-                        // never keep partition when pass local partition wise join
-                        keepPartition.put(other.getId(), false);
+                }
+                return visitChildren(other);
+            }
+
+            if (other instanceof SemiHashJoin) {
+                generateChildRequiredPartitionWise(other);
+                if (other.getTraitSet().getPartitionWise().isTop()) {
+                    SemiHashJoin semiHashJoin = (SemiHashJoin) other;
+                    // if non-local partition-wise semiHash join is required to provide RelPartitionWises.ALL,
+                    // probe side is required to provide RelPartitionWises.ALL, and semiHash join should keep partition
+                    if (getCurrentMode(other) == RelPartitionWises.ALL) {
+                        requiredPartitionWise.put(semiHashJoin.getProbeNode().getId(), RelPartitionWises.ALL);
+                        semiHashJoin.setKeepPartition(true);
                     }
-                    partitionWise.put(other.getId(), ExchangeMode.ALL);
                 }
                 return visitChildren(other);
             }
@@ -288,47 +284,56 @@ public class PartitionWiseAssigner {
             if (other instanceof HashGroupJoin
                 || other instanceof SortWindow
                 || other instanceof HashWindow) {
-                if (other.getTraitSet().getPartitionWise().isTop()) {
-                    partitionWise.put(other.getId(), ExchangeMode.REMOTE);
-                } else {
-                    partitionWise.put(other.getId(), ExchangeMode.ALL);
-                }
-                keepPartition.put(other.getId(), false);
+                generateChildRequiredPartitionWise(other);
                 return visitChildren(other);
             }
 
             if (other instanceof HashAgg) {
-                if (!((HashAgg) other).isPartial()) {
-                    if (other.getTraitSet().getPartitionWise().isTop()) {
-                        partitionWise.put(other.getId(), ExchangeMode.REMOTE);
-                    } else {
-                        partitionWise.put(other.getId(), ExchangeMode.ALL);
-                        acquireKeepPartition(((HashAgg) other).getInput());
-                    }
-                    keepPartition.put(other.getId(), false);
+                if (!((HashAgg) other).isPartial() || ((HashAgg) other).getGroupCount() == 0) {
+                    generateChildRequiredPartitionWise(other);
                 }
                 return visitChildren(other);
             }
 
             if (other instanceof PhysicalProject) {
-                partitionWise.put(other.getId(), getCurrentMode(other));
-                if (keepPartition.getOrDefault(other.getId(), false)) {
-                    acquireKeepPartition(((PhysicalProject) other).getInput());
-                }
+                requiredPartitionWise.put(getFirstChildId(other), getCurrentMode(other));
                 return visitChildren(other);
             }
 
             return visitChildren(other);
         }
 
-        private ExchangeMode getCurrentMode(RelNode current) {
-            RelNode node = stack.peekFirst();
-            return node == null ? partitionWise.get(current.getId())
-                : partitionWise.get(node.getId());
+        /**
+         * generate RequiredPartitionWise for child
+         * RequiredPartitionWise is REMOTE if only current node's trait is RelPartitionWise.ANY.
+         *
+         * @param node current node
+         */
+        private void generateChildRequiredPartitionWise(RelNode node) {
+            for (RelNode input : node.getInputs()) {
+                requiredPartitionWise.put(input.getId(),
+                    node.getTraitSet().getPartitionWise().isTop() ?
+                        defaultValue : RelPartitionWises.ALL);
+            }
         }
 
-        private void acquireKeepPartition(RelNode node) {
-            keepPartition.put(node.getId(), true);
+        private RelPartitionWise getCurrentMode(RelNode current) {
+            return requiredPartitionWise.getOrDefault(current.getId(), defaultValue);
         }
+
+        private int getFirstChildId(RelNode node) {
+            return node.getInputs().get(0).getId();
+        }
+
+        public static RelPartitionWise removeLocal(RelPartitionWise mode) {
+            if (mode == RelPartitionWises.ALL) {
+                return RelPartitionWises.REMOTE;
+            }
+            if (mode == RelPartitionWises.REMOTE) {
+                return RelPartitionWises.REMOTE;
+            }
+            return RelPartitionWises.ANY;
+        }
+
     }
 }

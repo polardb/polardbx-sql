@@ -206,6 +206,7 @@ abstract class CalciteVisitor extends MySqlASTVisitorAdapter {
 
     public static enum IndexType {
         FORCE("FORCE"),
+        PAGING_FORCE("PAGING_FORCE"),
         USE("USE"),
         IGNORE("IGNORE");
 

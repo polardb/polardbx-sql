@@ -247,6 +247,7 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
     }
 
     public boolean checkRecords(DdlResponse ddlResponse, List<Long> jobIds, boolean rollbackOpt) {
+        Map<Long, Response> responseMap = new HashMap<>();
         List<DdlEngineRecord> records = fetchRecords(jobIds);
 
         boolean allCompleted = true;
@@ -271,6 +272,13 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
 
             if (currentRecord != null) {
                 DdlState currentState = DdlState.valueOf(currentRecord.state);
+                Response response = (Response) DdlSerializer.deserializeJSON(currentRecord.result);
+                if (response != null) {
+                    responseMap.put(jobId, response);
+                } else {
+                    allRollback = false;
+                    allPaused = false;
+                }
                 if (currentState != DdlState.COMPLETED) {
                     allCompleted = false;
                 }
@@ -307,7 +315,12 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
                 LOGGER.warn(rollbackLog);
 
                 for (Long id : jobIds) {
-                    Response response = new Response(0L, "", "", "", ResponseType.ERROR, rollbackLog);
+                    Response response;
+                    if (responseMap.containsKey(id)) {
+                        response = responseMap.get(id);
+                    } else {
+                        response = new Response(0L, "", "", "", ResponseType.ERROR, rollbackLog);
+                    }
                     ddlResponse.addResponse(id, response);
                 }
             }
@@ -326,7 +339,12 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
             LOGGER.warn(pauseLog);
 
             for (Long id : jobIds) {
-                Response response = new Response(0L, "", "", "", ResponseType.ERROR, pauseLog);
+                Response response;
+                if (responseMap.containsKey(id)) {
+                    response = responseMap.get(id);
+                } else {
+                    response = new Response(0L, "", "", "", ResponseType.ERROR, pauseLog);
+                }
                 ddlResponse.addResponse(id, response);
             }
 
@@ -479,15 +497,19 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
                 protected Boolean invoke() {
 
                     DdlEngineRecord jobRecord = engineAccessor.query(o);
-                    validateDdlStateContains(DdlState.valueOf(jobRecord.state), DdlState.FINISHED);
-                    int count = engineAccessor.delete(o);
-                    backfillSampleRowsAccessor.deleteByJobId(o);
-                    engineTaskAccessor.deleteByJobId(o);
+                    int count = 0;
+                    // The cleanup work for this job may have been completed in the previous round
+                    if(jobRecord != null) {
+                        validateDdlStateContains(DdlState.valueOf(jobRecord.state), DdlState.FINISHED);
+                        count = engineAccessor.delete(o);
+                        backfillSampleRowsAccessor.deleteByJobId(o);
+                        engineTaskAccessor.deleteByJobId(o);
 
-                    if (o == jobId) {
-                        getResourceManager().releaseResource(getConnection(), o);
+                        if (o == jobId) {
+                            getResourceManager().releaseResource(getConnection(), o);
+                        }
+                        DdlEngineStats.METRIC_DDL_JOBS_FINISHED.update(count);
                     }
-                    DdlEngineStats.METRIC_DDL_JOBS_FINISHED.update(count);
 
                     return count > 0;
                 }

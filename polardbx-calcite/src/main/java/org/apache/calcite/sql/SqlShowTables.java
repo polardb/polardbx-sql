@@ -157,7 +157,8 @@ public class SqlShowTables extends SqlShow {
                 typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             if (isFull) {
                 columns.add(new RelDataTypeFieldImpl("Table_type", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-                columns.add(new RelDataTypeFieldImpl("Auto_partition", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+                columns.add(new RelDataTypeFieldImpl("Auto_partition", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+                columns.add(new RelDataTypeFieldImpl("Table_group", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             }
 
             return typeFactory.createStructType(columns);

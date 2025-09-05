@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.common.utils.time.RandomTimeGenerator;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
@@ -41,7 +42,10 @@ public class TimeBlockTest extends BaseBlockTest {
             .collect(Collectors.toList());
 
         values.forEach(timeBlockBuilder::writeString);
+
+        MemoryCountable.checkDeviation(timeBlockBuilder, .05d, true);
         Block block = timeBlockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         // serialization & deserialization
         TimeBlockEncoding encoding = new TimeBlockEncoding();
@@ -50,6 +54,7 @@ public class TimeBlockTest extends BaseBlockTest {
 
         Slice slice = sliceOutput.slice();
         Block block1 = encoding.readBlock(slice.getInput());
+        MemoryCountable.checkDeviation(block1, .05d, true);
 
         IntStream.range(0, TEST_SIZE)
             .forEach(
@@ -64,6 +69,8 @@ public class TimeBlockTest extends BaseBlockTest {
         for (int i = 0; i < TEST_SIZE; i++) {
             timeBlock.writePositionTo(i, builder);
         }
+
+        MemoryCountable.checkDeviation(builder, .05d, true);
         TimeBlock newBlock = (TimeBlock) builder.build();
         for (int i = 0; i < TEST_SIZE; i++) {
             Assert.assertEquals(timeBlock.getTime(i), newBlock.getTime(i));
@@ -73,5 +80,6 @@ public class TimeBlockTest extends BaseBlockTest {
             Assert.assertEquals(timeBlock.hashCode(i), newBlock.hashCode(i));
             Assert.assertEquals(timeBlock.hashCodeUseXxhash(i), newBlock.hashCodeUseXxhash(i));
         }
+        MemoryCountable.checkDeviation(timeBlock, .05d, true);
     }
 }

@@ -1,7 +1,7 @@
 ## DISABLE_FAST_SQL_PARSER
   ## h_r_tp
-drop table if exists h_r_tp1;
-drop table if exists h_r_tp2;
+drop table if exists h_r_tp1
+drop table if exists h_r_tp2
 create table if not exists h_r_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -13,7 +13,7 @@ partition by hash (a,b) partitions 4
 subpartition by range (to_days(c)) (
   subpartition sp1 values less than ( to_days('2020-01-01') ),
   subpartition sp2 values less than ( maxvalue )
-);
+)
 create table if not exists h_r_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -25,10 +25,16 @@ partition by hash (a,b) partitions 4
 subpartition by range (to_days(c)) (
 subpartition sp1 values less than ( to_days('2020-01-01') ),
 subpartition sp2 values less than ( maxvalue )
-);
-alter table h_r_tp1 drop subpartition sp1;
-alter table h_r_tp2 drop subpartition sp1;
-show full create table h_r_tp1;
+)
+alter table h_r_tp1 drop subpartition sp1
+insert into h_r_tp1 values (1,2,'2010-01-01','abc','def')
+insert into h_r_tp1 values (1,2,'2020-01-01','abc','def')
+insert into h_r_tp1 values (1,2,'2040-01-01','abc','def')
+alter table h_r_tp2 drop subpartition sp1
+insert into h_r_tp2 values (2,2,'2010-01-01','abc','def')
+insert into h_r_tp2 values (2,2,'2020-01-01','abc','def')
+insert into h_r_tp2 values (2,2,'2040-01-01','abc','def')
+show full create table h_r_tp1
 Table,Create Table
 h_r_tp1,CREATE TABLE `h_r_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -46,7 +52,7 @@ PARTITIONS 4
 SUBPARTITION BY RANGE(TO_DAYS(`c`))
 (SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE))
 /* tablegroup = `tg` */
-show full create table h_r_tp2;
+show full create table h_r_tp2
 Table,Create Table
 h_r_tp2,CREATE TABLE `h_r_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -64,9 +70,19 @@ PARTITIONS 4
 SUBPARTITION BY RANGE(TO_DAYS(`c`))
 (SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE))
 /* tablegroup = `tg` */
+select * from h_r_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,abc,def
+1,2,2020-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+select * from h_r_tp2 order by a,b,c,d,e
+a,b,c,d,e
+2,2,2010-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
+2,2,2040-01-01 00:00:00.0,abc,def
 ## h_rc_tp
-drop table if exists h_rc_tp1;
-drop table if exists h_rc_tp2;
+drop table if exists h_rc_tp1
+drop table if exists h_rc_tp2
 create table if not exists h_rc_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -78,7 +94,7 @@ partition by hash (a,b) partitions 4
 subpartition by range columns (c,d) (
 subpartition sp1 values less than ( '2020-01-01', 'abc' ),
 subpartition sp2 values less than ( maxvalue, maxvalue )
-);
+)
 create table if not exists h_rc_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -90,10 +106,16 @@ partition by hash (a,b) partitions 4
 subpartition by range columns (c,d) (
 subpartition sp1 values less than ( '2020-01-01', 'abc' ),
 subpartition sp2 values less than ( maxvalue, maxvalue )
-);
-alter table h_rc_tp1 drop subpartition sp1;
-alter table h_rc_tp2 drop subpartition sp2;
-show full create table h_rc_tp1;
+)
+alter table h_rc_tp1 drop subpartition sp1
+insert into h_rc_tp1 values (1,2,'2010-01-01','abc','def')
+insert into h_rc_tp1 values (1,2,'2020-01-01','abc','def')
+insert into h_rc_tp1 values (1,2,'2040-01-01','abc','def')
+alter table h_rc_tp2 drop subpartition sp2
+insert into h_rc_tp2 values (2,2,'2011-01-01','abc','def')
+insert into h_rc_tp2 values (3,2,'2012-01-01','abc','def')
+insert into h_rc_tp2 values (4,2,'2013-01-01','abc','def')
+show full create table h_rc_tp1
 Table,Create Table
 h_rc_tp1,CREATE TABLE `h_rc_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -111,7 +133,7 @@ PARTITIONS 4
 SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
 (SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
 /* tablegroup = `tg` */
-show full create table h_rc_tp2;
+show full create table h_rc_tp2
 Table,Create Table
 h_rc_tp2,CREATE TABLE `h_rc_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -129,9 +151,19 @@ PARTITIONS 4
 SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
 (SUBPARTITION sp1 VALUES LESS THAN ('2020-01-01 00:00:00','abc'))
 /* tablegroup = `tg` */
+select * from h_rc_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,abc,def
+1,2,2020-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+select * from h_rc_tp2 order by a,b,c,d,e
+a,b,c,d,e
+2,2,2011-01-01 00:00:00.0,abc,def
+3,2,2012-01-01 00:00:00.0,abc,def
+4,2,2013-01-01 00:00:00.0,abc,def
 ## h_l_tp
-drop table if exists h_l_tp1;
-drop table if exists h_l_tp2;
+drop table if exists h_l_tp1
+drop table if exists h_l_tp2
 create table if not exists h_l_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -143,7 +175,7 @@ partition by hash (a,b) partitions 4
 subpartition by list (to_days(c)) (
 subpartition sp1 values in ( to_days('2020-01-01') ),
 subpartition sp2 values in ( default )
-);
+)
 create table if not exists h_l_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -155,10 +187,16 @@ partition by hash (a,b) partitions 4
 subpartition by list (to_days(c)) (
 subpartition sp1 values in ( to_days('2020-01-01') ),
 subpartition sp2 values in ( default )
-);
-alter table h_l_tp1 drop subpartition sp1;
-alter table h_l_tp2 drop subpartition sp1;
-show full create table h_l_tp1;
+)
+alter table h_l_tp1 drop subpartition sp1
+insert into h_l_tp1 values (1,2,'2010-01-01','abc','def')
+insert into h_l_tp1 values (1,2,'2020-01-01','abc','def')
+insert into h_l_tp1 values (1,2,'2040-01-01','abc','def')
+alter table h_l_tp2 drop subpartition sp1
+insert into h_l_tp2 values (2,2,'2010-01-01','abc','def')
+insert into h_l_tp2 values (2,2,'2020-01-01','abc','def')
+insert into h_l_tp2 values (2,2,'2040-01-01','abc','def')
+show full create table h_l_tp1
 Table,Create Table
 h_l_tp1,CREATE TABLE `h_l_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -176,7 +214,7 @@ PARTITIONS 4
 SUBPARTITION BY LIST(TO_DAYS(`c`))
 (SUBPARTITION sp2 VALUES IN (DEFAULT))
 /* tablegroup = `tg` */
-show full create table h_l_tp2;
+show full create table h_l_tp2
 Table,Create Table
 h_l_tp2,CREATE TABLE `h_l_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -194,9 +232,19 @@ PARTITIONS 4
 SUBPARTITION BY LIST(TO_DAYS(`c`))
 (SUBPARTITION sp2 VALUES IN (DEFAULT))
 /* tablegroup = `tg` */
+select * from h_l_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,abc,def
+1,2,2020-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+select * from h_l_tp2 order by a,b,c,d,e
+a,b,c,d,e
+2,2,2010-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
+2,2,2040-01-01 00:00:00.0,abc,def
 ## h_lc_tp
-drop table if exists h_lc_tp1;
-drop table if exists h_lc_tp2;
+drop table if exists h_lc_tp1
+drop table if exists h_lc_tp2
 create table if not exists h_lc_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -208,7 +256,7 @@ partition by hash (a,b) partitions 4
 subpartition by list columns (c,d) (
 subpartition sp1 values in ( ('2020-01-01','abc') ),
 subpartition sp2 values in ( default )
-);
+)
 create table if not exists h_lc_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -220,10 +268,22 @@ partition by hash (a,b) partitions 4
 subpartition by list columns (c,d) (
 subpartition sp1 values in ( ('2020-01-01','abc') ),
 subpartition sp2 values in ( default )
-);
-alter table h_lc_tp1 drop subpartition sp1;
-alter table h_lc_tp2 drop subpartition sp2;
-show full create table h_lc_tp1;
+)
+insert into h_lc_tp1 values (1,2,'2010-01-01','abc','def')
+insert into h_lc_tp1 values (1,2,'2020-01-01','abc','def')
+insert into h_lc_tp1 values (1,2,'2040-01-01','abc','def')
+alter table h_lc_tp1 drop subpartition sp1
+insert into h_lc_tp1 values (2,2,'2010-01-01','abc','def')
+insert into h_lc_tp1 values (2,2,'2020-01-01','abc','def')
+insert into h_lc_tp1 values (2,2,'2040-01-01','abc','def')
+insert into h_lc_tp2 values (1,2,'2010-01-01','abc','def')
+insert into h_lc_tp2 values (1,2,'2020-01-01','abc','def')
+insert into h_lc_tp2 values (1,2,'2040-01-01','abc','def')
+alter table h_lc_tp2 drop subpartition sp2
+insert into h_lc_tp2 values (3,2,'2020-01-01','abc','def')
+insert into h_lc_tp2 values (4,2,'2020-01-01','abc','def')
+insert into h_lc_tp2 values (5,2,'2020-01-01','abc','def')
+show full create table h_lc_tp1
 Table,Create Table
 h_lc_tp1,CREATE TABLE `h_lc_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -241,7 +301,7 @@ PARTITIONS 4
 SUBPARTITION BY LIST COLUMNS(`c`,`d`)
 (SUBPARTITION sp2 VALUES IN (DEFAULT))
 /* tablegroup = `tg` */
-show full create table h_lc_tp2;
+show full create table h_lc_tp2
 Table,Create Table
 h_lc_tp2,CREATE TABLE `h_lc_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -259,9 +319,22 @@ PARTITIONS 4
 SUBPARTITION BY LIST COLUMNS(`c`,`d`)
 (SUBPARTITION sp1 VALUES IN (('2020-01-01 00:00:00','abc')))
 /* tablegroup = `tg` */
+select * from h_lc_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+2,2,2010-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
+2,2,2040-01-01 00:00:00.0,abc,def
+select * from h_lc_tp2 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2020-01-01 00:00:00.0,abc,def
+3,2,2020-01-01 00:00:00.0,abc,def
+4,2,2020-01-01 00:00:00.0,abc,def
+5,2,2020-01-01 00:00:00.0,abc,def
 ## k_r_tp
-drop table if exists k_r_tp1;
-drop table if exists k_r_tp2;
+drop table if exists k_r_tp1
+drop table if exists k_r_tp2
 create table if not exists k_r_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -273,7 +346,7 @@ partition by key (a,b) partitions 4
 subpartition by range (to_days(c)) (
 subpartition sp1 values less than ( to_days('2020-01-01') ),
 subpartition sp2 values less than ( maxvalue )
-);
+)
 create table if not exists k_r_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -285,10 +358,22 @@ partition by key (a,b) partitions 4
 subpartition by range (to_days(c)) (
 subpartition sp1 values less than ( to_days('2020-01-01') ),
 subpartition sp2 values less than ( maxvalue )
-);
-alter table k_r_tp1 drop subpartition sp1;
-alter table k_r_tp2 drop subpartition sp2;
-show full create table k_r_tp1;
+)
+insert into k_r_tp1 values (1,2,'2010-01-01','abc','def')
+insert into k_r_tp1 values (1,2,'2020-01-01','abc','def')
+insert into k_r_tp1 values (1,2,'2040-01-01','abc','def')
+alter table k_r_tp1 drop subpartition sp1
+insert into k_r_tp1 values (2,2,'2010-01-01','abc','def')
+insert into k_r_tp1 values (2,2,'2020-01-01','abc','def')
+insert into k_r_tp1 values (2,2,'2040-01-01','abc','def')
+insert into k_r_tp2 values (1,2,'2010-01-01','abc','def')
+insert into k_r_tp2 values (1,2,'2020-01-01','abc','def')
+insert into k_r_tp2 values (1,2,'2040-01-01','abc','def')
+alter table k_r_tp2 drop subpartition sp2
+insert into k_r_tp2 values (2,2,'2010-01-01','abc','def')
+insert into k_r_tp2 values (2,2,'2011-01-01','abc','def')
+insert into k_r_tp2 values (2,2,'2012-01-01','abc','def')
+show full create table k_r_tp1
 Table,Create Table
 k_r_tp1,CREATE TABLE `k_r_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -306,7 +391,7 @@ PARTITIONS 4
 SUBPARTITION BY RANGE(TO_DAYS(`c`))
 (SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE))
 /* tablegroup = `tg` */
-show full create table k_r_tp2;
+show full create table k_r_tp2
 Table,Create Table
 k_r_tp2,CREATE TABLE `k_r_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -324,9 +409,22 @@ PARTITIONS 4
 SUBPARTITION BY RANGE(TO_DAYS(`c`))
 (SUBPARTITION sp1 VALUES LESS THAN (737790))
 /* tablegroup = `tg` */
+select * from k_r_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2020-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+2,2,2010-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
+2,2,2040-01-01 00:00:00.0,abc,def
+select * from k_r_tp2 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,abc,def
+2,2,2010-01-01 00:00:00.0,abc,def
+2,2,2011-01-01 00:00:00.0,abc,def
+2,2,2012-01-01 00:00:00.0,abc,def
 ## k_rc_tp
-drop table if exists k_rc_tp1;
-drop table if exists k_rc_tp2;
+drop table if exists k_rc_tp1
+drop table if exists k_rc_tp2
 create table if not exists k_rc_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -338,7 +436,7 @@ partition by key (a,b) partitions 4
 subpartition by range columns (c,d) (
 subpartition sp1 values less than ( '2020-01-01', 'abc' ),
 subpartition sp2 values less than ( maxvalue, maxvalue )
-);
+)
 create table if not exists k_rc_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -350,10 +448,19 @@ partition by key (a,b) partitions 4
 subpartition by range columns (c,d) (
 subpartition sp1 values less than ( '2020-01-01', 'abc' ),
 subpartition sp2 values less than ( maxvalue, maxvalue )
-);
-alter table k_rc_tp1 drop subpartition sp1;
-alter table k_rc_tp2 drop subpartition sp1;
-show full create table k_rc_tp1;
+)
+insert into k_rc_tp1 values (1,2,'2010-01-01','abc','def')
+insert into k_rc_tp1 values (1,2,'2020-01-01','abc','def')
+insert into k_rc_tp1 values (1,2,'2040-01-01','abc','def')
+alter table k_rc_tp1 drop subpartition sp1
+insert into k_rc_tp1 values (2,2,'2010-01-01','abc','def')
+insert into k_rc_tp1 values (1,2,'2020-01-01','abc','def')
+insert into k_rc_tp1 values (1,2,'2040-01-01','abc','def')
+alter table k_rc_tp2 drop subpartition sp1
+insert into k_rc_tp2 values (2,2,'2020-01-01','abc','def')
+insert into k_rc_tp2 values (1,2,'2020-01-01','abc','def')
+insert into k_rc_tp2 values (1,2,'2040-01-01','abc','def')
+show full create table k_rc_tp1
 Table,Create Table
 k_rc_tp1,CREATE TABLE `k_rc_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -371,7 +478,7 @@ PARTITIONS 4
 SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
 (SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
 /* tablegroup = `tg` */
-show full create table k_rc_tp2;
+show full create table k_rc_tp2
 Table,Create Table
 k_rc_tp2,CREATE TABLE `k_rc_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -389,9 +496,21 @@ PARTITIONS 4
 SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
 (SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
 /* tablegroup = `tg` */
+select * from k_rc_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2020-01-01 00:00:00.0,abc,def
+1,2,2020-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+2,2,2010-01-01 00:00:00.0,abc,def
+select * from k_rc_tp2 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2020-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
 ## k_l_tp
-drop table if exists k_l_tp1;
-drop table if exists k_l_tp2;
+drop table if exists k_l_tp1
+drop table if exists k_l_tp2
 create table if not exists k_l_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -403,7 +522,7 @@ partition by key (a,b) partitions 4
 subpartition by list (to_days(c)) (
 subpartition sp1 values in ( to_days('2020-01-01') ),
 subpartition sp2 values in ( default )
-);
+)
 create table if not exists k_l_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -415,10 +534,20 @@ partition by key (a,b) partitions 4
 subpartition by list (to_days(c)) (
 subpartition sp1 values in ( to_days('2020-01-01') ),
 subpartition sp2 values in ( default )
-);
-alter table k_l_tp1 drop subpartition sp1;
-alter table k_l_tp2 drop subpartition sp2;
-show full create table k_l_tp1;
+)
+insert into k_l_tp1 values (1,2,'2010-01-01','abc','def')
+insert into k_l_tp1 values (1,2,'2020-01-01','abc','def')
+insert into k_l_tp1 values (1,2,'2040-01-01','abc','def')
+alter table k_l_tp1 drop subpartition sp1
+insert into k_l_tp1 values (2,2,'2010-01-01','abc','def')
+insert into k_l_tp1 values (2,2,'2020-01-01','abc','def')
+insert into k_l_tp1 values (2,2,'2040-01-01','abc','def')
+insert into k_l_tp2 values (1,2,'2010-01-01','abc','def')
+insert into k_l_tp2 values (1,2,'2020-01-01','abc','def')
+insert into k_l_tp2 values (1,2,'2040-01-01','abc','def')
+alter table k_l_tp2 drop subpartition sp2
+insert into k_l_tp2 values (2,2,'2020-01-01','abc','def')
+show full create table k_l_tp1
 Table,Create Table
 k_l_tp1,CREATE TABLE `k_l_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -436,7 +565,7 @@ PARTITIONS 4
 SUBPARTITION BY LIST(TO_DAYS(`c`))
 (SUBPARTITION sp2 VALUES IN (DEFAULT))
 /* tablegroup = `tg` */
-show full create table k_l_tp2;
+show full create table k_l_tp2
 Table,Create Table
 k_l_tp2,CREATE TABLE `k_l_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -454,9 +583,20 @@ PARTITIONS 4
 SUBPARTITION BY LIST(TO_DAYS(`c`))
 (SUBPARTITION sp1 VALUES IN (737790))
 /* tablegroup = `tg` */
+select * from k_l_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+2,2,2010-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
+2,2,2040-01-01 00:00:00.0,abc,def
+select * from k_l_tp2 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2020-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
 ## k_lc_tp
-drop table if exists k_lc_tp1;
-drop table if exists k_lc_tp2;
+drop table if exists k_lc_tp1
+drop table if exists k_lc_tp2
 create table if not exists k_lc_tp1 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -468,7 +608,7 @@ partition by key (a,b) partitions 4
 subpartition by list columns (c,d) (
 subpartition sp1 values in ( ('2020-01-01','abc') ),
 subpartition sp2 values in ( default )
-);
+)
 create table if not exists k_lc_tp2 (
 a bigint unsigned not null,
 b bigint unsigned not null,
@@ -480,10 +620,20 @@ partition by key (a,b) partitions 4
 subpartition by list columns (c,d) (
 subpartition sp1 values in ( ('2020-01-01','abc') ),
 subpartition sp2 values in ( default )
-);
-alter table k_lc_tp1 drop subpartition sp1;
-alter table k_lc_tp2 drop subpartition sp2;
-show full create table k_lc_tp1;
+)
+insert into k_lc_tp1 values (1,2,'2010-01-01','abc','def')
+insert into k_lc_tp1 values (1,2,'2020-01-01','abc','def')
+insert into k_lc_tp1 values (1,2,'2040-01-01','abc','def')
+alter table k_lc_tp1 drop subpartition sp1
+insert into k_lc_tp1 values (2,2,'2010-01-01','abc','def')
+insert into k_lc_tp1 values (2,2,'2020-01-01','abc','def')
+insert into k_lc_tp1 values (2,2,'2040-01-01','abc','def')
+insert into k_lc_tp2 values (1,2,'2010-01-01','abc','def')
+insert into k_lc_tp2 values (1,2,'2020-01-01','abc','def')
+insert into k_lc_tp2 values (1,2,'2040-01-01','abc','def')
+alter table k_lc_tp2 drop subpartition sp2
+insert into k_lc_tp2 values (2,2,'2020-01-01','abc','def')
+show full create table k_lc_tp1
 Table,Create Table
 k_lc_tp1,CREATE TABLE `k_lc_tp1` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -501,7 +651,7 @@ PARTITIONS 4
 SUBPARTITION BY LIST COLUMNS(`c`,`d`)
 (SUBPARTITION sp2 VALUES IN (DEFAULT))
 /* tablegroup = `tg` */
-show full create table k_lc_tp2;
+show full create table k_lc_tp2
 Table,Create Table
 k_lc_tp2,CREATE TABLE `k_lc_tp2` (
 	`a` bigint(20) UNSIGNED NOT NULL,
@@ -519,3 +669,14 @@ PARTITIONS 4
 SUBPARTITION BY LIST COLUMNS(`c`,`d`)
 (SUBPARTITION sp1 VALUES IN (('2020-01-01 00:00:00','abc')))
 /* tablegroup = `tg` */
+select * from k_lc_tp1 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2010-01-01 00:00:00.0,abc,def
+1,2,2040-01-01 00:00:00.0,abc,def
+2,2,2010-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def
+2,2,2040-01-01 00:00:00.0,abc,def
+select * from k_lc_tp2 order by a,b,c,d,e
+a,b,c,d,e
+1,2,2020-01-01 00:00:00.0,abc,def
+2,2,2020-01-01 00:00:00.0,abc,def

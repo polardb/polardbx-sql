@@ -80,6 +80,10 @@ public class TaskScheduler extends AbstractLifecycle {
     public static Map<String, Integer> runningRemoteTaskNums = new ConcurrentHashMap<>();
     private static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
 
+    public static DdlEngineResources getResourcesToAllocate() {
+        return resourceToAllocate;
+    }
+
     private TaskScheduler(DirectedAcyclicGraph daGraph) {
         this.count = daGraph.vertexCount();
         this.daGraph = daGraph;
@@ -183,7 +187,7 @@ public class TaskScheduler extends AbstractLifecycle {
                 if (ddlTask instanceof RemoteExecutableDdlTask) {
                     String serverKey = normalizeServerKey(resourcesAcquired.getServerKey());
                     runningRemoteTaskNums.put(serverKey,
-                        runningRemoteTaskNums.getOrDefault(runningRemoteTaskNums.get(serverKey), 1) - 1);
+                        runningRemoteTaskNums.getOrDefault(serverKey, 1) - 1);
                 }
             }
         }
@@ -205,7 +209,7 @@ public class TaskScheduler extends AbstractLifecycle {
                             ((RemoteExecutableDdlTask) vertex.object).detectServerFromCandidate(runningRemoteTaskNums);
                         resourcesAcquired.setServerKey(serverKey);
                     }
-                    if (resourceToAllocate.cover(resourcesAcquired)) {
+                    if (getResourcesToAllocate().cover(resourcesAcquired, true)) {
 //                        logInfo =
 //                            String.format("ddl engine resource covered {%s}       {%s} for task", resourcesAcquired,
 //                                resourceToAllocate);
@@ -222,12 +226,12 @@ public class TaskScheduler extends AbstractLifecycle {
                         return vertex.object;
                     }
                     Long taskId = vertex.object.getTaskId();
-                    if (!DdlEngineResources.markNotCoverredBefore(taskId)) {
+//                    if (!DdlEngineResources.markNotCoverredBefore(taskId)) {
 //                        logInfo = String.format("ddl engine resource covered not for task {%s}: {%s}",
 //                            vertex.object.executionInfo(),
 //                            DdlEngineResources.digestCoverInfo(resourcesAcquired, resourceToAllocate));
 //                        LOGGER.info(logInfo);
-                    }
+//                    }
                 }
             }
             // we need to upgrade task order everytime we update executing task, not always in this order.
@@ -339,6 +343,5 @@ public class TaskScheduler extends AbstractLifecycle {
             }
         }
     }
-
 
 }

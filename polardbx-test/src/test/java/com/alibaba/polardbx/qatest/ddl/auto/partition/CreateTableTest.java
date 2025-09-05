@@ -652,4 +652,50 @@ public class CreateTableTest extends PartitionTestBase {
         return sql == null ? EMPTY :
             sql.replace("\r", EMPTY).replace("\n", EMPTY).replace("\t", EMPTY).replace(" ", EMPTY);
     }
+
+    @Test
+    public void testTruncateDropPartitionLimitation() {
+        String tableName = "rangWithGsi";
+        String tableName1 = "rangWithGsi1";
+
+        // with gsi
+        String sql = String.format(
+            "create table %s (a int, b int, global index g1(b) partition by hash(b)) "
+                + "partition by range(a)(partition p1 values less than(10), partition p2 values less than(20))",
+            tableName);
+
+        // without gsi
+        String sql1 = String.format(
+            "create table %s (a int, b int) "
+                + "partition by range(a)(partition p1 values less than(10), partition p2 values less than(20))",
+            tableName1);
+
+        // create in same tg
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
+        Long tgId = getTableGroupId(tableName);
+        String tgName = "tg" + tgId.toString();
+
+        sql = String.format("alter table %s truncate partition p1", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql,
+            "Does not support truncate table with global secondary index");
+
+        sql = String.format("alter table %s truncate partition p1", tableName1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s drop partition p1", tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql,
+            "it's not support to drop partition/subpartition when table[%s] with GSI", tableName);
+
+        sql = String.format("alter table %s drop partition p1", tableName1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter tablegroup %s truncate partition p1", tgName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql,
+            String.format("it's not support to truncate partition/subpartition when table[%s] with GSI", tableName));
+
+        sql = String.format("alter tablegroup %s drop partition p1", tgName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql,
+            String.format("it's not support to drop partition/subpartition when table[%s] with GSI", tableName));
+    }
 }

@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.PhyDdlExecutionRecord;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
 
 import java.sql.Connection;
 import java.util.HashMap;
@@ -182,7 +183,9 @@ public class DdlJobManagerUtils {
         DdlEngineTaskRecord record =
             SCHEDULER_MANAGER.fetchTaskRecord(jobId, TwoPhaseDdlUtils.TWO_PHASE_DDL_INIT_TASK_NAME).get(0);
         if (record != null && TStringUtil.isNotEmpty(record.value)) {
-            InitTwoPhaseDdlTask initTwoPhaseDdlTask = JSONObject.parseObject(record.value, InitTwoPhaseDdlTask.class);
+            InitTwoPhaseDdlTask initTwoPhaseDdlTask =
+                (InitTwoPhaseDdlTask) TaskHelper.deSerializeTask(TwoPhaseDdlUtils.TWO_PHASE_DDL_INIT_TASK_NAME,
+                    record.value);
             return initTwoPhaseDdlTask.getPhysicalTableHashCodeMap();
         } else {
             return new HashMap<>();

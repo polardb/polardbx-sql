@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.google.common.base.Preconditions;
-import it.unimi.dsi.fastutil.chars.CharArrayList;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -34,20 +34,28 @@ import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
  * @author xiaoying
  */
 public class EnumBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(EnumBlockBuilder.class).instanceSize();
 
     private final int initialStringLength;
-    final IntArrayList offsets; // records where the bytes end at
-    final CharArrayList data;
+    final MemoryCountableIntArrayList offsets; // records where the bytes end at
+    final MemoryCountableCharArrayList data;
+
+    @FieldMemoryCounter(value = false)
     final Map<String, Integer> enumValues;
     private final EnumType enumType;
 
     public EnumBlockBuilder(int capacity, int expectedStringLength, Map<String, Integer> enumValues) {
         super(capacity);
-        this.offsets = new IntArrayList(capacity);
-        this.data = new CharArrayList(capacity * expectedStringLength);
+        this.offsets = new MemoryCountableIntArrayList(capacity);
+        this.data = new MemoryCountableCharArrayList(capacity * expectedStringLength);
         this.initialStringLength = expectedStringLength;
         this.enumValues = enumValues;
         this.enumType = new EnumType(enumValues);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + offsets.getMemoryUsage() + data.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

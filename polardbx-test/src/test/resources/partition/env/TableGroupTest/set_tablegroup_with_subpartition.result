@@ -1,0 +1,88 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup t_a_t_s_tg1
+drop table if exists lc_k_tp1
+drop table if exists lc_k_tp2
+create table if not exists lc_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in ((7,7),(8,8))
+)
+create table if not exists lc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+cc datetime NOT NULL,
+dd varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (cc,dd) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+)
+insert into lc_k_tp2 values (5,5,'2024-05-10',1,2)
+insert into lc_k_tp2 values (7,7,'2024-05-10',1,2)
+alter table lc_k_tp1 set tablegroup = t_a_t_s_tg1
+show create table lc_k_tp1
+Table,Create Table
+lc_k_tp1,CREATE TABLE `lc_k_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`c`,`d`)
+SUBPARTITIONS 2
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN ((7,7),(8,8)))
+tablegroup = `t_a_t_s_tg1`
+show create table lc_k_tp2
+Table,Create Table
+lc_k_tp2,CREATE TABLE `lc_k_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`cc` datetime NOT NULL,
+	`dd` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_cc_dd` USING BTREE (`cc`, `dd`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`cc`,`dd`)
+SUBPARTITIONS 2
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN (DEFAULT))
+alter table lc_k_tp2 set tablegroup = t_a_t_s_tg1 force
+show create table lc_k_tp2
+Table,Create Table
+lc_k_tp2,CREATE TABLE `lc_k_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`cc` datetime NOT NULL,
+	`dd` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_cc_dd` USING BTREE (`cc`, `dd`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`cc`,`dd`)
+SUBPARTITIONS 2
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN ((7,7),(8,8)))
+tablegroup = `t_a_t_s_tg1`
+select * from lc_k_tp2 order by a
+a,b,cc,dd,e
+5,5,2024-05-10 00:00:00.0,1,2
+7,7,2024-05-10 00:00:00.0,1,2

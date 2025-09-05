@@ -20,6 +20,8 @@ import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
+import java.nio.ByteBuffer;
+
 public class Integer24ColumnProvider extends IntegerColumnProvider {
 
     private static final int INT_24_SIGNED_BIT = 0x00800000;
@@ -30,8 +32,8 @@ public class Integer24ColumnProvider extends IntegerColumnProvider {
         if (row.isNullAt(columnId)) {
             blockBuilder.appendNull();
         } else {
-            byte[] bytes = row.getBytes(columnId);
-            int intVal = ColumnProvider.intFromByte(bytes, bytes.length);
+            ByteBuffer bytes = row.getBytes(columnId);
+            int intVal = ColumnProvider.intFromByte(bytes);
             if ((intVal & INT_24_SIGNED_BIT) > 0) {
                 // For signed negative int_24, fill leading ones
                 intVal |= INT_24_SIGNED_PAD;

@@ -20,6 +20,7 @@ package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.junit.Assert;
 import org.junit.Test;
@@ -59,12 +60,12 @@ public class GlobalIndexMetaTest {
         GsiMetaManager.GsiIndexMetaBean indexMetaBean1 =
             new GsiMetaManager.GsiIndexMetaBean(null, schemaName, tableName, true, schemaName, indexName1,
                 Collections.emptyList(), null, null, null, null, null, null,
-                IndexStatus.PUBLIC, 1, true, true, IndexVisibility.VISIBLE);
+                IndexStatus.PUBLIC, 1, true, true, IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
         // gsi
         GsiMetaManager.GsiIndexMetaBean indexMetaBean2 =
             new GsiMetaManager.GsiIndexMetaBean(null, schemaName, tableName, true, schemaName, indexName2,
                 Collections.emptyList(), null, null, null, null, null, null,
-                IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE);
+                IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
 
         // gsi & cci
         indexMap1.put(indexName1, indexMetaBean1);

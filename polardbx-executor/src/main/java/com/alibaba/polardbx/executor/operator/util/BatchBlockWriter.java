@@ -20,8 +20,11 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
@@ -44,6 +47,8 @@ import com.google.common.base.Preconditions;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
+import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.sql.Date;
 import java.sql.Types;
@@ -134,7 +139,10 @@ public interface BatchBlockWriter {
     void copyBlock(Block sourceBlock, int positionCount);
 
     class BatchIntegerBlockBuilder extends AbstractBatchBlockBuilder implements BatchBlockWriter {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BatchIntegerBlockBuilder.class).instanceSize();
         private int[] values;
+
+        @FieldMemoryCounter(value = false)
         private DriverObjectPool<int[]> objectPool;
         private int chunkLimit;
 
@@ -152,6 +160,13 @@ public interface BatchBlockWriter {
         public BatchIntegerBlockBuilder(int capacity) {
             super(capacity);
             this.values = new int[capacity];
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE
+                + VMSupport.align((int) SizeOf.sizeOf(values))
+                + VMSupport.align((int) SizeOf.sizeOf(valueIsNull));
         }
 
         @Override
@@ -299,7 +314,11 @@ public interface BatchBlockWriter {
     }
 
     class BatchLongBlockBuilder extends AbstractBatchBlockBuilder implements BatchBlockWriter {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BatchLongBlockBuilder.class).instanceSize();
+
         private long[] values;
+
+        @FieldMemoryCounter(value = false)
         private DriverObjectPool<long[]> objectPool;
         private int chunkLimit;
 
@@ -318,6 +337,13 @@ public interface BatchBlockWriter {
                 result = new long[capacity];
             }
             this.values = result;
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE
+                + VMSupport.align((int) SizeOf.sizeOf(values))
+                + VMSupport.align((int) SizeOf.sizeOf(valueIsNull));
         }
 
         @Override
@@ -465,8 +491,13 @@ public interface BatchBlockWriter {
     }
 
     class BatchDateBlockBuilder extends AbstractBatchBlockBuilder implements BatchBlockWriter {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BatchDateBlockBuilder.class).instanceSize();
+
         long[] packed;
+
+        @FieldMemoryCounter(value = false)
         DriverObjectPool<long[]> objectPool;
+
         int chunkLimit;
 
         public BatchDateBlockBuilder(int initialCapacity) {
@@ -483,6 +514,13 @@ public interface BatchBlockWriter {
                 result = new long[capacity];
             }
             this.packed = result;
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE
+                + VMSupport.align((int) SizeOf.sizeOf(packed))
+                + VMSupport.align((int) SizeOf.sizeOf(valueIsNull));
         }
 
         @Override
@@ -702,10 +740,14 @@ public interface BatchBlockWriter {
     class BatchDecimalBlockBuilder extends AbstractBatchBlockBuilder
         implements BatchBlockWriter, SegmentedDecimalBlock {
 
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BatchDecimalBlockBuilder.class).instanceSize();
+
         private final int scale;
         SliceOutput sliceOutput;
         long[] decimal64List;
         long[] decimal128HighList;
+
+        @FieldMemoryCounter(value = false)
         DecimalType decimalType;
         // collect state of decimal values.
         SegmentedDecimalBlock.DecimalBlockState state;
@@ -717,6 +759,18 @@ public interface BatchBlockWriter {
             this.decimalType = (DecimalType) type;
             this.scale = decimalType.getScale();
             this.state = UNSET_STATE;
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE
+                + VMSupport.align((int) SizeOf.sizeOf(valueIsNull))
+                + FastMemoryCounter.sizeOf(sliceOutput)
+                + VMSupport.align((int) SizeOf.sizeOf(decimal64List))
+                + VMSupport.align((int) SizeOf.sizeOf(decimal128HighList))
+                + (state == null ? 0 : state.memorySize())
+                + FastMemoryCounter.sizeOf(decimalBuffer)
+                + FastMemoryCounter.sizeOf(decimalResult);
         }
 
         @Override

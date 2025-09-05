@@ -301,7 +301,7 @@ public class SourcePartitionedScheduler implements StageScheduler {
 
     @Override
     public int requireChildOutputNum() {
-        return stage.getFragment().isRemotePairWise() ? requireChildOutput : getTaskNum();
+        return getTaskNum();
     }
 
     @Override

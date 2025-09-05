@@ -76,8 +76,10 @@ import org.apache.commons.lang.math.RandomUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -316,7 +318,7 @@ public class Extractor extends PhyOperationBuilderCommon {
                         }
 
                         return new ParameterContext(defaultMethod, new Object[] {i, defaultValue});
-                    });
+                    }, notConvertColumns);
                 } finally {
                     cursor.close(new ArrayList<>());
                 }
@@ -336,6 +338,25 @@ public class Extractor extends PhyOperationBuilderCommon {
         List<List<Object>> result = StatsUtils.queryGroupByPhyDb(schemaName, dbIndexWithoutGroup, rowsCountSQL);
         if (GeneralUtil.isEmpty(result) || GeneralUtil.isEmpty(result.get(0))) {
             throw new TddlRuntimeException(ErrorCode.ERR_BACKFILL_GET_TABLE_ROWS,
+                String.format("db %s can not find table %s", phyDbName, phyTable));
+        }
+
+        return Long.parseLong(String.valueOf(result.get(0).get(0)));
+    }
+
+    protected long getTableAvgRowLength(final String dbIndex, final String phyTable) {
+        String dbIndexWithoutGroup = GroupInfoUtil.buildPhysicalDbNameFromGroupName(dbIndex);
+        List<List<Object>> phyDb = StatsUtils.queryGroupByPhyDb(schemaName, dbIndexWithoutGroup, "select database();");
+        if (GeneralUtil.isEmpty(phyDb) || GeneralUtil.isEmpty(phyDb.get(0))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_BACKFILL_GET_TABLE_AVG_ROW_LENGTH,
+                String.format("group %s can not find physical db", dbIndex));
+        }
+
+        String phyDbName = String.valueOf(phyDb.get(0).get(0));
+        String avgRowLengthSQL = StatsUtils.genAvgTableRowLengthSQL(phyDbName, phyTable);
+        List<List<Object>> result = StatsUtils.queryGroupByPhyDb(schemaName, dbIndexWithoutGroup, avgRowLengthSQL);
+        if (GeneralUtil.isEmpty(result) || GeneralUtil.isEmpty(result.get(0))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_BACKFILL_GET_TABLE_AVG_ROW_LENGTH,
                 String.format("db %s can not find table %s", phyDbName, phyTable));
         }
 
@@ -578,11 +599,12 @@ public class Extractor extends PhyOperationBuilderCommon {
                 return null;
             }
 
-            List<Map<Integer, ParameterContext>> subBound = backfillSubBoundList.get(phyTable);
+            String grpTableName = dbIndex + "_" + phyTable;
+            List<Map<Integer, ParameterContext>> subBound = backfillSubBoundList.get(grpTableName);
             // adjust subUpperBound
             upperBoundList = calculateSubUpperBound(subBound, lowerBoundParam);
             // clean
-            backfillSubBoundList.remove(phyTable);
+            backfillSubBoundList.remove(grpTableName);
 
             if (upperBoundList == null || upperBoundList.isEmpty() || upperBoundList.size() == 1) {
                 return null;
@@ -622,9 +644,10 @@ public class Extractor extends PhyOperationBuilderCommon {
             final AtomicInteger srcIndex = new AtomicInteger(0);
             final String suffix = "_%" + String.format("%02x", i++);
             final String name = physicalTableName + suffix;
+            final String grpTableName = dbIndex + "_" + name;
 
             if (subUpperBoundList != null && !subUpperBoundList.isEmpty() && subUpperBoundList.size() > i - 1) {
-                this.backfillSubBoundList.put(name, subUpperBoundList.get(i - 1));
+                this.backfillSubBoundList.put(grpTableName, subUpperBoundList.get(i - 1));
             }
 
             Map<Integer, ParameterContext> finalLastItem = lastItem;
@@ -764,6 +787,8 @@ public class Extractor extends PhyOperationBuilderCommon {
 
         // set KILL_CLOSE_STREAM = true
         ec.getExtraCmds().put(ConnectionParams.KILL_CLOSE_STREAM.toString(), true);
+        // set RC
+        ec.setTxIsolation(Connection.TRANSACTION_READ_COMMITTED);
 
         // interrupted
         AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
@@ -771,10 +796,11 @@ public class Extractor extends PhyOperationBuilderCommon {
         List<Future> futures = new ArrayList<>(16);
 
         // Re-balance by physicalDb.
-        List<List<GsiBackfillManager.BackfillObjectBean>> tasks = new ArrayList<>();
-        if (reporter.getBackfillBean().status.is(UNFINISHED)) {
-            tasks.addAll(reporter.getBackfillBean().backfillObjects.values());
-        }
+        List<List<GsiBackfillManager.BackfillObjectBean>> tasks = reporter.getBackfillBean().backfillObjects.values()
+            .stream()
+            .filter(v -> v.get(0).status.is(UNFINISHED))
+            .collect(Collectors.toList());
+        Collections.shuffle(tasks);
 
         if (!tasks.isEmpty()) {
             SQLRecorderLogger.ddlLogger.warn(

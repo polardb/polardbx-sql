@@ -6,6 +6,9 @@ import org.apache.hadoop.fs.Path;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class BlockCacheKeyCollisionTest {
     @Test
     public void test() {
@@ -17,12 +20,13 @@ public class BlockCacheKeyCollisionTest {
 
         Path path = new Path("file:///tmp/test_53452958392593.orc");
 
-        LongOpenHashSet resultSet = new LongOpenHashSet();
+        Set<SimpleBlockCacheManager.BlockCacheKey> resultSet = new HashSet<>();
 
         for (int rowGroupId : rowGroupIds) {
             for (int stripeId = 0; stripeId < 16; stripeId++) {
                 for (int columnId = 0; columnId < 4096; columnId++) {
-                    long cacheKey = SimpleBlockCacheManager.buildBlockCacheKey(path, stripeId, columnId, rowGroupId);
+                    SimpleBlockCacheManager.BlockCacheKey
+                        cacheKey = SimpleBlockCacheManager.buildBlockCacheKey(path, stripeId, columnId, rowGroupId);
 
                     Assert.assertFalse(resultSet.contains(cacheKey));
                     resultSet.add(cacheKey);

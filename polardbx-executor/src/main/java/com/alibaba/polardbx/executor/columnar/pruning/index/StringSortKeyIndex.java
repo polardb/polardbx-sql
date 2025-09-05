@@ -14,6 +14,7 @@ public class StringSortKeyIndex extends SortKeyIndex {
      * index data
      */
     private byte[][] data;
+    private long sizeInBytes;
 
     private StringSortKeyIndex(long rgNum, int colId, DataType dt) {
         super(rgNum, colId, dt);
@@ -23,11 +24,13 @@ public class StringSortKeyIndex extends SortKeyIndex {
     public static StringSortKeyIndex build(int colId, String[] data, DataType dt) {
         Preconditions.checkArgument(data != null && data.length > 0 && data.length % 2 == 0, "bad sort key index");
         StringSortKeyIndex stringSortKeyIndex = new StringSortKeyIndex(data.length / 2, colId, dt);
-
+        long size = 0;
         stringSortKeyIndex.data = new byte[data.length][];
         for (int i = 0; i < data.length; i++) {
             stringSortKeyIndex.data[i] = data[i].getBytes();
+            size += stringSortKeyIndex.data[i].length;
         }
+        stringSortKeyIndex.sizeInBytes = size;
         return stringSortKeyIndex;
     }
 
@@ -216,4 +219,8 @@ public class StringSortKeyIndex extends SortKeyIndex {
         return WritableComparator.compareBytes(a, 0, a.length, b, 0, b.length);
     }
 
+    @Override
+    public long getSizeInBytes() {
+        return sizeInBytes;
+    }
 }

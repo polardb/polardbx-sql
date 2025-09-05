@@ -17,11 +17,13 @@
 package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import java.io.Serializable;
 
@@ -256,5 +258,21 @@ public class ColumnMeta implements Serializable {
 
     public String getMappingName() {
         return mappingName;
+    }
+
+    public boolean isAutoUpdateColumn() {
+        return field.getExtra() != null && (TStringUtil.containsIgnoreCase(field.getExtra(), "on update"));
+    }
+
+    public boolean isTimestampColumn() {
+        return DataTypeUtil.equalsSemantically(getDataType(), DataTypes.TimestampType);
+    }
+
+    public boolean withImplicitDefault(boolean withIgnoreKeyword) {
+        return (isTimestampColumn() || withIgnoreKeyword) && !isNullable();
+    }
+
+    public boolean withDynamicImplicitDefault() {
+        return isTimestampColumn() && !isNullable();
     }
 }

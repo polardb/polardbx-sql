@@ -133,6 +133,18 @@ public class ExecutableDdlJob extends AbstractDdlJob {
         return this;
     }
 
+    public DdlJob appendJobAfterHead(@NotNull DdlTask predecessor, ExecutableDdlJob job) {
+        if (job == null || job.isEmpty()) {
+            return this;
+        }
+
+        taskGraph.appendGraphAfter(taskGraph.findVertex(predecessor), job.taskGraph);
+
+        // combine resources
+        this.excludeResources.addAll(job.getExcludeResources());
+        return this;
+    }
+
     public DdlJob appendTask(DdlTask task) {
         synchronized (this.taskGraph) {
             Set<DirectedAcyclicGraph.Vertex> outSet = this.taskGraph.getAllZeroOutDegreeVertexes();

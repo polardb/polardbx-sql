@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.LongType;
 import org.junit.Assert;
 import org.junit.Test;
@@ -28,7 +29,8 @@ public class LongBlockTest extends BaseBlockTest {
     @Test
     public void testSizeInBytes() {
         LongBlock block = new LongBlock(new LongType(), 1024);
-        Assert.assertEquals(9216, block.getElementUsedBytes());
+        MemoryCountable.checkDeviation(block, .05d, true);
+        Assert.assertEquals(9312, block.getElementUsedBytes());
     }
 
     @Test
@@ -56,7 +58,9 @@ public class LongBlockTest extends BaseBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         Block block = blockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertEquals(values.length, block.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -82,6 +86,8 @@ public class LongBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+        MemoryCountable.checkDeviation(anotherBuilder, .05d, true);
+        MemoryCountable.checkDeviation(anotherBuilder.build(), .05d, true);
     }
 
     @Test
@@ -101,6 +107,7 @@ public class LongBlockTest extends BaseBlockTest {
         expectUnsupportedException(() -> longBlock.getByteArray(0));
         expectUnsupportedException(() -> longBlock.getBlob(0));
         expectUnsupportedException(() -> longBlock.getClob(0));
+        MemoryCountable.checkDeviation(longBlock, .05d, true);
     }
 
     @Test
@@ -120,13 +127,15 @@ public class LongBlockTest extends BaseBlockTest {
         expectUnsupportedException(() -> longBlockBuilder.writeByteArray(null));
         expectUnsupportedException(() -> longBlockBuilder.writeBlob(null));
         expectUnsupportedException(() -> longBlockBuilder.writeClob(null));
+        MemoryCountable.checkDeviation(longBlockBuilder.build(), .05d, true);
     }
 
     @Test
     public void illegalCastTest() {
         LongBlock longBlock = new LongBlock(new LongType(), 1024);
         try {
-            longBlock.cast(ShortBlock.class);
+            Block res = longBlock.cast(ShortBlock.class);
+            MemoryCountable.checkDeviation(res, .05d, true);
         } catch (Exception e) {
             Assert.assertTrue(e.getMessage().contains("failed to cast"));
         }

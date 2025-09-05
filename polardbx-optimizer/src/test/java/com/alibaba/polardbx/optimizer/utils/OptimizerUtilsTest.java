@@ -157,7 +157,7 @@ public class OptimizerUtilsTest {
                 .thenCallRealMethod();
 
             // mock sharding
-            when(pushDownOpt.getShardRelatedInTypeParamIndexes()).thenReturn(ImmutableSet.of(1));
+            when(pushDownOpt.getShardRelatedInTypeParamIndexes(executionContext)).thenReturn(ImmutableSet.of(1));
             Mockito.doAnswer(invocationOnMock -> buildRandomSharding()).when(testLogicalView)
                 .buildTargetTables(Mockito.any());
             rs = OptimizerUtils.pruningInValue(testLogicalView, executionContext);

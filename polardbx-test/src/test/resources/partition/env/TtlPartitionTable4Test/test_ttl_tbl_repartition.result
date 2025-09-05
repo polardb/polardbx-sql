@@ -1,0 +1,114 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION=true;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-04 11:00:00';
+create table ttl_repart_t1(
+a int not null auto_increment,
+b datetime not null,
+c varchar(32),
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than ('2024-01-01'),
+partition p2 values less than ('2024-02-01')
+);
+alter table ttl_repart_t1 modify ttl
+set
+ttl_expr=`b` expire after 3 day timezone '+08:00',
+ttl_part_interval=interval(1,day),
+archive_type='partition',
+ttl_cleanup='on',
+archive_table_post_allocate=2,
+archive_table_pre_allocate=4;
+## error_msg: $# not allowed #$
+alter table ttl_repart_t1 single;
+not allowed
+## error_msg: $# not allowed #$
+alter table ttl_repart_t1 broadcast;
+not allowed
+show create table ttl_repart_t1;
+Table,Create Table
+ttl_repart_t1,CREATE TABLE `ttl_repart_t1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime NOT NULL,
+	`c` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 3 day TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'PARTITION', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY RANGE COLUMNS(`b`)
+(PARTITION p1 VALUES LESS THAN ('2024-01-01 00:00:00') ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN ('2024-02-01 00:00:00') ENGINE = InnoDB)
+alter table ttl_repart_t1 partition by key(a) partitions 3;
+show create table ttl_repart_t1;
+Table,Create Table
+ttl_repart_t1,CREATE TABLE `ttl_repart_t1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime NOT NULL,
+	`c` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 3 day TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'OFF', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'ROW', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 4 )
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+create table ttl_repart_t2(
+a int not null auto_increment,
+b datetime not null,
+c varchar(32),
+primary key(a)
+)
+partition by key(a)
+partitions 2
+subpartition by range columns(b)
+(
+subpartition p1 values less than ('2024-01-01'),
+subpartition p2 values less than ('2024-02-01')
+);
+alter table ttl_repart_t2
+modify ttl set
+ttl_expr=`b` expire after 3 day timezone '+08:00',
+ttl_part_interval=interval(1,day),
+archive_type='subpartition',
+ttl_cleanup='on',
+archive_table_post_allocate=2,
+archive_table_pre_allocate=4;
+show create table ttl_repart_t2;
+Table,Create Table
+ttl_repart_t2,CREATE TABLE `ttl_repart_t2` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime NOT NULL,
+	`c` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 3 day TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'SUBPARTITION', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+SUBPARTITION BY RANGE COLUMNS(`b`)
+(SUBPARTITION p1 VALUES LESS THAN ('2024-01-01 00:00:00'),
+ SUBPARTITION p2 VALUES LESS THAN ('2024-02-01 00:00:00'))
+alter table ttl_repart_t2
+partition by key(a)
+partitions 3
+subpartition by range columns(b)
+(
+subpartition sp1 values less than ('2024-01-01'),
+subpartition sp2 values less than ('2024-02-01')
+);
+show create table ttl_repart_t2;
+Table,Create Table
+ttl_repart_t2,CREATE TABLE `ttl_repart_t2` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime NOT NULL,
+	`c` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION ( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 3 day TIMEZONE '+08:00', TTL_JOB = CRON '0 0 2 * * ? *', TTL_CLEANUP = 'ON', TTL_PART_INTERVAL = INTERVAL(1, DAY), ARCHIVE_TYPE = 'SUBPARTITION', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SUBPARTITION BY RANGE COLUMNS(`b`)
+(SUBPARTITION sp1 VALUES LESS THAN ('2024-01-01 00:00:00'),
+ SUBPARTITION sp2 VALUES LESS THAN ('2024-02-01 00:00:00'))
+drop table ttl_repart_t1;
+drop table ttl_repart_t2;

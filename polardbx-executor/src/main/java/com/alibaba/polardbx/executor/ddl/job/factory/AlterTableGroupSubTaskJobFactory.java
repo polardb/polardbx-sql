@@ -58,11 +58,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 
@@ -73,7 +69,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
     protected final AlterTableGroupItemPreparedData preparedData;
     private final AlterTableGroupBasePreparedData parentPrepareData;
     protected final List<PhyDdlTableOperation> phyDdlTableOperations;
-    protected final Map<String, List<List<String>>> tableTopology;
+    protected final TreeMap<String, List<List<String>>> tableTopology;
     protected final Map<String, Set<String>> targetTableTopology;
     protected final Map<String, Set<String>> sourceTableTopology;
     protected final Map<String, Pair<String, String>> orderedTargetTableLocations;
@@ -81,13 +77,14 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
     protected final ComplexTaskMetaManager.ComplexTaskType taskType;
     protected final ExecutionContext executionContext;
     protected final String targetPartition;
+    final Map<String, org.apache.calcite.util.Pair<String, String>> ptbGroupMap;
     protected DdlTask cdcTableGroupDdlMarkTask;
 
     public AlterTableGroupSubTaskJobFactory(DDL ddl,
                                             AlterTableGroupBasePreparedData parentPrepareData,
                                             AlterTableGroupItemPreparedData preparedData,
                                             List<PhyDdlTableOperation> phyDdlTableOperations,
-                                            Map<String, List<List<String>>> tableTopology,
+                                            TreeMap<String, List<List<String>>> tableTopology,
                                             Map<String, Set<String>> targetTableTopology,
                                             Map<String, Set<String>> sourceTableTopology,
                                             Map<String, Pair<String, String>> orderedTargetTableLocations,
@@ -107,6 +104,35 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         this.executionContext = executionContext;
         this.targetPartition = targetPartition;
         this.taskType = taskType;
+        this.ptbGroupMap = null;
+    }
+
+    public AlterTableGroupSubTaskJobFactory(DDL ddl,
+                                            AlterTableGroupBasePreparedData parentPrepareData,
+                                            AlterTableGroupItemPreparedData preparedData,
+                                            List<PhyDdlTableOperation> phyDdlTableOperations,
+                                            Map<String, org.apache.calcite.util.Pair<String, String>> ptbGroupMap,
+                                            TreeMap<String, List<List<String>>> tableTopology,
+                                            Map<String, Set<String>> targetTableTopology,
+                                            Map<String, Set<String>> sourceTableTopology,
+                                            Map<String, Pair<String, String>> orderedTargetTableLocations,
+                                            String targetPartition,
+                                            boolean skipBackfill,
+                                            ComplexTaskMetaManager.ComplexTaskType taskType,
+                                            ExecutionContext executionContext) {
+        this.preparedData = preparedData;
+        this.parentPrepareData = parentPrepareData;
+        this.phyDdlTableOperations = phyDdlTableOperations;
+        this.ddl = ddl;
+        this.tableTopology = tableTopology;
+        this.targetTableTopology = targetTableTopology;
+        this.sourceTableTopology = sourceTableTopology;
+        this.orderedTargetTableLocations = orderedTargetTableLocations;
+        this.skipBackfill = skipBackfill;
+        this.executionContext = executionContext;
+        this.targetPartition = targetPartition;
+        this.taskType = taskType;
+        this.ptbGroupMap = ptbGroupMap;
     }
 
     @Override
@@ -183,7 +209,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         DdlTask mayBeTailTask = taskList.get(taskList.size() - 1);
         boolean skipBackFill = skipBackfill || tableTopology.isEmpty() || preparedData.isColumnarIndex();
         List<DdlTask> bringUpNewPartitions = ComplexTaskFactory
-            .addPartitionTasks(schemaName, tableName, sourceTableTopology, targetTableTopology,
+            .addPartitionTasks(schemaName, tableName, ptbGroupMap, sourceTableTopology, targetTableTopology,
                 stayAtCreating, stayAtDeleteOnly, stayAtWriteOnly, stayAtWriteReOrg,
                 skipBackFill, executionContext, isBroadcast(), taskType);
         //3.2 status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> READY_TO_PUBLIC

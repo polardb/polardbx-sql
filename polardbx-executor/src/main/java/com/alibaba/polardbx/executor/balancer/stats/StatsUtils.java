@@ -16,15 +16,20 @@
 
 package com.alibaba.polardbx.executor.balancer.stats;
 
+import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
@@ -45,6 +50,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Like;
@@ -83,6 +89,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.BiFunction;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -248,13 +256,13 @@ public class StatsUtils {
      * @param targetTable query stats of this table if it's not null
      * @return stats
      */
-    public static List<TableGroupStat> getTableGroupsStats(String targetSchema, @Nullable String targetTable) {
+    public static List<TableGroupStat> getTableGroupsStats(String targetSchema, @Nullable String targetTable,
+                                                           ExecutionContext ec) {
         List<TableGroupDetailConfig> tableGroupConfigs = TableGroupUtils.getAllTableGroupDetailInfoByDb(targetSchema);
         List<TableGroupStat> res = new ArrayList<>();
         OptimizerContext oc =
             Objects.requireNonNull(OptimizerContext.getContext(targetSchema), targetSchema + " not exists");
         PartitionInfoManager pm = oc.getPartitionInfoManager();
-
         // execute physical sdl
         long startMilli = System.currentTimeMillis();
         Map<String, Map<String, MySQLTablesRowVO>> tablesStatInfo =
@@ -313,6 +321,101 @@ public class StatsUtils {
 
                     pgStat.setDataLength(phyTableInfo.dataLength);
                     pgStat.setIndexLength(phyTableInfo.indexLength);
+                    pgStat.setDataRows(phyTableInfo.dataRows);
+
+                    tableGroupStat.addPartition(pgStat);
+                }
+            }
+
+            res.add(tableGroupStat);
+        }
+
+        return res;
+    }
+
+    public static List<TableGroupStat> getTableGroupsStatsFromTableSpace(String targetSchema,
+                                                                         @Nullable String targetTable,
+                                                                         ExecutionContext ec) {
+        List<TableGroupDetailConfig> tableGroupConfigs = TableGroupUtils.getAllTableGroupDetailInfoByDb(targetSchema);
+        List<TableGroupStat> res = new ArrayList<>();
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(targetSchema), targetSchema + " not exists");
+        PartitionInfoManager pm = oc.getPartitionInfoManager();
+
+        // execute physical sdl
+        long startMilli = System.currentTimeMillis();
+        Map<String, Map<String, MySQLTablesRowVO>> tablesStatInfo =
+            queryTableGroupStats(targetSchema, tableGroupConfigs);
+        Map<String, Map<String, List<MySQLTableSpacesRowVO>>> tablesStatInfoFromTableSpace =
+            queryTableGroupStatsFromTableSpace(targetSchema, tableGroupConfigs, ec);
+        long elapsed = System.currentTimeMillis() - startMilli;
+        SQLRecorderLogger.ddlLogger.info(
+            String.format("got table-group stats for schema(%s) cost %dms: %s", targetSchema, elapsed,
+                JSON.toJSONString(tablesStatInfo)));
+
+        for (TableGroupDetailConfig tableGroupConfig : tableGroupConfigs) {
+            String schema = tableGroupConfig.getTableGroupRecord().schema;
+            if (targetSchema != null && !targetSchema.equalsIgnoreCase(schema)) {
+                continue;
+            }
+            if (tableGroupConfig.getTableGroupRecord().isColumnarTableGroup()) {
+                continue;
+            }
+            TableGroupStat tableGroupStat = new TableGroupStat(tableGroupConfig);
+
+            // iterate all tables in a table-group
+            for (TablePartRecordInfoContext tableContext : tableGroupConfig.getTablesPartRecordInfoContext()) {
+                String table = tableContext.getTableName().toLowerCase(Locale.ROOT);
+                if (targetTable != null && !targetTable.equalsIgnoreCase(table)) {
+                    continue;
+                }
+
+                List<TablePartitionRecord> tablePartitionRecords = null;
+                if (tableContext.getSubPartitionRecList().isEmpty()) {
+                    tablePartitionRecords =
+                        tableContext
+                            .filterPartitions(x -> x.partLevel != TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
+                } else {
+                    tablePartitionRecords =
+                        tableContext
+                            .filterSubPartitions(
+                                x -> x.partLevel != TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
+                }
+                Map<String, MySQLTablesRowVO> tableStatInfo = tablesStatInfo.get(table);
+
+                // TODO: use lock to avoid meta too old exception
+                if (tableStatInfo == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_TABLE_META_TOO_OLD, targetSchema, table);
+                }
+
+                // iterate all partitions in a table
+                for (TablePartitionRecord record : tablePartitionRecords) {
+                    PartitionInfo info = pm.getPartitionInfo(table);
+                    PartitionStat pgStat = new PartitionStat(tableGroupConfig, record, info);
+                    MySQLTablesRowVO phyTableInfo = tableStatInfo.get(record.phyTable.toLowerCase());
+
+                    // TODO: use lock to avoid meta too old exception
+                    if (phyTableInfo == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_TABLE_META_TOO_OLD, targetSchema, table);
+                    }
+                    long dataLength = phyTableInfo.dataLength;
+                    long indexLength = phyTableInfo.indexLength;
+                    Map<String, List<MySQLTableSpacesRowVO>> tableInfoFromTableSpace =
+                        tablesStatInfoFromTableSpace.get(table);
+                    if (tableInfoFromTableSpace != null) {
+                        List<MySQLTableSpacesRowVO> tableSpacesRowVOs =
+                            tableInfoFromTableSpace.get(record.phyTable.toLowerCase());
+                        if (GeneralUtil.isNotEmpty(tableSpacesRowVOs)) {
+                            indexLength = 0;
+                            dataLength = 0;
+                        }
+                        for (MySQLTableSpacesRowVO tableSpacesRowVO : GeneralUtil.emptyIfNull(tableSpacesRowVOs)) {
+                            dataLength += tableSpacesRowVO.getFileSize();
+                        }
+
+                    }
+                    pgStat.setDataLength(dataLength);
+                    pgStat.setIndexLength(indexLength);
                     pgStat.setDataRows(phyTableInfo.dataRows);
 
                     tableGroupStat.addPartition(pgStat);
@@ -390,19 +493,27 @@ public class StatsUtils {
                 String.format("query group %s with sql %s failed: %s", groupName, sql, e.getMessage()), e);
         }
 
-        try (Connection conn = ge.getDataSource().getConnection();
-            Statement stmt = conn.createStatement()) {
+        try (Connection conn = ge.getDataSource().getConnection()) {
 
-            stmt.setQueryTimeout(queryTimeout);
+            try {
+                StatisticUtils.avoidInformationSchemaCache(conn);
 
-            try (ResultSet rs = stmt.executeQuery(sql)) {
-                int columns = rs.getMetaData().getColumnCount();
-                while (rs.next()) {
-                    List<Object> row = new ArrayList<>();
-                    for (int i = 1; i <= columns; i++) {
-                        row.add(rs.getObject(i));
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.setQueryTimeout(queryTimeout);
+                    try (ResultSet rs = stmt.executeQuery(sql)) {
+                        int columns = rs.getMetaData().getColumnCount();
+                        while (rs.next()) {
+                            List<Object> row = new ArrayList<>();
+                            for (int i = 1; i <= columns; i++) {
+                                row.add(rs.getObject(i));
+                            }
+                            result.add(row);
+                        }
                     }
-                    result.add(row);
+                }
+            } finally {
+                if (conn != null && !conn.isClosed()) {
+                    StatisticUtils.resetInformationSchemaCache(conn);
                 }
             }
 
@@ -475,6 +586,60 @@ public class StatsUtils {
         return result;
     }
 
+    public static Map<String, Map<String, List<MySQLTableSpacesRowVO>>> queryTableGroupStatsFromTableSpace(
+        String schema,
+        List<TableGroupDetailConfig> tableGroups,
+        ExecutionContext ec) {
+        Map<String, Map<String, List<MySQLTableSpacesRowVO>>> result = new HashMap<>();
+
+        Map<String, String> phyTable2LogicalTableMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (TableGroupDetailConfig tg : tableGroups) {
+            phyTable2LogicalTableMap.putAll(tg.phyToLogicalTables());
+        }
+
+        List<PartitionGroupRecord> allPgList =
+            tableGroups.stream().flatMap(x -> x.getPartitionGroupRecords().stream())
+                .collect(Collectors.toList());
+
+        // Group all partition-groups by physical database, to avoid iterate all partitions
+        allPgList.stream()
+            .collect(Collectors.groupingBy(x -> x.phy_db))
+            .forEach((physicalDb, pgList) -> {
+                String sql = genQueryPartitionGroupStatsSQLFromTableSpace(physicalDb);
+
+                List<List<Object>> rows = queryGroupByPhyDb(schema, physicalDb, sql);
+
+                for (List<Object> row : rows) {
+                    MySQLTableSpacesRowVO rowVO = MySQLTableSpacesRowVO.fromRow(row);
+                    Pair<String, String> phyDbAndTableName = rowVO.getPhyDbAndTableName();
+                    String logicalTable = phyTable2LogicalTableMap.get(phyDbAndTableName.getValue());
+                    // table not in the target table-group
+                    if (logicalTable == null) {
+                        continue;
+                    }
+                    if (result.containsKey(logicalTable.toLowerCase())) {
+                        Map<String, List<MySQLTableSpacesRowVO>> physicalPartReccord =
+                            result.get(logicalTable.toLowerCase());
+                        List<MySQLTableSpacesRowVO> partRec =
+                            physicalPartReccord.get(phyDbAndTableName.getValue().toLowerCase());
+                        if (partRec == null) {
+                            partRec = new ArrayList<>();
+                            physicalPartReccord.put(phyDbAndTableName.getValue().toLowerCase(), partRec);
+                        }
+                        partRec.add(rowVO);
+                    } else {
+                        HashMap<String, List<MySQLTableSpacesRowVO>> physicalPartReccord = new HashMap<>();
+                        List<MySQLTableSpacesRowVO> partRec = new ArrayList<>();
+                        partRec.add(rowVO);
+                        physicalPartReccord.put(phyDbAndTableName.getValue().toLowerCase(), partRec);
+                        result.put(logicalTable.toLowerCase(), physicalPartReccord);
+                    }
+                }
+            });
+
+        return result;
+    }
+
     /**
      * Build a SQL to query information_schema.table_statistics
      */
@@ -491,6 +656,13 @@ public class StatsUtils {
 
         return MySQLTablesRowVO.genSelectClause()
             + String.format(" WHERE table_schema = '%s'", phyDb);
+    }
+
+    private static String genQueryPartitionGroupStatsSQLFromTableSpace(String phyDb) {
+
+        String sql = MySQLTableSpacesRowVO.genSelectClause();
+        sql = sql + String.format(" WHERE name like '%s/", phyDb) + "%'";
+        return sql;
     }
 
     /**
@@ -1265,6 +1437,78 @@ public class StatsUtils {
             res.setRowsDelete(DataTypes.LongType.convertFrom(row.get(3)));
             return res;
         }
+    }
+
+    @Data
+    static class MySQLTableSpacesRowVO {
+        private String name;
+        private long fileSize;
+        private long allocatedSize;
+
+        public static String genSelectClause() {
+            StringBuilder sb = new StringBuilder();
+            sb.append(" SELECT ");
+            sb.append(" NAME");
+            sb.append(", FILE_SIZE, ALLOCATED_SIZE ");
+            if (InstanceVersion.isMYSQL80()) {
+                sb.append("FROM information_schema.innodb_tablespaces ");
+            } else {
+                sb.append("FROM information_schema.innodb_sys_tablespaces ");
+            }
+            return sb.toString();
+        }
+
+        public static MySQLTableSpacesRowVO fromRow(List<Object> row) {
+            if (CollectionUtils.isEmpty(row)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Empty row");
+            }
+            if (row.size() != 3) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Corrupted row: " + row);
+            }
+            MySQLTableSpacesRowVO res = new MySQLTableSpacesRowVO();
+            res.setName(DataTypes.StringType.convertFrom(row.get(0)).toLowerCase());
+            res.setFileSize(DataTypes.LongType.convertFrom(row.get(1)));
+            res.setAllocatedSize(DataTypes.LongType.convertFrom(row.get(2)));
+            return res;
+        }
+
+        public Pair<String, String> getPhyDbAndTableName() {
+            return parseTablespaceName(name);
+        }
+
+    }
+
+    private static String decodeMysqlHex(String input) {
+        Pattern pattern = Pattern.compile("@([0-9a-fA-F]{4})");
+        Matcher matcher = pattern.matcher(input);
+        StringBuffer sb = new StringBuffer();
+
+        while (matcher.find()) {
+            String hex = matcher.group(1);
+            char ch = (char) Integer.parseInt(hex, 16);
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(String.valueOf(ch)));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
+    private static Pair<String, String> parseTablespaceName(String name) {
+        if (name == null) {
+            return null;
+        }
+        String[] parts = name.split("/");
+        if (parts.length < 2) {
+            return null;
+        }
+
+        String dbName = decodeMysqlHex(parts[0]);
+        String tablePart = parts[1];
+
+        // 处理分区标记
+        String[] tableParts = tablePart.split("#p#|#sp#");
+        String baseTableName = decodeMysqlHex(tableParts[0]);
+        String partitionName = tableParts.length > 1 ? tableParts[1] : null;
+        return Pair.of(dbName.toLowerCase(), baseTableName.toLowerCase());
     }
 
     public static Map<String, Pair<Long, Long>> queryDbGroupDataSize(String schema,

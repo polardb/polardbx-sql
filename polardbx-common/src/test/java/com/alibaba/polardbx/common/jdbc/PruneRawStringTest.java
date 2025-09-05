@@ -56,4 +56,13 @@ public class PruneRawStringTest {
         assert pruneRawString4.pruneMode == PruneRawString.PRUNE_MODE.RANGE;
         assert pruneRawString.pruneMode == PruneRawString.PRUNE_MODE.RANGE;
     }
+
+    @Test
+    public void testRestoreToOriginRawString(){
+        PruneRawString pruneRawString = new PruneRawString(ImmutableList.copyOf(IntStream.range(0, 1000).iterator()),
+            PruneRawString.PRUNE_MODE.RANGE, 0, 300, null);
+
+        assert pruneRawString.getObjList().size()==300;
+        assert pruneRawString.restoreToOriginRawString().getObjList().size()==1000;
+    }
 }

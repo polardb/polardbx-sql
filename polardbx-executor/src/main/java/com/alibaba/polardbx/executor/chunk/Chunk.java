@@ -16,14 +16,20 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.common.utils.hash.HashResult128;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.alibaba.polardbx.executor.chunk.columnar.CommonLazyBlock;
 import com.alibaba.polardbx.executor.operator.util.VectorUtils;
 import com.alibaba.polardbx.optimizer.core.row.AbstractRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.google.common.annotations.VisibleForTesting;
+import io.airlift.slice.Slice;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,7 +45,7 @@ import static java.util.Objects.requireNonNull;
  * For performance reason, we don't do a lot of check when manipulating states of vector batch,
  * the user should take care of that.
  */
-public class Chunk implements Iterable<Row> {
+public class Chunk implements Iterable<Row>, MemoryCountable {
 
     protected static final long INSTANCE_SIZE = ClassLayout.parseClass(Chunk.class).instanceSize();
 
@@ -193,6 +199,18 @@ public class Chunk implements Iterable<Row> {
         return true;
     }
 
+    @Override
+    public long getMemoryUsage() {
+        long size = INSTANCE_SIZE;
+        if (selection != null) {
+            size += VMSupport.align((int) SizeOf.sizeOf(selection));
+        }
+        for (Block block : blocks) {
+            size += block.getMemoryUsage();
+        }
+        return size;
+    }
+
     /**
      * ChunkRow is a reference to specified position in this Chunk.
      * This class is designed to be compatible with legacy code.
@@ -231,6 +249,24 @@ public class Chunk implements Iterable<Row> {
             ArrayList<Object> values = new ArrayList<>(blocks.length);
             for (int i = 0; i < blocks.length; i++) {
                 values.add(getObject(i));
+            }
+            return values;
+        }
+
+        public List<Object> getJavaValues() {
+            ArrayList<Object> values = new ArrayList<>(blocks.length);
+            for (int i = 0; i < blocks.length; i++) {
+                Object o = getObject(i);
+                if (o instanceof Slice) {
+                    values.add(((Slice) o).toStringUtf8());
+                } else if (o instanceof Decimal) {
+                    values.add(((Decimal) o).toBigDecimal());
+                } else if (o instanceof UInt64) {
+                    values.add(((UInt64) o).toBigInteger());
+                } else {
+                    values.add(o);
+                }
+
             }
             return values;
         }

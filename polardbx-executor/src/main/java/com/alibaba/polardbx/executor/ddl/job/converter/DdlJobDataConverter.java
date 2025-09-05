@@ -46,12 +46,9 @@ import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.util.Util;
+import org.apache.commons.collections.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper.genHashCodeForPhyTableDDL;
@@ -62,13 +59,13 @@ public class DdlJobDataConverter {
     /**
      * NOTE: In most case you should ues DdlPhyPlanBuilder.genPhysicalPlan instead
      */
-    public static PhysicalPlanData convertToPhysicalPlanData(Map<String, List<List<String>>> tableTopology,
+    public static PhysicalPlanData convertToPhysicalPlanData(TreeMap<String, List<List<String>>> tableTopology,
                                                              List<PhyDdlTableOperation> physicalPlans,
                                                              ExecutionContext ec) {
         return convertToPhysicalPlanData(tableTopology, physicalPlans, false, false, ec);
     }
 
-    public static PhysicalPlanData convertToPhysicalPlanData(Map<String, List<List<String>>> tableTopology,
+    public static PhysicalPlanData convertToPhysicalPlanData(TreeMap<String, List<List<String>>> tableTopology,
                                                              List<PhyDdlTableOperation> physicalPlans,
                                                              boolean isGsi, boolean isAutoPartition,
                                                              ExecutionContext ec) {
@@ -79,7 +76,7 @@ public class DdlJobDataConverter {
      * NOTE: In most case you should ues DdlPhyPlanBuilder.genPhysicalPlan instead
      * TODO Is the parameter isGsi necessary ?
      */
-    public static PhysicalPlanData convertToPhysicalPlanData(Map<String, List<List<String>>> tableTopology,
+    public static PhysicalPlanData convertToPhysicalPlanData(TreeMap<String, List<List<String>>> tableTopology,
                                                              List<PhyDdlTableOperation> physicalPlans,
                                                              boolean isGsi, boolean isAutoPartition, boolean isOSS,
                                                              boolean pushDownFk, ExecutionContext ec) {
@@ -139,6 +136,9 @@ public class DdlJobDataConverter {
 
         if (physicalPlan.getNativeSqlNode() instanceof SqlCreateTable) {
             data.setIfNotExists(physicalPlan.isIfNotExists());
+            if(!CollectionUtils.isEmpty(((SqlCreateTable) physicalPlan.getNativeSqlNode()).getLocalIndexes())){
+                data.setPopLocalIndex(true);
+            }
         } else if (physicalPlan.getNativeSqlNode() instanceof SqlDropTable) {
             data.setIfExists(((SqlDropTable) physicalPlan.getNativeSqlNode()).isIfExists());
         }

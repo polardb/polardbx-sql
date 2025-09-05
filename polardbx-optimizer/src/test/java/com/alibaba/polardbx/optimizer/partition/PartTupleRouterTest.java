@@ -22,6 +22,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ColumnarShardProcessor;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
@@ -126,6 +127,7 @@ public class PartTupleRouterTest extends BasePlannerTest {
         }
         testPartTupleRouterCalcSearchDatum(tmPartInfo, ec, rowValAndExceptRsInfo);
         testPartTupleRouterRouteTuple(tmPartInfo, ec, rowValAndExceptRsInfo);
+        testColumnarShardRouteTuple(tmPartInfo, ec, rowValAndExceptRsInfo);
 
     }
 
@@ -203,6 +205,26 @@ public class PartTupleRouterTest extends BasePlannerTest {
              */
             PhysicalPartitionInfo phyInfo = tupleRouter.routeTuple(Arrays.asList(rowVal));
             Assert.assertTrue(phyInfo.getPartName().equalsIgnoreCase(tarPart));
+        }
+    }
+
+    protected void testColumnarShardRouteTuple(PartitionInfo tmPartInfo,
+                                               ExecutionContext ec,
+                                               List<Pair<List<Object>, List<Object>>> rowValAndExceptRsInfo) {
+
+        PartTupleRouter tupleRouter = new PartTupleRouter(tmPartInfo, ec);
+        tupleRouter.init();
+
+        for (int i = 0; i < rowValAndExceptRsInfo.size(); i++) {
+            Pair<List<Object>, List<Object>> rowValAndRsItem = rowValAndExceptRsInfo.get(i);
+            List<Object> rowVal = rowValAndRsItem.getKey();
+            String tarPart = (String) rowValAndRsItem.getValue().get(1);
+
+            String calPart = ColumnarShardProcessor.shard(tupleRouter, rowVal, null, true);
+            String calPart2 = ColumnarShardProcessor.shard(tupleRouter, rowVal, null, false);
+
+            Assert.assertTrue(calPart.equalsIgnoreCase(tarPart));
+            Assert.assertTrue(calPart2.equalsIgnoreCase(tarPart));
         }
     }
 

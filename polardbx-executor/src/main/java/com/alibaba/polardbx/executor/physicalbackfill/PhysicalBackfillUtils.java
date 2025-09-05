@@ -118,7 +118,7 @@ public class PhysicalBackfillUtils {
     public final static String SQL_LOG_BIN = "sql_log_bin";
 
     // for 8032 the in-paramater of dbms_xa.advance_gcn_no_flush is unsigned
-    private final static long INIT_TSO = 0l;
+    private final static long INIT_TSO = 0;
     private final static PhysicalBackfillRateLimiter rateLimiter = new PhysicalBackfillRateLimiter();
 
     public static XDataSource initializeDataSource(String host, int port, String username, String password,
@@ -456,6 +456,15 @@ public class PhysicalBackfillUtils {
         return Pair.of(ip, xport);
     }
 
+    public static Pair<String, Integer> getSrcMySQLHostForCloneTask(String storageInstId, ExecutionContext ec) {
+        boolean fromLeader = ec.getParamManager().getBoolean(ConnectionParams.PHYSICAL_BACKFILL_CLONE_DATA_FROM_LEADER);
+        if (fromLeader) {
+            return getMySQLLeaderIpAndPort(storageInstId);
+        } else {
+            return getMySQLOneFollowerIpAndPort(storageInstId);
+        }
+    }
+
     // if only has leader, return leader<ip:port>
     public static Pair<String, Integer> getMySQLOneFollowerIpAndPort(String storageInstId) {
         HaSwitchParams haSwitchParams = StorageHaManager.getInstance().getStorageHaSwitchParams(storageInstId);
@@ -516,6 +525,9 @@ public class PhysicalBackfillUtils {
         for (Map.Entry<String, String> entry : groupAndStorageIdMap.entrySet()) {
             Long masterLsn = getLeaderCurrentLatestLsn(schemaName, entry.getKey());
             groupAndLsnMap.put(entry.getKey(), masterLsn);
+        }
+        for (Map.Entry<String, String> entry : groupAndStorageIdMap.entrySet()) {
+            Long masterLsn = groupAndLsnMap.get(entry.getKey());
             DbGroupInfoRecord dbGroupInfoRecord = ScaleOutPlanUtil.getDbGroupInfoByGroupName(entry.getKey());
             List<Pair<String, Integer>> allNodes =
                 getMySQLServerNodeIpAndPorts(entry.getValue(), healthyCheck);
@@ -645,7 +657,7 @@ public class PhysicalBackfillUtils {
             Lists.newArrayList(sourceHost),
             storageInstAndUserInfos.get(srcGroupDetailInfo.getStorageInstId()), builder.build(), ec);
 
-        long totalTransferDataSize = 0l;
+        long totalTransferDataSize = 0;
         long testTime = 0;
         long startTime = System.currentTimeMillis();
         boolean healthyCheck =
@@ -808,6 +820,30 @@ public class PhysicalBackfillUtils {
         return getFileInfoOperator;
     }
 
+    public static long fetchPhysicalTableSize(String schemaName,
+                                              String group,
+                                              String phyDb,
+                                              String phyTableName,
+                                              Map<String, String> mapGroupToDNIds,
+                                              Map<String, Pair<String, String>> storageInstAndUserInfos) {
+        long dataSize = 0;
+        List<String> physicalPartitionNames = getPhysicalPartitionNames(schemaName, group, phyDb, phyTableName);
+
+        String sourceStorageId = mapGroupToDNIds.computeIfAbsent(group, key -> DbTopologyManager.getStorageInstIdByGroupName(schemaName, group));
+        Pair<String, String> srcDnUserAndPasswd = storageInstAndUserInfos.computeIfAbsent(sourceStorageId,
+            key -> PhysicalBackfillUtils.getUserPasswd(sourceStorageId));
+        PolarxPhysicalBackfill.GetFileInfoOperator fileInfoOperator =
+            PhysicalBackfillUtils.checkFileExistence(srcDnUserAndPasswd, phyDb,
+                phyTableName.toLowerCase(),
+                GeneralUtil.isEmpty(physicalPartitionNames) ? ImmutableList.of("") : physicalPartitionNames,
+                GeneralUtil.isEmpty(physicalPartitionNames),
+                PhysicalBackfillUtils.getMySQLLeaderIpAndPort(sourceStorageId));
+        for (PolarxPhysicalBackfill.FileInfo fileInfo : fileInfoOperator.getTableInfo().getFileInfoList()) {
+            dataSize += fileInfo.getDataSize();
+        }
+        return dataSize;
+    }
+
     public static Pair<String, String> getTempIbdFileInfo(Pair<String, String> userInfo,
                                                           Pair<String, Integer> sourceHost,
                                                           Pair<String, String> srcDbAndGroup,
@@ -922,7 +958,7 @@ public class PhysicalBackfillUtils {
 
     public static class PhysicalBackfillRateLimiter {
         //250MB/s
-        private static long curSpeedLimiter = 250 * 1024 * 1024l;
+        private static long curSpeedLimiter = 250 * 1024 * 1024;
         private static final RateLimiter rateLimiter = RateLimiter.create(curSpeedLimiter);
 
         public void PhysicalBackfillRateLimiter() {

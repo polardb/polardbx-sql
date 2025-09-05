@@ -32,6 +32,7 @@ import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBuffer;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeFactory;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.SpilledOutputBufferMemoryManager;
+import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.operator.factory.CacheExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.CteAnchorExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.CteExecFactory;
@@ -86,6 +87,7 @@ import com.alibaba.polardbx.executor.mpp.split.SplitManager;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -158,6 +160,7 @@ import org.apache.calcite.rel.core.RecursiveCTE;
 import org.apache.calcite.rel.core.RecursiveCTEAnchor;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.Union;
+import org.apache.calcite.rel.core.Window;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalExpand;
 import org.apache.calcite.rel.logical.LogicalFilter;
@@ -338,7 +341,8 @@ public class LocalExecutionPlanner {
             PipelineFragment pipelineFragment = new PipelineFragment(defaultParallelism, relNode);
             ExecutorFactory factory = visit(null, relNode, pipelineFragment);
             if (pipelineFragment.getParallelism() > 1
-                && fragment.getPartitioningScheme().getShuffleHandle().isMergeSort()) {
+                && fragment.getPartitioningScheme().getShuffleHandle().isMergeSort()
+                && !pipelineFragment.isDirectMerge()) {
                 holdCollation = true;
                 MergeSort sort = MergeSort
                     .create(relNode, RelCollations.of(fragment.getPartitioningScheme().getOrderByOptions().stream()
@@ -634,6 +638,54 @@ public class LocalExecutionPlanner {
     }
 
     private ExecutorFactory visitSortWindow(SortWindow sortWindow, PipelineFragment pipelineFragment) {
+        RelNode child = sortWindow.getInput();
+
+        boolean useParallelSortWindow =
+            // 1. ENABLE_PARALLEL_SORT_WINDOW=true
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_PARALLEL_SORT_WINDOW)
+
+                // 2. only support in mpp mode.
+                && context.getExecuteMode() == ExecutorMode.MPP
+
+                // 3. parent is sort-window and child is mem-sort
+                && child instanceof MemSort
+
+                // 4. window has only one partition group.
+                && (sortWindow).groups.size() == 1
+
+                // 5. window has group keys.
+                && sortWindow.groups.get(0).keys.size() > 0;
+
+        if (useParallelSortWindow) {
+            MemSort sort = (MemSort) child;
+
+            // 6. check bound: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            Window.Group group = sortWindow.groups.get(0);
+//            useParallelSortWindow &= group.lowerBound.isPreceding()
+//                && group.lowerBound.isUnbounded()
+//                && group.upperBound.isCurrentRow();
+
+            // 7. check group keys are same as order by keys in sorter.
+            List<OrderByOption> orderByOptionsInSort = ExecUtils.convertFrom(sort.collation.getFieldCollations());
+            ImmutableBitSet keys = group.keys;
+
+            List<Integer> partitionChannel = new ArrayList<>();
+            boolean isPrefixColumn = true;
+            int i = 0;
+            for (int index = keys.nextSetBit(0); index >= 0; index = keys.nextSetBit(index + 1)) {
+                if (i >= orderByOptionsInSort.size() || orderByOptionsInSort.get(i).index != index) {
+                    isPrefixColumn = false;
+                    break;
+                }
+                partitionChannel.add(orderByOptionsInSort.get(i).index);
+                i++;
+            }
+            useParallelSortWindow &= isPrefixColumn;
+            if (useParallelSortWindow) {
+                return visitParallelSortWindow(sortWindow, pipelineFragment, partitionChannel);
+            }
+        }
+
         PipelineFragment childFragment = new PipelineFragment(defaultParallelism, sortWindow.getInput());
         childFragment.setContainLimit(pipelineFragment.isContainLimit());
         ExecutorFactory childExecutorFactory = visit(sortWindow, sortWindow.getInput(), childFragment);
@@ -668,6 +720,49 @@ public class LocalExecutionPlanner {
             pipelineFragment.inherit(childFragment);
             return new SortWindowFramesExecFactory(sortWindow, childExecutorFactory, pipelineFragment.getParallelism());
         }
+    }
+
+    private ExecutorFactory visitParallelSortWindow(SortWindow sortWindow, PipelineFragment pipelineFragment,
+                                                    List<Integer> partitionChannel) {
+        // producer: sort -> overWindowFrame
+        // consumer: localExchange(DIRECT) -> localBuffer
+
+        PipelineFragment inputFragment = new PipelineFragment(defaultParallelism, sortWindow.getInput());
+        inputFragment.setContainLimit(pipelineFragment.isContainLimit());
+        ExecutorFactory inputExecutorFactory = visitMemSortWithParallelSortWindow(
+            sortWindow,
+            (MemSort) sortWindow.getInput(), // asserted.
+            inputFragment,
+            partitionChannel
+        ); // sort exec
+
+        SortWindowFramesExecFactory producerExecFactory =
+            new SortWindowFramesExecFactory(sortWindow, inputExecutorFactory,
+                pipelineFragment.getParallelism()); // producer: sort -> overWindowFrame
+
+        List<DataType> columns = CalciteUtils.getTypes(sortWindow.getRowType());
+        LocalBufferNode localBufferNode = LocalBufferNode.create(inputFragment.getRoot());
+        OutputBufferMemoryManager localBufferManager = createLocalMemoryManager();
+        LocalBufferExecutorFactory localBufferExecutorFactory =
+            new LocalBufferExecutorFactory(localBufferManager, columns, pipelineFragment.getParallelism());
+        LocalExchange localBufferExchange =
+            new LocalExchange(columns, ImmutableList.of(), LocalExchange.LocalExchangeMode.DIRECT, true);
+
+        LocalExchangeConsumerFactory consumerFactory = new LocalExchangeConsumerFactory(
+            localBufferExecutorFactory, localBufferManager,
+            localBufferExchange);  // consumer: localExchange(DIRECT) -> localBuffer
+
+        PipelineFactory bufferPipelineFactory =
+            new PipelineFactory(producerExecFactory, consumerFactory,
+                inputFragment.setPipelineId(pipelineIdGen++));
+
+        pipelineFactorys.add(bufferPipelineFactory);
+
+        pipelineFragment.getDependency().addAll(inputFragment.getDependency());
+        pipelineFragment.addBufferNodeChild(localBufferNode.getInput().getRelatedId(), inputFragment);
+        pipelineFragment.setDirectMerge(true);
+
+        return localBufferExecutorFactory;
     }
 
     private ExecutorFactory visitHashWindow(HashWindow overWindow, PipelineFragment pipelineFragment) {
@@ -1583,6 +1678,75 @@ public class LocalExecutionPlanner {
         return sortExecutorFactory;
     }
 
+    // For structure:
+    // sortWindow(partition by group_col1 desc|asc, group_col2  desc|asc ... , order by order_col desc|asc)
+    //      sort(group_col1 desc|asc, group_col2  desc|asc ..., order_col desc|asc)
+    //          any input
+    //
+    // We should build these pipelines:
+    // 1. ChildrenFragment: (InputExec) -> Driver -> (LocalExchanger -> LocalBufferExec)
+    // 2. MiddleFragment: (LocalBufferExec) -> Driver -> (SortExec)
+    private ExecutorFactory visitMemSortWithParallelSortWindow(RelNode parent, MemSort sort,
+                                                               PipelineFragment pipelineFragment,
+                                                               List<Integer> partitionChannel) {
+        Preconditions.checkArgument(parent instanceof SortWindow);
+        LocalExchange localExchange = null;
+
+        // generate child's executor factory
+        List<DataType> columns = CalciteUtils.getTypes(sort.getInput().getRowType());
+        PipelineFragment childFragment = new PipelineFragment(defaultParallelism, sort.getInput());
+        ExecutorFactory childFactory = visit(sort, sort.getInput(), childFragment);
+
+        // Local exchange by first column in sorter under sort-window because it's the partition column.
+        // Therefore, partitioning chunk by LocalExchanger are equivalent to dividing into buckets.
+        localExchange =
+            new LocalExchange(CalciteUtils.getTypes(sort.getInput().getRowType()), partitionChannel,
+                LocalExchange.LocalExchangeMode.PARTITION, true);
+
+        // ChildrenFragment: Input -> Driver -> (LocalExchanger -> LocalBufferExec)
+        OutputBufferMemoryManager localBufferManager = createLocalMemoryManager();
+
+        // Create local buffer exec.
+        LocalBufferNode localBufferNode = LocalBufferNode.create(sort.getInput());
+        LocalBufferExecutorFactory bufferExecFactory =
+            new LocalBufferExecutorFactory(localBufferManager, columns, pipelineFragment.getParallelism());
+
+        //generate child's pipelineFactory
+        LocalExchangeConsumerFactory consumerFactory =
+            new LocalExchangeConsumerFactory(bufferExecFactory, localBufferManager, localExchange);
+        PipelineFactory childPipelineFactory = new PipelineFactory(
+            childFactory, consumerFactory, childFragment.setPipelineId(pipelineIdGen++));
+        pipelineFactorys.add(childPipelineFactory);
+
+        // MiddleFragment: LocalBufferExec -> Driver -> SortExec
+        int memSortParallelism = pipelineFragment.getParallelism();
+        PipelineFragment middleFragment = new PipelineFragment(memSortParallelism, localBufferNode);
+
+        middleFragment.addChild(childFragment);
+        middleFragment.addDependency(childPipelineFactory.getPipelineId());
+
+        //generate localSort executorFactory
+        SortExecutorFactory sortExecutorFactory =
+            new SortExecutorFactory(sort, memSortParallelism, columns, spillerFactory);
+
+        LocalBufferConsumerFactory consumerOfSingleTopNFactory =
+            new LocalBufferConsumerFactory(sortExecutorFactory);
+
+        // generate middle's pipelineFactory
+        PipelineFactory middlePipelineFactory =
+            new PipelineFactory(bufferExecFactory, consumerOfSingleTopNFactory,
+                middleFragment.setPipelineId(pipelineIdGen++));
+
+        pipelineFactorys.add(middlePipelineFactory);
+
+        // Handle dependency between pipelines
+        pipelineFragment.addChild(middleFragment);
+        middleFragment.setBuildDepOnAllConsumers(false);
+        pipelineFragment.addDependency(middlePipelineFactory.getPipelineId());
+
+        return sortExecutorFactory;
+    }
+
     private ExecutorFactory visitTopN(RelNode parent, TopN topN, PipelineFragment pipelineFragment) {
         //generate child's executor factory
         List<DataType> columns = CalciteUtils.getTypes(topN.getInput().getRowType());
@@ -1704,6 +1868,8 @@ public class LocalExecutionPlanner {
                     // reset merge union size
                     context.putIntoHintCmds(ConnectionProperties.MERGE_UNION_SIZE, mergeUnionSize);
                 }
+
+                rangeScanMode = RangeScanUtils.checkSplitInfo(splitInfo, rangeScanMode);
             }
 
             if (logicalView.pushedRelNodeIsSort()) {

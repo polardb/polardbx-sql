@@ -28,8 +28,9 @@ import com.alibaba.polardbx.executor.sync.BaselineDeleteHotEvolvedSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselineLoadSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselinePersistSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.executor.utils.ExplainExecutorUtil;
+import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -47,14 +48,10 @@ import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.stats.metric.FeatureStats;
-import com.alibaba.polardbx.stats.metric.FeatureStatsItem;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptSchema;
-import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlBaseline;
-import org.apache.calcite.sql.SqlExplainFormat;
-import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 
@@ -322,6 +319,9 @@ public class LogicalBaselineHandler extends HandlerCommon {
             result.addColumn("ID", DataTypes.IntegerType);
             result.addColumn("STATUS", DataTypes.StringType);
             for (Long id : idList) {
+                if (id == null) {
+                    continue;
+                }
                 switch (operation.toUpperCase()) {
                 case "LOAD":
                     SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction(), SyncScope.CURRENT_ONLY);
@@ -331,22 +331,11 @@ public class LogicalBaselineHandler extends HandlerCommon {
                     break;
                 case "DELETE": {
                     BaselineSyncController baselineSyncController = new BaselineSyncController();
-                    boolean idFound = false;
-                    for (Map.Entry<String, Map<String, BaselineInfo>> entry : planManager.getBaselineMap().entrySet()) {
-                        String targetSchema = entry.getKey();
-                        Map<String, BaselineInfo> map = entry.getValue();
-                        for (BaselineInfo baselineInfo : map.values()) {
-                            if (baselineInfo.getId() == id) {
-                                idFound = true;
-                                baselineSyncController.deleteBaseline(targetSchema, baselineInfo);
-                            }
-                        }
+                    for (String schema : DbInfoManager.getInstance().getDbList()) {
+                        baselineSyncController.deleteBaseline(schema, id.intValue());
                     }
-                    if (idFound) {
-                        result.addRow(new Object[] {id, "OK"});
-                    } else {
-                        result.addRow(new Object[] {id, "not found"});
-                    }
+
+                    result.addRow(new Object[] {id, "OK"});
                     break;
                 }
                 case "DELETE_PLAN": {
@@ -360,17 +349,19 @@ public class LogicalBaselineHandler extends HandlerCommon {
                                 if (planInfo.getId() == id) {
                                     idFound = true;
                                     if (baselineInfo.getAcceptedPlans().size() == 1) {
-                                        baselineSyncController.deleteBaseline(targetSchema, baselineInfo);
+                                        baselineSyncController.deleteBaseline(targetSchema, baselineInfo.getId());
                                         break;
                                     } else {
-                                        baselineSyncController.deletePlan(targetSchema, baselineInfo, planInfo);
+                                        baselineSyncController.deletePlan(targetSchema, baselineInfo.getId(),
+                                            planInfo.getId());
                                     }
                                 }
                             }
                             for (PlanInfo planInfo : baselineInfo.getUnacceptedPlans().values()) {
                                 if (planInfo.getId() == id) {
                                     idFound = true;
-                                    baselineSyncController.deletePlan(schemaName, baselineInfo, planInfo);
+                                    baselineSyncController.deletePlan(schemaName, baselineInfo.getId(),
+                                        planInfo.getId());
                                 }
                             }
                         }
@@ -396,7 +387,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
             case "DELETE_ALL": {
                 BaselineSyncController baselineSyncController = new BaselineSyncController();
                 for (BaselineInfo baselineInfo : planManager.getBaselineMap(schemaName).values()) {
-                    baselineSyncController.deleteBaseline(schemaName, baselineInfo);
+                    baselineSyncController.deleteBaseline(schemaName, baselineInfo.getId());
                 }
                 break;
             }

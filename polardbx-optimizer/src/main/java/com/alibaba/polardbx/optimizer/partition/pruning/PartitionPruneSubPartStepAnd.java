@@ -106,4 +106,11 @@ public class PartitionPruneSubPartStepAnd extends PartitionPruneStepCombine {
         return "SP_" + this.combineType.getSymbol();
     }
 
+    public PartitionPruneStep getPartStep() {
+        return partStep;
+    }
+
+    public PartitionPruneSubPartStepOr getSubPartStepOr() {
+        return subPartStepOr;
+    }
 }

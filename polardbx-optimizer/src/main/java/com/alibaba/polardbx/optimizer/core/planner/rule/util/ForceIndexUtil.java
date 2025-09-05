@@ -3,6 +3,8 @@ package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
@@ -14,10 +16,13 @@ import com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.index.TableScanFinder;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.DrdsRexFolder;
+import com.alibaba.polardbx.rule.TableRule;
 import com.clearspring.analytics.util.Lists;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
@@ -32,16 +37,23 @@ import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
 import org.apache.commons.collections.CollectionUtils;
-import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class ForceIndexUtil {
+    public static final int INDEX_MAX_LEN = 16;
 
     public static String genAutoForceIndex(LogicalView logicalView) {
         TableScan tableScan = getTableScan(logicalView);
@@ -77,7 +89,32 @@ public class ForceIndexUtil {
         return genAutoForceIndex(requiredUniqueColumnsCollector.build(), requiredColumnsCollector.build(), tm);
     }
 
-    private static TableScan getTableScan(LogicalView logicalView) {
+    public static SqlNode genForceSqlNode(String indexName) {
+        return new SqlNodeList(ImmutableList.of(
+            new SqlIndexHint(SqlLiteral.createCharString("FORCE INDEX", SqlParserPos.ZERO), null,
+                new SqlNodeList(ImmutableList.of(SqlLiteral.createCharString(
+                    SqlIdentifier.surroundWithBacktick(indexName), SqlParserPos.ZERO)),
+                    SqlParserPos.ZERO), SqlParserPos.ZERO)), SqlParserPos.ZERO);
+    }
+
+    public static SqlNode genPagingForceSqlNode(String indexName) {
+        return new SqlNodeList(ImmutableList.of(
+            new SqlIndexHint(SqlLiteral.createCharString("PAGING_FORCE INDEX", SqlParserPos.ZERO), null,
+                new SqlNodeList(ImmutableList.of(SqlLiteral.createCharString(
+                    SqlIdentifier.surroundWithBacktick(indexName), SqlParserPos.ZERO)),
+                    SqlParserPos.ZERO), SqlParserPos.ZERO)), SqlParserPos.ZERO);
+    }
+
+    public static SqlNode genIgnoreSqlNode(Collection<String> indexName) {
+        return new SqlNodeList(ImmutableList.of(
+            new SqlIndexHint(SqlLiteral.createCharString("IGNORE INDEX", SqlParserPos.ZERO), null,
+                new SqlNodeList(
+                    indexName.stream().map(x -> SqlLiteral.createCharString(
+                        SqlIdentifier.surroundWithBacktick(x), SqlParserPos.ZERO)).collect(Collectors.toList()),
+                    SqlParserPos.ZERO), SqlParserPos.ZERO)), SqlParserPos.ZERO);
+    }
+
+    public static TableScan getTableScan(LogicalView logicalView) {
         final ParamManager paramManager = PlannerContext.getPlannerContext(logicalView).getParamManager();
         if (!paramManager.getBoolean(ConnectionParams.ENABLE_AUTO_FORCE_INDEX)) {
             return null;
@@ -151,11 +188,12 @@ public class ForceIndexUtil {
         return bestIndex == null ? null : bestIndex.getPhysicalIndexName();
     }
 
-    private static class RequiredUniqueColumnsCollector extends RelShuttleImpl {
+    public static class RequiredUniqueColumnsCollector extends RelShuttleImpl {
         // columns list used in 'equal' or 'in'
         private final List<List<String>> equalColumnsList;
         private final RelMetadataQuery mq;
         private final PlannerContext plannerContext;
+        private final boolean collectSuccess;
 
         public RequiredUniqueColumnsCollector(TableScan tableScan, RelMetadataQuery mq, List<String> bkaColumns) {
             this.mq = mq;
@@ -164,94 +202,49 @@ public class ForceIndexUtil {
             if (CollectionUtils.isNotEmpty(bkaColumns)) {
                 equalColumnsList.add(bkaColumns);
             }
+            this.collectSuccess = ForceIndexUtil.getIndexableTableMeta(tableScan.getTable()) != null;
         }
 
         @Override
         public RelNode visit(LogicalFilter filter) {
             super.visit(filter);
-            try {
-                List<RexNode> conjunctions = RelOptUtil.conjunctions(filter.getCondition());
-                for (RexNode node : conjunctions) {
-                    if (!RexUtil.containsInputRef(node)) {
-                        continue;
-                    }
-                    if (!(node instanceof RexCall)) {
-                        continue;
-                    }
-                    RexCall call = (RexCall) node;
-                    if (call.getOperands().size() != 2) {
-                        continue;
-                    }
-                    RexNode leftRexNode = call.getOperands().get(0);
-                    RexNode rightRexNode = call.getOperands().get(1);
-                    switch (node.getKind()) {
-                    case IN:
-                        if (!(rightRexNode instanceof RexCall)) {
-                            break;
-                        }
-                        if (leftRexNode instanceof RexInputRef && rightRexNode
-                            .isA(SqlKind.ROW)) {
-                            if (DrdsRexFolder.fold(rightRexNode, plannerContext) != null) {
-                                addEqualColumnList(filter.getInput(), ImmutableList.of(leftRexNode));
-                                break;
-                            }
-                        }
-                        if (leftRexNode.isA(SqlKind.ROW) && leftRexNode instanceof RexCall && rightRexNode.isA(
-                            SqlKind.ROW)) {
-                            boolean leftRef = ((RexCall) leftRexNode).getOperands().stream()
-                                .allMatch(x -> x instanceof RexInputRef);
-                            if (leftRef && DrdsRexFolder.fold(rightRexNode, plannerContext) != null) {
-                                addEqualColumnList(filter.getInput(), ((RexCall) leftRexNode).getOperands());
-                                break;
-                            }
-                        }
-                        break;
-                    case EQUALS:
-                        // xx = xx
-                        if (leftRexNode instanceof RexInputRef && rightRexNode instanceof RexInputRef) {
-                            break;
-                        }
-                        // xx = ?
-                        if (leftRexNode instanceof RexInputRef &&
-                            DrdsRexFolder.fold(rightRexNode, plannerContext) != null) {
-                            addEqualColumnList(filter.getInput(), ImmutableList.of(leftRexNode));
-                            break;
-                        }
-                        // ? = xx
-                        if (rightRexNode instanceof RexInputRef &&
-                            DrdsRexFolder.fold(leftRexNode, plannerContext) != null) {
-                            addEqualColumnList(filter.getInput(), ImmutableList.of(rightRexNode));
-                            break;
-                        }
-                        //(xx,xx)=(?,?)
-                        if (leftRexNode.isA(SqlKind.ROW) && leftRexNode instanceof RexCall
-                            && rightRexNode.isA(SqlKind.ROW) && rightRexNode instanceof RexCall) {
-                            boolean leftRef = ((RexCall) leftRexNode).getOperands().stream()
-                                .allMatch(x -> x instanceof RexInputRef);
-                            boolean rightRef = ((RexCall) rightRexNode).getOperands().stream()
-                                .allMatch(x -> x instanceof RexInputRef);
-                            // (xx,xx)=(xx,xx)
-                            if (leftRef && rightRef) {
-                                break;
-                            }
-                            if (leftRef && DrdsRexFolder.fold(rightRexNode, plannerContext) != null) {
-                                addEqualColumnList(filter.getInput(), ((RexCall) leftRexNode).getOperands());
-                                break;
-                            }
-                            if (rightRef && DrdsRexFolder.fold(leftRexNode, plannerContext) != null) {
-                                addEqualColumnList(filter.getInput(), ((RexCall) rightRexNode).getOperands());
-                                break;
-                            }
-                        }
-                        break;
-                    default:
-                        break;
-                    }
+            SargAbleHandler sargAbleHandler = new SargAbleHandler(plannerContext) {
+                @Override
+                protected void handleUnaryRef(RexInputRef ref, RexCall call) {
                 }
-                return filter;
-            } catch (Util.FoundOne find) {
-                return filter;
+
+                @Override
+                protected void handleBinaryRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+                }
+
+                @Override
+                protected void handleTernaryRef(RexInputRef firstRex, RexNode leftRex, RexNode rightRex,
+                                                RexCall call) {
+                }
+
+                @Override
+                protected void handleInRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+                    addEqualColumnList(filter.getInput(), ImmutableList.of(leftRef));
+                }
+
+                @Override
+                protected void handleInVec(RexCall leftRex, RexNode rightRex, RexCall call) {
+                    addEqualColumnList(filter.getInput(), leftRex.getOperands());
+                }
+
+                protected void handleEqualRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+                    addEqualColumnList(filter.getInput(), ImmutableList.of(leftRef));
+                }
+
+                protected void handleEqualVec(RexCall leftRex, RexNode rightRex, RexCall call) {
+                    addEqualColumnList(filter.getInput(), leftRex.getOperands());
+                }
+            };
+
+            for (RexNode node : RelOptUtil.conjunctions(filter.getCondition())) {
+                sargAbleHandler.handleCondition(node);
             }
+            return filter;
         }
 
         private void addEqualColumnList(RelNode input, List<RexNode> references) {
@@ -260,8 +253,7 @@ public class ForceIndexUtil {
                 if (!(rexNode instanceof RexInputRef)) {
                     return;
                 }
-                RelColumnOrigin relColumnOrigin =
-                    mq.getColumnOrigin(input, ((RexInputRef) rexNode).getIndex());
+                RelColumnOrigin relColumnOrigin = mq.getColumnOrigin(input, ((RexInputRef) rexNode).getIndex());
                 if (relColumnOrigin == null) {
                     return;
                 }
@@ -270,8 +262,12 @@ public class ForceIndexUtil {
             equalColumnsList.add(builder.build());
         }
 
+        public List<List<String>> getEqualColumnsList() {
+            return equalColumnsList;
+        }
+
         RequiredUniqueColumns build() {
-            return new RequiredUniqueColumns(equalColumnsList);
+            return !collectSuccess ? null : new RequiredUniqueColumns(equalColumnsList);
         }
     }
 
@@ -344,7 +340,7 @@ public class ForceIndexUtil {
             this.plannerContext = PlannerContext.getPlannerContext(tableScan);
             equalColumnsList = Lists.newArrayList();
             orderByColumns = null;
-            collectSuccess = true;
+            collectSuccess = ForceIndexUtil.getIndexableTableMeta(tableScan.getTable()) != null;
             if (CollectionUtils.isNotEmpty(bkaColumns)) {
                 equalColumnsList.add(bkaColumns);
             }
@@ -362,7 +358,6 @@ public class ForceIndexUtil {
                 return filter;
             }
             try {
-
                 List<RexNode> conjunctions = RelOptUtil.conjunctions(filter.getCondition());
                 for (RexNode node : conjunctions) {
                     if (!RexUtil.containsInputRef(node)) {
@@ -631,6 +626,412 @@ public class ForceIndexUtil {
                 loc++;
             }
             return true;
+        }
+    }
+
+    public static Map<String, Integer> buildColumnarOrdinalMap(TableMeta tm) {
+        Map<String, Integer> columnOrd = Maps.newHashMap();
+        for (int i = 0; i < tm.getAllColumns().size(); i++) {
+            columnOrd.put(tm.getAllColumns().get(i).getName().toLowerCase(), i);
+        }
+        return columnOrd;
+    }
+
+    public static List<String> getSkNameList(TableMeta tm) {
+        String schemaName = tm.getSchemaName();
+        boolean isPartedTb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        List<String> sk = Lists.newArrayList();
+        if (isPartedTb) {
+            sk.addAll(tm.getPartitionInfo().getPartitionColumns());
+        } else {
+            TddlRuleManager tddlRuleManager = OptimizerContext.getContext(schemaName).getRuleManager();
+            TableRule rule = tddlRuleManager.getTableRule(tm.getTableName());
+            if (rule == null) {
+                return null;
+            }
+            if (CollectionUtils.isNotEmpty(rule.getDbPartitionKeys())) {
+                sk.addAll(rule.getDbPartitionKeys());
+            }
+            if (CollectionUtils.isNotEmpty(rule.getTbPartitionKeys())) {
+                sk.addAll(rule.getTbPartitionKeys());
+            }
+        }
+
+        return sk;
+    }
+
+    public static List<Integer> getSkList(TableMeta tm, Map<String, Integer> columnOrd) {
+        // build sk list
+        List<String> sk = getSkNameList(tm);
+        if (sk == null) {
+            return null;
+        }
+        List<Integer> skList = Lists.newArrayList();
+        for (String column : sk) {
+            int loc = columnOrd.getOrDefault(column.toLowerCase(), -1);
+            if (loc >= 0) {
+                if (!skList.contains(loc)) {
+                    skList.add(loc);
+                }
+            }
+        }
+        return skList;
+    }
+
+    public static TableMeta getIndexableTableMeta(RelOptTable table) {
+        TableMeta tm = CBOUtil.getTableMeta(table);
+        if (tm == null || tm.containFullTextIndex()) {
+            return null;
+        }
+        return tm;
+    }
+
+    public static class BestIndex {
+        IndexMeta indexMeta;
+        int eqPreLen;
+        double cardinality;
+        boolean coverSk;
+
+        public BestIndex(IndexMeta indexMeta, int eqPreLen, double cardinality, boolean coverSk) {
+            this.indexMeta = indexMeta;
+            this.eqPreLen = eqPreLen;
+            this.cardinality = cardinality;
+            this.coverSk = coverSk;
+        }
+
+        /**
+         * Finds a better index based on the given index information and returns the best index.
+         * This method aims to decide whether to use the current index or the new index based on the comparison of index performance.
+         *
+         * @param newIndexMeta The metadata of the new index, containing information such as index columns.
+         * @param newEqPreLen The length of the new index's prefix matching columns, used to evaluate index efficiency.
+         * @param newCoverSk Whether the new index covers the required columns, affecting query performance.
+         * @return Returns the BestIndex object representing the best index choice.
+         */
+        public BestIndex findBetterIndex(IndexMeta newIndexMeta, int newEqPreLen, double newCardinality,
+                                         boolean newCoverSk) {
+            if (indexMeta == null) {
+                return new BestIndex(newIndexMeta, newEqPreLen, newCardinality, newCoverSk);
+            }
+            // If the prefix length of the new index is greater than the current index, the new index is better
+            if (newEqPreLen > eqPreLen) {
+                return new BestIndex(newIndexMeta, newEqPreLen, newCardinality, newCoverSk);
+            }
+            // If the prefix lengths are equal, further comparison is needed
+            if (newEqPreLen == eqPreLen) {
+                if (cardinality < 0 || newCardinality < 0) {
+                    if (indexMeta.getKeyColumns().size() > newIndexMeta.getKeyColumns().size()) {
+                        return new BestIndex(newIndexMeta, newEqPreLen, newCardinality, newCoverSk);
+                    }
+                    if (indexMeta.getKeyColumns().size() == newIndexMeta.getKeyColumns().size()
+                        && newCoverSk && !coverSk) {
+                        return new BestIndex(newIndexMeta, newEqPreLen, newCardinality, newCoverSk);
+                    }
+                    return this;
+                }
+                if (newCardinality > 1.1 * cardinality) {
+                    return new BestIndex(newIndexMeta, newEqPreLen, newCardinality, newCoverSk);
+                }
+                if (newCardinality > 0.9 * cardinality) {
+                    if (indexMeta.getKeyColumns().size() > newIndexMeta.getKeyColumns().size()) {
+                        return new BestIndex(newIndexMeta, newEqPreLen, newCardinality, newCoverSk);
+                    }
+                    if (indexMeta.getKeyColumns().size() == newIndexMeta.getKeyColumns().size()
+                        && newCoverSk && !coverSk) {
+                        return new BestIndex(newIndexMeta, newEqPreLen, newCardinality, newCoverSk);
+                    }
+                }
+            }
+            // If the above conditions are not met, the current index remains the best choice
+            return this;
+        }
+
+        public IndexMeta getIndexMeta() {
+            return indexMeta;
+        }
+
+        public int getEqPreLen() {
+            return eqPreLen;
+        }
+    }
+
+    public abstract static class SargAbleHandler {
+
+        PlannerContext plannerContext;
+
+        public SargAbleHandler(PlannerContext plannerContext) {
+            this.plannerContext = plannerContext;
+        }
+
+        public void handleCondition(RexNode condition) {
+            if (!(condition instanceof RexCall)) {
+                return;
+            }
+            RexCall call = (RexCall) condition;
+            switch (call.getOperator().getKind()) {
+            case IN:
+                handleIn(call);
+                return;
+            case EQUALS:
+                handleEquals(call);
+                return;
+            case NOT_EQUALS:
+                handleNotEquals(call);
+                return;
+            case LESS_THAN:
+                handleLessThan(call);
+                return;
+            case LESS_THAN_OR_EQUAL:
+                handleLessThanOrEqual(call);
+                return;
+            case GREATER_THAN:
+                handleGreaterThan(call);
+                return;
+            case GREATER_THAN_OR_EQUAL:
+                handleGreaterThanOrEqual(call);
+                return;
+            case BETWEEN:
+                handleBetween(call);
+                return;
+            case IS_NULL:
+                handleIsNull(call);
+                return;
+            default:
+                handleDefault(call);
+            }
+        }
+
+        protected void handleIn(RexCall call) {
+            if (call.getOperands().size() != 2) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            if (firstRex instanceof RexInputRef && secondRex.isA(SqlKind.ROW)) {
+                if (DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                    checkRefValid((RexInputRef) firstRex);
+                    handleInRef((RexInputRef) firstRex, secondRex, call);
+                    return;
+                }
+            }
+            if (firstRex.isA(SqlKind.ROW) && firstRex instanceof RexCall
+                && secondRex.isA(SqlKind.ROW)) {
+                boolean leftRef = ((RexCall) firstRex).getOperands().stream()
+                    .allMatch(x -> x instanceof RexInputRef && checkRefValid((RexInputRef) x));
+                if (leftRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                    handleInVec((RexCall) firstRex, secondRex, call);
+                }
+            }
+        }
+
+        protected void handleEquals(RexCall call) {
+            if (call.getOperands().size() != 2) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            // xx = ?
+            if (firstRex instanceof RexInputRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) firstRex);
+                handleEqualRef((RexInputRef) firstRex, secondRex, call);
+                return;
+            }
+            // ? = xx
+            if (secondRex instanceof RexInputRef && DrdsRexFolder.fold(firstRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) secondRex);
+                handleEqualRef((RexInputRef) secondRex, firstRex, call);
+                return;
+            }
+            //(xx,xx)=(?,?)
+            if (firstRex.isA(SqlKind.ROW) && secondRex.isA(SqlKind.ROW)
+                && firstRex instanceof RexCall && secondRex instanceof RexCall) {
+                boolean leftVecRef = ((RexCall) firstRex).getOperands().stream()
+                    .allMatch(x -> x instanceof RexInputRef && checkRefValid((RexInputRef) x));
+                boolean rightVecRef = ((RexCall) secondRex).getOperands().stream()
+                    .allMatch(x -> x instanceof RexInputRef && checkRefValid((RexInputRef) x));
+                // (xx,xx)=(xx,xx)
+                if (leftVecRef && rightVecRef) {
+                    return;
+                }
+                if (leftVecRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                    handleEqualVec((RexCall) firstRex, secondRex, call);
+                    return;
+                }
+                if (rightVecRef && DrdsRexFolder.fold(firstRex, plannerContext) != null) {
+                    handleEqualVec((RexCall) secondRex, firstRex, call);
+                }
+            }
+        }
+
+        protected void handleNotEquals(RexCall call) {
+            if (call.getOperands().size() != 2) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            // xx != ?
+            if (firstRex instanceof RexInputRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) firstRex);
+                handleNotEqualRef((RexInputRef) firstRex, secondRex, call);
+                return;
+            }
+            // ? != xx
+            if (secondRex instanceof RexInputRef && DrdsRexFolder.fold(firstRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) secondRex);
+                handleNotEqualRef((RexInputRef) secondRex, firstRex, call);
+            }
+        }
+
+        protected void handleLessThan(RexCall call) {
+            if (call.getOperands().size() != 2) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            if (firstRex instanceof RexInputRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) firstRex);
+                handleLessThanRef((RexInputRef) firstRex, secondRex, call);
+                return;
+            }
+            if (secondRex instanceof RexInputRef && DrdsRexFolder.fold(firstRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) secondRex);
+                handleGreaterThanRef((RexInputRef) secondRex, firstRex, call);
+            }
+        }
+
+        protected void handleGreaterThan(RexCall call) {
+            if (call.getOperands().size() != 2) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            if (firstRex instanceof RexInputRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) firstRex);
+                handleGreaterThanRef((RexInputRef) firstRex, secondRex, call);
+                return;
+            }
+            if (secondRex instanceof RexInputRef && DrdsRexFolder.fold(firstRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) secondRex);
+                handleLessThanRef((RexInputRef) secondRex, firstRex, call);
+            }
+        }
+
+        protected void handleLessThanOrEqual(RexCall call) {
+            if (call.getOperands().size() != 2) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            if (firstRex instanceof RexInputRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) firstRex);
+                handleLessThanOrEqualRef((RexInputRef) firstRex, secondRex, call);
+                return;
+            }
+            if (secondRex instanceof RexInputRef && DrdsRexFolder.fold(firstRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) secondRex);
+                handleGreaterThanOrEqualRef((RexInputRef) secondRex, firstRex, call);
+            }
+        }
+
+        protected void handleGreaterThanOrEqual(RexCall call) {
+            if (call.getOperands().size() != 2) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            if (firstRex instanceof RexInputRef && DrdsRexFolder.fold(secondRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) firstRex);
+                handleGreaterThanOrEqualRef((RexInputRef) firstRex, secondRex, call);
+                return;
+            }
+            if (secondRex instanceof RexInputRef && DrdsRexFolder.fold(firstRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) secondRex);
+                handleGreaterThanOrEqualRef((RexInputRef) secondRex, firstRex, call);
+            }
+        }
+
+        protected void handleBetween(RexCall call) {
+            if (call.getOperands().size() != 3) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            RexNode secondRex = call.getOperands().get(1);
+            RexNode thirdRex = call.getOperands().get(2);
+            if (firstRex instanceof RexInputRef
+                && DrdsRexFolder.fold(secondRex, plannerContext) != null
+                && DrdsRexFolder.fold(thirdRex, plannerContext) != null) {
+                checkRefValid((RexInputRef) firstRex);
+                handleBetweenRef((RexInputRef) firstRex, secondRex, thirdRex, call);
+            }
+        }
+
+        protected void handleIsNull(RexCall call) {
+            if (call.getOperands().size() != 1) {
+                return;
+            }
+            RexNode firstRex = call.getOperands().get(0);
+            if (firstRex instanceof RexInputRef) {
+                checkRefValid((RexInputRef) firstRex);
+                handleIsNullRef((RexInputRef) firstRex, call);
+            }
+        }
+
+        protected void handleDefault(RexCall call) {
+            // do nothing by default
+        }
+
+        protected boolean checkRefValid(RexInputRef rexInputRef) {
+            return true;
+        }
+
+        protected abstract void handleUnaryRef(RexInputRef ref, RexCall call);
+
+        protected abstract void handleBinaryRef(RexInputRef leftRef, RexNode rightRex, RexCall call);
+
+        protected abstract void handleTernaryRef(RexInputRef firstRex, RexNode leftRex, RexNode rightRex, RexCall call);
+
+        protected void handleInRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+            handleBinaryRef(leftRef, rightRex, call);
+        }
+
+        protected void handleInVec(RexCall leftRex, RexNode rightRex, RexCall call) {
+            // do nothing by default
+        }
+
+        protected void handleEqualRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+            handleBinaryRef(leftRef, rightRex, call);
+        }
+
+        protected void handleEqualVec(RexCall leftRex, RexNode rightRex, RexCall call) {
+            // do nothing by default
+        }
+
+        protected void handleNotEqualRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+            handleBinaryRef(leftRef, rightRex, call);
+        }
+
+        protected void handleLessThanRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+            handleBinaryRef(leftRef, rightRex, call);
+        }
+
+        protected void handleLessThanOrEqualRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+            handleBinaryRef(leftRef, rightRex, call);
+        }
+
+        protected void handleGreaterThanRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+            handleBinaryRef(leftRef, rightRex, call);
+        }
+
+        protected void handleGreaterThanOrEqualRef(RexInputRef leftRef, RexNode rightRex, RexCall call) {
+            handleBinaryRef(leftRef, rightRex, call);
+        }
+
+        protected void handleBetweenRef(RexInputRef ref, RexNode lowerRex, RexNode upperRex, RexCall call) {
+            handleTernaryRef(ref, lowerRex, upperRex, call);
+        }
+
+        protected void handleIsNullRef(RexInputRef leftRef, RexCall call) {
+            handleUnaryRef(leftRef, call);
         }
     }
 }

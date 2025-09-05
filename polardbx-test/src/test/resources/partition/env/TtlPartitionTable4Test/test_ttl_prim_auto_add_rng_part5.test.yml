@@ -1,0 +1,205 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION=true;
+
+create table auto_rng_part_tc5_t1(
+a int not null auto_increment,
+b decimal(32,0) not null,
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than(1000),
+partition p2 values less than(2000),
+partition p3 values less than(3000)
+)
+;
+
+alter table auto_rng_part_tc5_t1 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='PARTITION', ttl_part_interval=interval(1000, NUMBER);
+show create table auto_rng_part_tc5_t1;
+
+alter table auto_rng_part_tc5_t1 cleanup expired data;
+show create table auto_rng_part_tc5_t1;
+
+alter table auto_rng_part_tc5_t1 modify ttl set  ttl_part_interval=interval(1000000, NUMBER);
+alter table auto_rng_part_tc5_t1 drop partition p1;
+show create table auto_rng_part_tc5_t1;
+
+alter table auto_rng_part_tc5_t1 cleanup expired data;
+show create table auto_rng_part_tc5_t1;
+
+alter table auto_rng_part_tc5_t1 drop partition p2;
+show create table auto_rng_part_tc5_t1;
+
+alter table auto_rng_part_tc5_t1 cleanup expired data;
+show create table auto_rng_part_tc5_t1;
+
+
+create table auto_rng_part_tc5_t2(
+a int not null auto_increment,
+b bigint not null,
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than(1000),
+partition p2 values less than(2000),
+partition p3 values less than(3000)
+)
+;
+alter table auto_rng_part_tc5_t2 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='PARTITION', ttl_part_interval=interval(10000, NUMBER),ARCHIVE_TABLE_PRE_ALLOCATE = 2,ARCHIVE_TABLE_POST_ALLOCATE = 8;
+show create table auto_rng_part_tc5_t2;
+
+alter table auto_rng_part_tc5_t2 cleanup expired data;
+show create table auto_rng_part_tc5_t2;
+
+alter table auto_rng_part_tc5_t2 drop partition p1;
+show create table auto_rng_part_tc5_t2;
+
+alter table auto_rng_part_tc5_t2 cleanup expired data;
+show create table auto_rng_part_tc5_t2;
+
+alter table auto_rng_part_tc5_t2 cleanup expired data;
+show create table auto_rng_part_tc5_t2;
+
+create table auto_rng_part_tc5_t2_bk like auto_rng_part_tc5_t2 engine='columnar' archive_mode='ttl';
+
+
+drop table if exists auto_rng_part_tc5_t3;
+create table auto_rng_part_tc5_t3(
+a int not null auto_increment,
+b bigint unsigned not null,
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than(1000),
+partition p2 values less than(2000),
+partition p3 values less than(3000)
+)
+;
+alter table auto_rng_part_tc5_t3 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='PARTITION', ttl_part_interval=interval(10000, NUMBER),ARCHIVE_TABLE_PRE_ALLOCATE = 2,ARCHIVE_TABLE_POST_ALLOCATE = 8;
+show create table auto_rng_part_tc5_t3;
+
+alter table auto_rng_part_tc5_t3 cleanup expired data;
+show create table auto_rng_part_tc5_t3;
+
+create table auto_rng_part_tc5_t3_bk like auto_rng_part_tc5_t3 engine='columnar' archive_mode='ttl';
+
+alter table auto_rng_part_tc5_t3 add partition
+(
+ partition p80000 values less than(80000),
+ partition p90000 values less than(90000),
+ partition p100000 values less than(100000)
+);
+alter table auto_rng_part_tc5_t3 cleanup expired data;
+alter table auto_rng_part_tc5_t3 add partition
+(
+partition p120000 values less than(120000)
+);
+
+create table auto_rng_part_tc5_t9(
+a int not null auto_increment,
+b int not null,
+primary key(a)
+)
+partition by key(a) 
+partitions 2
+subpartition by range columns(b)
+(
+subpartition sp1 values less than(1000),
+subpartition sp2 values less than(2000),
+subpartition sp3 values less than(3000),
+subpartition spm values less than(maxvalue)
+)
+;
+
+alter table auto_rng_part_tc5_t9 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='SUBPARTITION', ttl_part_interval=interval(1000, NUMBER);
+show create table auto_rng_part_tc5_t9;
+
+alter table auto_rng_part_tc5_t9 cleanup expired data;
+show create table auto_rng_part_tc5_t9;
+
+alter table auto_rng_part_tc5_t9 drop subpartition sp1;
+show create table auto_rng_part_tc5_t9;
+
+alter table auto_rng_part_tc5_t9 cleanup expired data;
+show create table auto_rng_part_tc5_t9;
+
+
+
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+
+drop table if exists auto_rng_part_tc5_t10;
+create table if not exists auto_rng_part_tc5_t10(
+a int not null auto_increment,
+b datetime not null,
+primary key(a)
+)
+partition by key(a)
+partitions 2
+subpartition by range columns(b)
+(
+subpartition sp20240501 values less than('2024-01-01'),
+subpartition sp20240601 values less than('2024-02-02'),
+subpartition sp20240701 values less than('2024-03-03'),
+subpartition sp20240801 values less than('2024-04-04')
+)
+;
+
+alter table auto_rng_part_tc5_t10 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='SUBPARTITION', ttl_part_interval=interval(1, MONTH), archive_table_pre_allocate = 2,archive_table_post_allocate = 8;
+
+alter table auto_rng_part_tc5_t10 cleanup expired data;
+
+show create table auto_rng_part_tc5_t10;
+
+create table auto_rng_part_tc5_t10_bk like auto_rng_part_tc5_t10 engine='columnar' archive_mode='ttl';
+
+show create table auto_rng_part_tc5_t10;
+alter table auto_rng_part_tc5_t10 add subpartition
+(
+subpartition sp202503 values less than('2025-02-05')
+);
+
+show create table auto_rng_part_tc5_t10;
+
+
+alter table auto_rng_part_tc5_t10 add subpartition
+(
+subpartition sp202507 values less than('2025-07-01')
+);
+
+
+
+show create table auto_rng_part_tc5_t10;
+
+
+alter table auto_rng_part_tc5_t10 cleanup expired data;
+
+show create table auto_rng_part_tc5_t10;
+
+alter table auto_rng_part_tc5_t10 drop subpartition sp20240501,sp20240601,sp20240701,sp20240801;
+alter table auto_rng_part_tc5_t10 drop subpartition `sp20240501@01`;
+
+show create table auto_rng_part_tc5_t10;
+alter table auto_rng_part_tc5_t10 cleanup expired data;
+show create table auto_rng_part_tc5_t10;
+
+alter table auto_rng_part_tc5_t10 modify ttl set ttl_cleanup='ON';
+show create table auto_rng_part_tc5_t10;
+
+drop table auto_rng_part_tc5_t1;
+drop table auto_rng_part_tc5_t2;
+drop table auto_rng_part_tc5_t3;
+drop table auto_rng_part_tc5_t9;
+drop table auto_rng_part_tc5_t10;
+
+

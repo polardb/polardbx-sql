@@ -889,7 +889,7 @@ public class HashJoinTest extends BaseExecTest {
         Executor exec =
             mockParallelHashJoinExec(outerInput, innerInput, JoinRelType.SEMI, false, joinKeys, null, null,
                 context, true, false);
-        SingleExecTest test = new SingleExecTest.Builder(exec, innerInput).build();
+        SingleExecTest test = new SingleExecTest.Builder(exec, outerInput).build();
         test.exec();
         assertExecResultByRow(test.result(), Collections.emptyList(), false);
     }

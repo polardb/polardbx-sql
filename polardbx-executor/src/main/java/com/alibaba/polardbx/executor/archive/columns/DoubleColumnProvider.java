@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.archive.columns;
 
 import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
-import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.archive.pruning.OssAggPruner;
@@ -38,6 +37,7 @@ import org.apache.orc.DoubleColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
@@ -129,12 +129,12 @@ class DoubleColumnProvider implements ColumnProvider<Double> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
+        ByteBuffer bytes = row.getBytes(columnId);
         blockBuilder.writeDouble(convertFromBinaryToDouble(dataType, bytes));
     }
 
-    private double convertFromBinaryToDouble(DataType dataType, byte[] bytes) {
-        long result = ColumnProvider.longFromByte(bytes, bytes.length);
+    private double convertFromBinaryToDouble(DataType dataType, ByteBuffer bytes) {
+        long result = ColumnProvider.longFromByte(bytes);
         return Double.longBitsToDouble(result);
     }
 

@@ -10,6 +10,7 @@ import com.google.common.collect.ImmutableMap;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.COLUMNAR_AUTO_SNAPSHOT_CONFIG;
 import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.COLUMNAR_BACKUP;
 import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.COLUMNAR_FLUSH;
 import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.COLUMNAR_GENERATE_SNAPSHOTS;
@@ -33,6 +34,7 @@ public class InnerProcedureHandler {
             .put(COLUMNAR_SET_CONFIG, new ColumnarSetConfigProcedure())
             .put(COLUMNAR_ROLLBACK, new ColumnarRollbackProcedure())
             .put(COLUMNAR_GENERATE_SNAPSHOTS, new ColumnarGenerateSnapshots())
+            .put(COLUMNAR_AUTO_SNAPSHOT_CONFIG, new ColumnarAutoSnapshotConfigProcedure())
             .build();
     }
 

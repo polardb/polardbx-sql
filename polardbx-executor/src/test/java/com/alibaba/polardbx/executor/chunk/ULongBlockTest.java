@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.ULongType;
 import io.airlift.slice.DynamicSliceOutput;
@@ -35,7 +36,8 @@ public class ULongBlockTest extends BaseBlockTest {
     @Test
     public void testSizeInBytes() {
         ULongBlock block = new ULongBlock(new ULongType(), 1024);
-        Assert.assertEquals(9216, block.getElementUsedBytes());
+        MemoryCountable.checkDeviation(block, .05d, true);
+        Assert.assertEquals(9304, block.getElementUsedBytes());
     }
 
     @Test
@@ -69,7 +71,9 @@ public class ULongBlockTest extends BaseBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         Block block = blockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertEquals(values.length, block.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -95,6 +99,8 @@ public class ULongBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+        MemoryCountable.checkDeviation(anotherBuilder, .05d, true);
+        MemoryCountable.checkDeviation(anotherBuilder.build(), .05d, true);
     }
 
     @Test
@@ -107,7 +113,10 @@ public class ULongBlockTest extends BaseBlockTest {
         blockBuilder.writeUInt64(UInt64.fromLong(-2L));
         blockBuilder.writeObject(null);
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
+
         ULongBlock block = (ULongBlock) blockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
         ULongBlockEncoding encoding = new ULongBlockEncoding();
         SliceOutput output = new DynamicSliceOutput(size);
 
@@ -119,6 +128,7 @@ public class ULongBlockTest extends BaseBlockTest {
         for (int i = 0; i < size; i++) {
             Assert.assertEquals(block.getObject(i), block1.getObject(i));
         }
+        MemoryCountable.checkDeviation(block1, .05d, true);
     }
 
     @Test
@@ -134,7 +144,9 @@ public class ULongBlockTest extends BaseBlockTest {
         for (int i = 0; i < count; i++) {
             ulongBlock.writePositionTo(i, builder2);
         }
+        MemoryCountable.checkDeviation(builder2, .05d, true);
         ULongBlock newBlock = (ULongBlock) builder2.build();
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
         Assert.assertSame(DataTypes.ULongType, newBlock.getType());
         int[] hashes = newBlock.hashCodeVector();
         int[] hashes2 = new int[hashes.length];
@@ -152,6 +164,7 @@ public class ULongBlockTest extends BaseBlockTest {
         ULongBlock newBlock2 = new ULongBlock(DataTypes.ULongType, count);
         newBlock.shallowCopyTo(newBlock2);
         Assert.assertSame(newBlock.longArray(), newBlock2.longArray());
+        MemoryCountable.checkDeviation(newBlock2, .05d, true);
 
         int[] sel = new int[] {0, 1, 2, 3, 4, 11, 12, 13, 14};
         ULongBlock newBlock3 = new ULongBlock(DataTypes.ULongType, count);
@@ -172,5 +185,6 @@ public class ULongBlockTest extends BaseBlockTest {
         // compact should work
         newBlock.compact(sel);
         Assert.assertEquals(sel.length, newBlock.getPositionCount());
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
     }
 }

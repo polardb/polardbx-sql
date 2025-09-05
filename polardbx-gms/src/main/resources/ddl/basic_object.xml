@@ -262,6 +262,7 @@
               `visible` bigint not null default '0' comment '0:VISIBLE,1:INVISIBLE',
               `visit_frequency` bigint unsigned not null default 0,
               `last_access_time` datetime default null,
+              `lacking_local_index` bigint not null default '0' comment '0:NO_LACKING,1:LACKING',
               primary key (`id`),
               unique key (`table_schema`, `table_name`, `index_name`, `column_name`),
               key `i_index_name_version` (`index_name`, `version`),
@@ -284,6 +285,10 @@
         <Change><![CDATA[
             alter table `indexes` add column `visit_frequency` bigint unsigned not null default 0,
             add column `last_access_time` datetime default null
+        ]]>
+        </Change>>
+        <Change><![CDATA[
+            alter table `indexes` add column `lacking_local_index` bigint not null default '0' comment '0:NO_LACKING,1:LACKING'
         ]]>
         </Change>>
     </SystemTable>
@@ -588,7 +593,7 @@
               `status` bigint(11) NOT NULL DEFAULT 1 COMMENT '0 for disable, 1 for running, 2 for read only',
               `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
               `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              `endpoint_ordinal` bigint NOT NULL DEFAULT 0 COMMENT '0 use external_endpoint, 1 use internal_classic_endpoint, 2 use internal_vpc_endpoint',
+              `endpoint_ordinal` bigint NOT NULL DEFAULT 2 COMMENT '0 use external_endpoint, 1 use internal_classic_endpoint, 2 use internal_vpc_endpoint',
               PRIMARY KEY (`id`),
               UNIQUE KEY `file_uri` (`file_uri`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8
@@ -604,6 +609,11 @@
         <Change><![CDATA[
             alter table `file_storage_info` add column `endpoint_ordinal` bigint NOT NULL DEFAULT 0 COMMENT '0 use external_endpoint, 1 use internal_classic_endpoint, 2 use internal_vpc_endpoint'
         ]]></Change>
+
+        <Change><![CDATA[
+            alter table `file_storage_info` modify column `endpoint_ordinal` bigint NOT NULL DEFAULT 2 COMMENT '0 use external_endpoint, 1 use internal_classic_endpoint, 2 use internal_vpc_endpoint'
+        ]]></Change>
+
     </SystemTable>
 
     <SystemTable name="file_storage_files_meta">
@@ -617,6 +627,22 @@
               KEY `idx_commit_ts`(`commit_ts`),
               KEY `idx_remove_ts`(`remove_ts`),
               KEY `file_name`(`file_name`(255)),
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="rebalance_external_solution">
+        <Create><![CDATA[
+            CREATE TABLE `rebalance_external_solution` (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `schema_name` varchar(128) not null,
+              `storage_pool_name` varchar(128) not null,
+              `table_group_name` varchar(128) not null,
+              `solution` longtext not null,
+              `invisible` bigint(11) not null default '0' comment '0:PUBLIC,1:INVISIBLE',
+              `extra` text,
+              KEY `idx`(`schema_name`, `storage_pool_name`, `table_group_name`),
               PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8
         ]]></Create>

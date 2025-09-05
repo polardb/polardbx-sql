@@ -1,0 +1,35 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists `erp_out_detail`
+CREATE TABLE `erp_out_detail` (
+`id` bigint(20) NOT NULL COMMENT '自增主键',
+`sheet_no` varchar(21) COLLATE utf8mb4_bin DEFAULT NULL,
+`del_flag` tinyint(1) UNSIGNED ZEROFILL DEFAULT '0'
+) PARTITION BY KEY(`id`)
+PARTITIONS 4
+drop table if exists `erp_out_master`
+CREATE TABLE `erp_out_master` (
+`id` bigint(20) NOT NULL COMMENT '自增主键',
+`sheet_no` varchar(21) COLLATE utf8mb4_bin DEFAULT NULL,
+`del_flag` tinyint(1) UNSIGNED ZEROFILL DEFAULT '0',
+`approve_flag` varchar(21) COLLATE utf8mb4_bin DEFAULT NULL
+) PARTITION BY KEY(`id`)
+PARTITIONS 4
+show create table erp_out_master
+Table,Create Table
+erp_out_master,CREATE TABLE `erp_out_master` (
+	`id` bigint(20) NOT NULL COMMENT '自增主键',
+	`sheet_no` varchar(21) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+	`del_flag` tinyint(1) UNSIGNED ZEROFILL DEFAULT '0',
+	`approve_flag` varchar(21) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+	KEY `auto_shard_key_id` USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 4
+insert into erp_out_detail (id, sheet_no, del_flag) values (1,1,1)
+/*+TDDL:enable_hash_join=false enable_sort_merge_join=false bka_join(erp_out_detail, erp_out_master)*/select `d`.`sheet_no` from
+`erp_out_detail` `d`
+LEFT JOIN `erp_out_master` `m` ON
+m.`sheet_no` = `d`.`sheet_no` and
+`m`.`approve_flag`=`d`.`del_flag` and `d`.`del_flag`=`m`.`del_flag`
+sheet_no
+1

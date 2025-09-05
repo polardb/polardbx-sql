@@ -4,13 +4,16 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.scheduler.SchedulerJobStatus;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlJobUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.exception.TtlJobRuntimeException;
-import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlLoggerUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.TtlLoggerUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.scheduler.DefaultQuartzCronTrigger;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import com.cronutils.descriptor.CronDescriptor;
@@ -20,8 +23,11 @@ import com.cronutils.parser.CronParser;
 import lombok.Getter;
 
 import java.sql.Connection;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 import static com.cronutils.model.CronType.QUARTZ;
 
@@ -60,6 +66,7 @@ public class AlterTtlInfoTask extends BaseGmsTask {
                 newTtlInfo.getTtlInfoRecord(),
                 oldTtlTblSchema,
                 oldTtlTblName);
+            boolean enableTtlScheduleOnOldTtlInfo = oldTtlInfo.isEnableTtlSchedule();
             boolean enableTtlScheduleOnNewTtlInfo = newTtlInfo.isEnableTtlSchedule();
             String cronExpr = newTtlInfo.getTtlInfoRecord().getTtlCron();
             if (cronExpr == null) {
@@ -82,12 +89,25 @@ public class AlterTtlInfoTask extends BaseGmsTask {
                 CronParser quartzCronParser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(QUARTZ));
                 Cron cron = quartzCronParser.parse(cronExpr);
                 cron.validate();
-                String cronTimeZoneStr = newTtlInfo.getTtlInfoRecord().getTtlTimezone();
+
+                String oldCronExpr = scheduledJobsRecord.getScheduleExpr();
+                boolean modifiedCronExpr = !(cronExpr.equalsIgnoreCase(oldCronExpr));
+                boolean openTtlJobSchedule = !enableTtlScheduleOnOldTtlInfo && enableTtlScheduleOnNewTtlInfo;
+
+                String cronTimeZoneStr = TtlInfoRecord.TTL_JOB_CRON_DEFAULT_TIME_ZONE;
                 CronDescriptor descriptor = CronDescriptor.instance(Locale.US);
                 scheduledJobsRecord.setScheduleComment(descriptor.describe(cron));
                 scheduledJobsRecord.setStatus(stateVal);
                 scheduledJobsRecord.setScheduleExpr(cronExpr);
                 scheduledJobsRecord.setTimeZone(cronTimeZoneStr);
+
+                if (modifiedCronExpr || openTtlJobSchedule) {
+                    Optional<ZonedDateTime> newNextFiredTime =
+                        DefaultQuartzCronTrigger.calcNextFireTimeByNow(scheduledJobsRecord);
+                    long nextFiredTimeSec = newNextFiredTime.get().toEpochSecond();
+                    scheduledJobsRecord.setNextFireTime(nextFiredTimeSec);
+                }
+
                 TableMetaChanger.updateScheduledJob(metaDbConnection, scheduledJobsRecord);
                 if (!enableTtlScheduleOnNewTtlInfo) {
                     TableMetaChanger.removeTtlFiredScheduledJobs(metaDbConnection, schemaName, logicalTableName);
@@ -96,7 +116,7 @@ public class AlterTtlInfoTask extends BaseGmsTask {
             }
         } catch (Throwable ex) {
             TtlLoggerUtil.TTL_TASK_LOGGER.error(ex);
-            throw new TtlJobRuntimeException(ex);
+            throw new TtlJobRuntimeException(ex, ex.getMessage());
         }
     }
 }

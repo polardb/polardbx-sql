@@ -21,7 +21,6 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.scheduler.executor.spm.SPMBaseLineSyncScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticHllScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticInfoSchemaTablesScheduleJob;
-import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticRowCountCollectionScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticSampleCollectionScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.trx.GenerateColumnarSnapshotScheduledJob;
@@ -79,10 +78,10 @@ public abstract class SchedulerExecutor {
             return new SPMBaseLineSyncScheduledJob(job);
         }
 
-        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
-            ScheduledJobExecutorType.STATISTIC_ROWCOUNT_COLLECTION.name())) {
-            return new StatisticRowCountCollectionScheduledJob(job);
-        }
+//        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+//            ScheduledJobExecutorType.STATISTIC_ROWCOUNT_COLLECTION.name())) {
+//            return new StatisticRowCountCollectionScheduledJob(job);
+//        }
 
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
             ScheduledJobExecutorType.STATISTIC_SAMPLE_SKETCH.name())) {

@@ -48,12 +48,14 @@ public final class LogicalTableModify extends TableModify {
    * <p>Use {@link #create} unless you know what you're doing.
    */
   public LogicalTableModify(RelOptCluster cluster, RelTraitSet traitSet,
-      RelOptTable table, Prepare.CatalogReader schema, RelNode input,
-      Operation operation, List<String> updateColumnList,
-      List<RexNode> sourceExpressionList, boolean flattened,
-      int batchSize, Set<Integer> appendedColumnIndex, SqlNodeList hints, TableInfo tableInfo) {
+                            RelOptTable table, Prepare.CatalogReader schema, RelNode input,
+                            Operation operation, List<String> updateColumnList,
+                            List<RexNode> sourceExpressionList, boolean flattened,
+                            int batchSize, Set<Integer> appendedColumnIndex, SqlNodeList hints,
+                            boolean sourceSelect,
+                            TableInfo tableInfo) {
     super(cluster, traitSet, table, schema, input, operation, updateColumnList,
-        sourceExpressionList, flattened, batchSize, appendedColumnIndex, hints, tableInfo);
+        sourceExpressionList, flattened, batchSize, appendedColumnIndex, hints, sourceSelect, tableInfo);
     this.extraTargetTables = new ArrayList<>();
     this.extraTargetColumns = new ArrayList<>();
   }
@@ -85,10 +87,10 @@ public final class LogicalTableModify extends TableModify {
                             Operation operation, List<String> updateColumnList,
                             List<RexNode> sourceExpressionList, boolean flattened,
                             List<String> keywords, int batchSize, Set<Integer> appendedColumnIndex,
-                            SqlNodeList hints, OptimizerHint hintContext, TableInfo tableInfo,
-                            List<RelOptTable> extraTargetTables, List<String> extraTargetColumns) {
-    super(cluster, traitSet, table, schema, input, operation, updateColumnList,
-            sourceExpressionList, flattened, keywords, batchSize, appendedColumnIndex, hints, hintContext, tableInfo);
+                            SqlNodeList hints, OptimizerHint hintContext, boolean sourceSelect,
+                            TableInfo tableInfo, List<RelOptTable> extraTargetTables, List<String> extraTargetColumns) {
+    super(cluster, traitSet, table, schema, input, operation, updateColumnList, sourceExpressionList, flattened,
+        keywords, batchSize, appendedColumnIndex, hints, hintContext, sourceSelect, tableInfo);
     this.extraTargetTables = extraTargetTables;
     this.extraTargetColumns = extraTargetColumns;
   }
@@ -98,11 +100,12 @@ public final class LogicalTableModify extends TableModify {
       Prepare.CatalogReader schema, RelNode input,
       Operation operation, List<String> updateColumnList,
       List<RexNode> sourceExpressionList, boolean flattened, int batchSize, Set<Integer> appendedColumnIndex,
-      SqlNodeList hints, TableInfo tableInfo) {
+                                          SqlNodeList hints, boolean sourceSelect, TableInfo tableInfo) {
     final RelOptCluster cluster = input.getCluster();
     final RelTraitSet traitSet = cluster.traitSetOf(Convention.NONE);
     return new LogicalTableModify(cluster, traitSet, table, schema, input,
-        operation, updateColumnList, sourceExpressionList, flattened, batchSize, appendedColumnIndex, hints, tableInfo);
+        operation, updateColumnList, sourceExpressionList, flattened, batchSize, appendedColumnIndex, hints,
+        sourceSelect, tableInfo);
   }
 
   public static LogicalTableModify create(RelOptTable table,
@@ -138,8 +141,9 @@ public final class LogicalTableModify extends TableModify {
     final RelOptCluster cluster = input.getCluster();
     final RelTraitSet traitSet = cluster.traitSetOf(Convention.NONE);
     return new LogicalTableModify(cluster, traitSet, table, schema, input, operation, updateColumnList,
-        sourceExpressionList, flattened, keywords, batchSize, appendedColumnIndex, hints, hintContext, tableInfo,
-        extraTargetTables, extraTargetColumns);
+        sourceExpressionList, flattened, keywords, batchSize, appendedColumnIndex, hints, hintContext,
+        !operation.equals(Operation.INSERT) && !operation.equals(Operation.REPLACE),
+        tableInfo, extraTargetTables, extraTargetColumns);
     }
 
   //~ Methods ----------------------------------------------------------------
@@ -150,8 +154,8 @@ public final class LogicalTableModify extends TableModify {
     LogicalTableModify logicalTableModify =
         new LogicalTableModify(getCluster(), traitSet, table, catalogReader, sole(inputs), getOperation(),
             getUpdateColumnList(), getSourceExpressionList(), isFlattened(), getKeywords(), getBatchSize(),
-            getAppendedColumnIndex(), getHints(), getHintContext(), getTableInfo(), getExtraTargetTables(),
-            getExtraTargetColumns());
+            getAppendedColumnIndex(), getHints(), getHintContext(), isSourceSelect(), getTableInfo(),
+            getExtraTargetTables(), getExtraTargetColumns());
     logicalTableModify.setDuplicateKeyUpdateList(getDuplicateKeyUpdateList());
     return logicalTableModify;
   }
@@ -162,6 +166,10 @@ public final class LogicalTableModify extends TableModify {
 
   public List<String> getExtraTargetColumns() {
     return extraTargetColumns;
+  }
+
+  public boolean isSourceSelect() {
+    return this.sourceSelect;
   }
 }
 

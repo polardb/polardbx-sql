@@ -639,8 +639,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     }
 
     private static void createGlobalTxLogTableV2(Statement stmt) throws SQLException {
-        try {
-            ResultSet rs = stmt.executeQuery(EXISTS_GLOBAL_TX_TABLE_V2);
+        try (ResultSet rs = stmt.executeQuery(EXISTS_GLOBAL_TX_TABLE_V2)) {
             if (rs.next()) {
                 // Table already exists.
                 return;

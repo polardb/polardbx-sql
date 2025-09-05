@@ -2098,6 +2098,8 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
                 if (x.isNot()) {
                     print(ucase ? " NOT IN" : " not in");
+                } else if (x.isExpand()){
+                    print(ucase ? " EXPAND IN" : "expand in");
                 } else {
                     print(ucase ? " IN" : " in");
                 }

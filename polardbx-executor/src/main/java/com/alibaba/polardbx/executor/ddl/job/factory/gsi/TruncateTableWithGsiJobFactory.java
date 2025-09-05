@@ -64,12 +64,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
 
@@ -218,7 +213,7 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
             new CreateTableWithGsiBuilder(logicalCreateTable.relDdl, createTablePreparedData, executionContext);
         createTableWithGsiBuilder.build();
 
-        Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
+        TreeMap<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
         boolean isAutoPartition = createTablePreparedData.getPrimaryTablePreparedData().isAutoPartition();
         boolean hasTimestampColumnDefault =
@@ -311,7 +306,7 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
                 executionContext);
         createTableWithGsiBuilder.build();
 
-        Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
+        TreeMap<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
         boolean isAutoPartition = createTablePreparedData.getPrimaryTablePreparedData().isAutoPartition();
         boolean hasTimestampColumnDefault =
@@ -383,7 +378,7 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         // Drop primary Table
         DropTableValidateTask validateTask = new DropTableValidateTask(schemaName, tmpPrimaryTableName);
         DdlTask phyDdlTask = new DropTruncateTmpPrimaryTablePhyDdlTask(schemaName, tmpPrimaryTableName);
-        DdlTask removeMetaTask = new DropTableRemoveMetaTask(schemaName, tmpPrimaryTableName);
+        DdlTask removeMetaTask = new DropTableRemoveMetaTask(schemaName, tmpPrimaryTableName, true);
         DdlTask tableSyncTask = new TableSyncTask(schemaName, tmpPrimaryTableName);
         dropTmpTableJob.addSequentialTasks(Lists.newArrayList(
             validateTask,

@@ -1,0 +1,20 @@
+- sql: |
+    select l_orderkey, l_partkey, rk from ( select l_orderkey, l_partkey, rank() over ( partition by l_orderkey order by l_partkey desc ) rk from lineitem ) where rk <= 3;
+  plan: |
+    filter(condition="f16w0$o0 <= ?0")
+      sortwindow(l_orderkey="l_orderkey", l_partkey="l_partkey", f2w0$o0="window#0rank($1)", reference windows="window#0=window(partition {0} order by [1 desc-nulls-last] rows between unbounded preceding and current row aggs [rank($1)])")
+        memsort(sort="l_orderkey asc,l_partkey desc")
+          osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `l_orderkey`, `l_partkey` from `lineitem` as `lineitem`")
+  fragment: |
+    pipelineId = 0
+    [Producer]: 16 * { ColumnarScanExec }
+    [Consumer]: 16 * { PartitioningExchanger --> 16 * LocalBufferExec }
+    pipelineId = 1
+    [Producer]: 16 * { LocalBufferExec }
+    [Consumer]: 16 * { SortExec }
+    pipelineId = 2
+    [Producer]: 16 * { NonFrameOverWindowExec <-- SortExec }
+    [Consumer]: 16 * { DirectExchanger --> 1 * LocalBufferExec }
+    pipelineId = 3
+    [Producer]: 16 * { VectorizedFilterExec <-- LocalBufferExec }
+    [Consumer]: 16 * { SingleExchanger --> 1 * LocalBufferExec }

@@ -841,6 +841,11 @@ public abstract class SqlUtil {
     /**
      * If an identifier is a legitimate call to a function which has no
      * arguments and requires no parentheses (for example "CURRENT_USER"),
+     * <p>
+     * 注意：
+     * 将identifier转成SqlCall，不应该在Sql to Rel 阶段，应该在Sql Parser 阶段就确定函数，不然SqlIdentifier没法确认是否包含反引号，
+     * 一股脑都转函数，当列名是关键字时就会出现问题。
+     * <p>
      * returns a call to that function, otherwise returns null.
      */
     public static SqlCall makeCall(
@@ -868,40 +873,40 @@ public abstract class SqlUtil {
 //        }
 //      }
 //    } else
-        if (id.names.size() == 2 || id.names.size() == 3) {
-
-            int idNamesSize = id.names.size();
-            String funcName = id.names.get(idNamesSize - 1);
-
-            if (funcName.equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME) ||
-                funcName.equalsIgnoreCase(SqlFunction.CURRVAL_FUNC_NAME)) {
-                final List<SqlOperator> list = Lists.newArrayList();
-                opTab.lookupOperatorOverloads(id, null, SqlSyntax.FUNCTION, list);
-                for (SqlOperator operator : list) {
-                    if (operator.getSyntax() == SqlSyntax.FUNCTION) {
-
-                        SqlNode[] operands = operands = new SqlNode[idNamesSize];
-                        if (idNamesSize == 2) {
-                            // if it's a identifier, it must be something meaningful to Calcite, like a column name.
-                            operands[0] = SqlLiteral.createCharString(id.names.get(0), id.getParserPosition());
-                            operands[1] = SqlLiteral.createBoolean(false, id.getParserPosition());
-                        } else if (idNamesSize == 3) {
-                            // if it's a identifier, it must be something meaningful to Calcite, like a column name.
-                            operands[0] = SqlLiteral.createCharString(id.names.get(0), id.getParserPosition());
-                            operands[1] = SqlLiteral.createCharString(id.names.get(1), id.getParserPosition());
-                            operands[2] = SqlLiteral.createBoolean(false, id.getParserPosition());
-                        }
-
-                        return new SqlBasicCall(
-                            operator,
-                            operands,
-                            id.getParserPosition(),
-                            true,
-                            null);
-                    }
-                }
-            }
-        }
+//        if (id.names.size() == 2 || id.names.size() == 3) {
+//
+//            int idNamesSize = id.names.size();
+//            String funcName = id.names.get(idNamesSize - 1);
+//
+//            if (funcName.equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME) ||
+//                funcName.equalsIgnoreCase(SqlFunction.CURRVAL_FUNC_NAME)) {
+//                final List<SqlOperator> list = Lists.newArrayList();
+//                opTab.lookupOperatorOverloads(id, null, SqlSyntax.FUNCTION, list);
+//                for (SqlOperator operator : list) {
+//                    if (operator.getSyntax() == SqlSyntax.FUNCTION) {
+//
+//                        SqlNode[] operands = operands = new SqlNode[idNamesSize];
+//                        if (idNamesSize == 2) {
+//                            // if it's a identifier, it must be something meaningful to Calcite, like a column name.
+//                            operands[0] = SqlLiteral.createCharString(id.names.get(0), id.getParserPosition());
+//                            operands[1] = SqlLiteral.createBoolean(false, id.getParserPosition());
+//                        } else if (idNamesSize == 3) {
+//                            // if it's a identifier, it must be something meaningful to Calcite, like a column name.
+//                            operands[0] = SqlLiteral.createCharString(id.names.get(0), id.getParserPosition());
+//                            operands[1] = SqlLiteral.createCharString(id.names.get(1), id.getParserPosition());
+//                            operands[2] = SqlLiteral.createBoolean(false, id.getParserPosition());
+//                        }
+//
+//                        return new SqlBasicCall(
+//                            operator,
+//                            operands,
+//                            id.getParserPosition(),
+//                            true,
+//                            null);
+//                    }
+//                }
+//            }
+//        }
         return null;
     }
 

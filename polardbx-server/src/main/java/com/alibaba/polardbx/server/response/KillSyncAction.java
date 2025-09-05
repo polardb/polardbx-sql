@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.pl.RuntimeFunction;
 import com.alibaba.polardbx.executor.pl.RuntimeFunctionManager;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
@@ -42,7 +43,6 @@ import com.alibaba.polardbx.server.handler.pl.RuntimeProcedure;
 import com.alibaba.polardbx.server.handler.pl.RuntimeProcedureManager;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author mengshi.sunmengshi 2015年5月12日 下午1:28:16
@@ -144,6 +144,10 @@ public class KillSyncAction implements ISyncAction {
                                 .cancelQuery(traceId);
                         }
                     }
+                    Long connId = getId();
+                    if (connId != null && hasAccess(fc)) {
+                        DbTopologyManager.killDdlQueryByConnId(connId);
+                    }
                     if (killQuery) {
                         ((ServerConnection) fc).cancelQuery(cause);
                     } else {
@@ -172,6 +176,10 @@ public class KillSyncAction implements ISyncAction {
                         && traceId != null) {
                         ServiceProvider.getInstance().getServer().getQueryManager()
                             .cancelQuery(traceId);
+                    }
+                    Long connId = tc.getExecutionContext().getConnId();
+                    if (connId != null) {
+                        DbTopologyManager.killDdlQueryByConnId(connId);
                     }
                 }
                 innerConnection.close();

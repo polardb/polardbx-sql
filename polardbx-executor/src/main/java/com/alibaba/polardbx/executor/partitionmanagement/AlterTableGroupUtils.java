@@ -204,11 +204,11 @@ public class AlterTableGroupUtils {
 
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableDropPartition) {
                 alterTableGroupDropPartitionCheck((SqlAlterTableDropPartition) alterSpecifications.get(0),
-                    tableGroupConfig, executionContext);
+                    tableGroupConfig, executionContext, false, null);
 
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableTruncatePartition) {
                 alterTableGroupTruncatePartitionCheck((SqlAlterTableTruncatePartition) alterSpecifications.get(0),
-                    tableGroupConfig, executionContext);
+                    tableGroupConfig, executionContext, false, null);
 
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableOptimizePartition) {
                 alterTableGroupOptimizePartitionCheck((SqlAlterTableOptimizePartition) alterSpecifications.get(0),
@@ -1635,7 +1635,9 @@ public class AlterTableGroupUtils {
 
     public static void alterTableGroupDropPartitionCheck(SqlAlterTableDropPartition sqlAlterTableDropPartition,
                                                          TableGroupConfig tableGroupConfig,
-                                                         ExecutionContext executionContext) {
+                                                         ExecutionContext executionContext,
+                                                         boolean isTableCheck,
+                                                         String logicalTableName) {
 
         String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
@@ -1747,25 +1749,24 @@ public class AlterTableGroupUtils {
             }
         }
 
-        for (String tableName : tableGroupConfig.getAllTables()) {
-            TableMeta tbMeta = schemaManager.getTable(tableName);
-            if (tbMeta.withGsiExcludingPureCci()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                    String.format("it's not support to drop partition/subpartition when table[%s] with GSI",
-                        tableName));
+        if (isTableCheck) {
+            // 检查单个表
+            TableMeta tbMeta = schemaManager.getTable(logicalTableName);
+            checkDropGsiPartition(tbMeta, logicalTableName);
+            checkAllDropTruncateCciPartition(executionContext, tbMeta, logicalTableName);
+        } else {
+            // 检查表组里的所有表
+            for (String tableName : tableGroupConfig.getAllTables()) {
+                TableMeta tbMeta = schemaManager.getTable(tableName);
+                checkDropGsiPartition(tbMeta, tableName);
+                checkAllDropTruncateCciPartition(executionContext, tbMeta, tableName);
             }
-            if (tbMeta.isGsi() && !tbMeta.isColumnar()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_DROP_PARTITION,
-                    String.format("it's not support to drop global index[%s]'s partition/subpartition",
-                        tableName));
-            }
-            checkAllDropTruncateCciPartition(executionContext, tbMeta, tableName);
         }
     }
 
     public static void alterTableGroupTruncatePartitionCheck(
         SqlAlterTableTruncatePartition sqlAlterTableTruncatePartition, TableGroupConfig tableGroupConfig,
-        ExecutionContext executionContext) {
+        ExecutionContext executionContext, boolean isTableCheck, String logicalTableName) {
         String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
 
@@ -1780,19 +1781,44 @@ public class AlterTableGroupUtils {
                 "Don't allow to drop subpartitions from one-level partitioned table");
         }
 
-        for (String tableName : tableGroupConfig.getAllTables()) {
-            TableMeta tbMeta = schemaManager.getTable(tableName);
-            if (tbMeta.withGsi()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                    String.format("it's not support to truncate partition/subpartition when table[%s] with GSI",
-                        tableName));
+        if (isTableCheck) {
+            // 检查单个表
+            TableMeta tbMeta = schemaManager.getTable(logicalTableName);
+            checkTruncateGsiPartition(tbMeta, logicalTableName);
+            checkAllDropTruncateCciPartition(executionContext, tbMeta, logicalTableName);
+        } else {
+            // 检查表组里的所有表
+            for (String tableName : tableGroupConfig.getAllTables()) {
+                TableMeta tbMeta = schemaManager.getTable(tableName);
+                checkTruncateGsiPartition(tbMeta, tableName);
+                checkAllDropTruncateCciPartition(executionContext, tbMeta, tableName);
             }
-            if (tbMeta.isGsi()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_DROP_PARTITION,
-                    String.format("it's not support to truncate global index[%s]'s partition/subpartition",
-                        tableName));
-            }
-            checkAllDropTruncateCciPartition(executionContext, tbMeta, tableName);
+        }
+    }
+
+    public static void checkDropGsiPartition(TableMeta tbMeta, String tableName) {
+        if (tbMeta.withGsiExcludingPureCci()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                String.format("it's not support to drop partition/subpartition when table[%s] with GSI",
+                    tableName));
+        }
+        if (tbMeta.isGsi() && !tbMeta.isColumnar()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_DROP_PARTITION,
+                String.format("it's not support to drop global index[%s]'s partition/subpartition",
+                    tableName));
+        }
+    }
+
+    public static void checkTruncateGsiPartition(TableMeta tbMeta, String tableName) {
+        if (tbMeta.withGsi()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                String.format("it's not support to truncate partition/subpartition when table[%s] with GSI",
+                    tableName));
+        }
+        if (tbMeta.isGsi()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_DROP_PARTITION,
+                String.format("it's not support to truncate global index[%s]'s partition/subpartition",
+                    tableName));
         }
     }
 
@@ -2262,13 +2288,32 @@ public class AlterTableGroupUtils {
                             tableGroup, targetTableGroup));
                 }
                 boolean allPartLocIsSame = true;
-                for (int i = 0; i < partitionInfo.getPartitionBy().getPartitions().size(); i++) {
-                    PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
-                    PartitionSpec targetPartSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
-                    if (!sourcePartSpec.getLocation().getGroupKey()
-                        .equalsIgnoreCase(targetPartSpec.getLocation().getGroupKey())) {
-                        allPartLocIsSame = false;
-                        break;
+                if (!partitionInfo.containSubPartitions()) {
+                    for (int i = 0; i < partitionInfo.getPartitionBy().getPartitions().size(); i++) {
+                        PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
+                        PartitionSpec targetPartSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
+                        if (!sourcePartSpec.getLocation().getGroupKey()
+                            .equalsIgnoreCase(targetPartSpec.getLocation().getGroupKey())) {
+                            allPartLocIsSame = false;
+                            break;
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < partitionInfo.getPartitionBy().getPartitions().size(); i++) {
+                        PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
+                        PartitionSpec targetPartSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
+                        for (int j = 0; j < sourcePartSpec.getSubPartitions().size(); j++) {
+                            PartitionSpec sourceSubPartSpec = sourcePartSpec.getSubPartitions().get(j);
+                            PartitionSpec targetSubPartSpec = targetPartSpec.getSubPartitions().get(j);
+                            if (!sourceSubPartSpec.getLocation().getGroupKey()
+                                .equalsIgnoreCase(targetSubPartSpec.getLocation().getGroupKey())) {
+                                allPartLocIsSame = false;
+                                break;
+                            }
+                        }
+                        if (!allPartLocIsSame) {
+                            break;
+                        }
                     }
                 }
                 if (!allPartLocIsSame && !preparedData.isForce()) {
@@ -2332,13 +2377,32 @@ public class AlterTableGroupUtils {
                 }
             } else if (match) {
                 boolean allPartLocIsSame = true;
-                for (int i = 0; i < partitionInfo.getPartitionBy().getPartitions().size(); i++) {
-                    PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
-                    PartitionSpec targetPartSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
-                    if (!sourcePartSpec.getLocation().getGroupKey()
-                        .equalsIgnoreCase(targetPartSpec.getLocation().getGroupKey())) {
-                        allPartLocIsSame = false;
-                        break;
+                if (!partitionInfo.containSubPartitions()) {
+                    for (int i = 0; i < partitionInfo.getPartitionBy().getPartitions().size(); i++) {
+                        PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
+                        PartitionSpec targetPartSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
+                        if (!sourcePartSpec.getLocation().getGroupKey()
+                            .equalsIgnoreCase(targetPartSpec.getLocation().getGroupKey())) {
+                            allPartLocIsSame = false;
+                            break;
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < partitionInfo.getPartitionBy().getPartitions().size(); i++) {
+                        PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
+                        PartitionSpec targetPartSpec = partitionInfo.getPartitionBy().getPartitions().get(i);
+                        for (int j = 0; j < sourcePartSpec.getSubPartitions().size(); j++) {
+                            PartitionSpec sourceSubPartSpec = sourcePartSpec.getSubPartitions().get(j);
+                            PartitionSpec targetSubPartSpec = targetPartSpec.getSubPartitions().get(j);
+                            if (!sourceSubPartSpec.getLocation().getGroupKey()
+                                .equalsIgnoreCase(targetSubPartSpec.getLocation().getGroupKey())) {
+                                allPartLocIsSame = false;
+                                break;
+                            }
+                        }
+                        if (!allPartLocIsSame) {
+                            break;
+                        }
                     }
                 }
                 if (!allPartLocIsSame && !preparedData.isForce()) {

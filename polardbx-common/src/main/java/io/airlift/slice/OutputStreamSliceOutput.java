@@ -31,7 +31,9 @@
 
 package io.airlift.slice;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -88,6 +90,11 @@ public final class OutputStreamSliceOutput
         throws IOException {
         flushBufferToOutputStream();
         outputStream.close();
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + FastMemoryCounter.sizeOf(slice) + VMSupport.align((int) SizeOf.sizeOf(buffer));
     }
 
     @Override

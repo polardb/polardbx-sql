@@ -26,6 +26,8 @@ import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.columnar.pruning.ColumnarPruneManager;
+import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.gms.DynamicColumnarManager;
 import com.alibaba.polardbx.executor.gms.FileVersionStorage;
 import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
@@ -34,6 +36,7 @@ import com.alibaba.polardbx.executor.mpp.execution.PriorityExecutorInfo;
 import com.alibaba.polardbx.executor.mpp.execution.TaskExecutor;
 import com.alibaba.polardbx.executor.operator.ColumnarScanExec;
 import com.alibaba.polardbx.executor.operator.scan.BlockCacheManager;
+import com.alibaba.polardbx.executor.operator.scan.impl.DefaultScanPreProcessor;
 import com.alibaba.polardbx.gms.engine.FileSystemGroup;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.manager.ManagerConnection;
@@ -50,7 +53,6 @@ import com.alibaba.polardbx.optimizer.memory.MemorySetting;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 import com.alibaba.polardbx.server.util.LongUtil;
 import com.alibaba.polardbx.server.util.PacketUtil;
-import com.alibaba.polardbx.server.util.StringUtil;
 import org.apache.hadoop.fs.FileSystem;
 
 import java.util.concurrent.ExecutorService;
@@ -62,7 +64,7 @@ import java.util.concurrent.ThreadPoolExecutor;
  */
 public final class ShowColumnarRead {
 
-    private static final int FIELD_COUNT = 27;
+    private static final int FIELD_COUNT = 33;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
     private static final EOFPacket eof = new EOFPacket();
@@ -73,6 +75,9 @@ public final class ShowColumnarRead {
         header.packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("LATENCY_MS", Fields.FIELD_TYPE_LONGLONG);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("QUERY_LATENCY_MS", Fields.FIELD_TYPE_LONGLONG);
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("LOGICAL_MEMORY_USED_SIZE", Fields.FIELD_TYPE_LONGLONG);
@@ -87,10 +92,22 @@ public final class ShowColumnarRead {
         fields[i] = PacketUtil.getField("BLOCK_CACHE_MAX_SIZE", Fields.FIELD_TYPE_LONGLONG);
         fields[i++].packetId = ++packetId;
 
-        fields[i] = PacketUtil.getField("VERSION_CACHE_USED_SIZE", Fields.FIELD_TYPE_LONGLONG);
+        fields[i] = PacketUtil.getField("VERSION_CACHE_USED_COUNT", Fields.FIELD_TYPE_LONGLONG);
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("VERSION_CACHE_MAX_SIZE", Fields.FIELD_TYPE_LONGLONG);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("VERSION_CACHE_CSV_USED_SIZE", Fields.FIELD_TYPE_LONGLONG);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("VERSION_CACHE_DEL_USED_SIZE", Fields.FIELD_TYPE_LONGLONG);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("PRUNE_CACHE_USED_SIZE", Fields.FIELD_TYPE_LONGLONG);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("PREHEAT_META_USED_COUNT", Fields.FIELD_TYPE_LONGLONG);
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("FILESYSTEM_USED_SIZE_ON_DISK", Fields.FIELD_TYPE_LONGLONG);
@@ -130,6 +147,9 @@ public final class ShowColumnarRead {
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("SNAPSHOT_FILE_REQUEST", Fields.FIELD_TYPE_LONGLONG);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("PURGE_COUNT", Fields.FIELD_TYPE_LONGLONG);
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("OSS_READ_REQUEST", Fields.FIELD_TYPE_LONGLONG);
@@ -198,14 +218,17 @@ public final class ShowColumnarRead {
         addLogicalMemory(row);
         addBlockCache(row);
         addVersionCache(row, fileVersionStorage);
+        addPruneCache(row);
+        addPreheatMeta(row);
         addFileSystemOnDisk(row, ossCacheManager);
         addFileSystemInMemory(row, ossCacheManager);
-        addBlockHitRate(row, charset);
-        addVersionHitRate(row, charset, fileVersionStorage);
-        addFsHitRate(row, charset, ossCacheManager);
+        addBlockMissCount(row, charset);
+        addVersionMissCount(row, charset, fileVersionStorage);
+        addFsMissCount(row, charset, ossCacheManager);
         addFileDescriptor(row, fileVersionStorage);
         addLoadedVersion(row);
         addFileReq(row);
+        addPurgeCount(row);
         addOssRead(row, ossFs);
         addColumnarScanPool(row);
         addExecPool(row);
@@ -214,25 +237,26 @@ public final class ShowColumnarRead {
 
     /**
      * LATENCY_MS
+     * QUERY_LATENCY_MS
      */
     private static void addLatency(RowDataPacket row) {
-        row.add(LongUtil.toBytesOrNull(getLatency()));
-    }
-
-    /**
-     * latency of columnar version
-     */
-    private static Long getLatency() {
         // columnar node will write heartbeat tso
-        Long tso = ColumnarTransactionUtils.getLatestTsoFromGms();
-
-        if (tso == null) {
-            return null;
+        Long columnarTso = ColumnarTransactionUtils.getLatestTsoFromGms();
+        long latestTso = ColumnarManager.getInstance().latestTso();
+        long curTimeMillis = System.currentTimeMillis();
+        if (columnarTso == null) {
+            row.add(null);
+        } else {
+            long columnarTsoMillis = ITimestampOracle.getTimeMillis(columnarTso);
+            row.add(LongUtil.toBytes(curTimeMillis - columnarTsoMillis));
         }
 
-        long latestTimeMillis = ITimestampOracle.getTimeMillis(tso);
-        long curTimeMillis = System.currentTimeMillis();
-        return curTimeMillis - latestTimeMillis;
+        if (latestTso <= 0) {
+            row.add(null);
+        } else {
+            long queryTsoMillis = ITimestampOracle.getTimeMillis(latestTso);
+            row.add(LongUtil.toBytes(curTimeMillis - queryTsoMillis));
+        }
     }
 
     /**
@@ -300,53 +324,61 @@ public final class ShowColumnarRead {
     }
 
     /**
-     * VERSION_CACHE_USED_SIZE
+     * VERSION_CACHE_USED_COUNT
      * VERSION_CACHE_MAX_SIZE
+     * VERSION_CACHE_CSV_USED_SIZE
+     * VERSION_CACHE_DEL_USED_SIZE
      */
     private static void addVersionCache(RowDataPacket row, FileVersionStorage fileVersionStorage) {
         row.add(LongUtil.toBytes(fileVersionStorage.getUsedCacheSize()));
         row.add(LongUtil.toBytes(fileVersionStorage.getMaxCacheSize()));
+        row.add(LongUtil.toBytes(fileVersionStorage.getCsvCacheSizeInBytes()));
+        row.add(LongUtil.toBytes(fileVersionStorage.getDelCacheSizeInBytes()));
     }
 
     /**
-     * BLOCK_CACHE_HIT_RATE
+     * PRUNE_CACHE_USED_SIZE
      */
-    private static void addBlockHitRate(RowDataPacket row, String charset) {
+    private static void addPruneCache(RowDataPacket row) {
+        row.add(LongUtil.toBytes(ColumnarPruneManager.getPruneCacheUsedSize()));
+    }
+
+    /**
+     * PREHEAT_META_USED_COUNT
+     */
+    private static void addPreheatMeta(RowDataPacket row) {
+        row.add(LongUtil.toBytes(DefaultScanPreProcessor.getCacheSize()));
+    }
+
+    /**
+     * BLOCK_CACHE_MISS_COUNT
+     */
+    private static void addBlockMissCount(RowDataPacket row, String charset) {
         BlockCacheManager<Block> blockCacheManager = BlockCacheManager.getInstance();
-        long hitCount = blockCacheManager.getHitCount();
         long missCount = blockCacheManager.getMissCount();
-        row.add(StringUtil.encode(getHitRate(hitCount, hitCount + missCount), charset));
+        row.add(LongUtil.toBytes(missCount));
     }
 
     /**
-     * VERSION_CACHE_HIT_RATE
+     * VERSION_CACHE_MISS_COUNT
      */
-    private static void addVersionHitRate(RowDataPacket row, String charset, FileVersionStorage fileVersionStorage) {
-        long hitCount = fileVersionStorage.getHitCount();
+    private static void addVersionMissCount(RowDataPacket row, String charset, FileVersionStorage fileVersionStorage) {
         long missCount = fileVersionStorage.getMissCount();
-        row.add(StringUtil.encode(getHitRate(hitCount, hitCount + missCount), charset));
+        row.add(LongUtil.toBytes(missCount));
     }
 
     /**
-     * FILESYSTEM_CACHE_HIT_RATE
+     * FILESYSTEM_CACHE_MISS_COUNT
      */
-    private static void addFsHitRate(RowDataPacket row, String charset, CacheManager ossCacheManager) {
+    private static void addFsMissCount(RowDataPacket row, String charset, CacheManager ossCacheManager) {
         if (ossCacheManager != null) {
             CacheStats cacheStats = ((FileMergeCacheManager) ossCacheManager).getStats();
-            long hitCount = cacheStats.getCacheHit();
             long missCount = cacheStats.getCacheMiss();
-            row.add(StringUtil.encode(getHitRate(hitCount, hitCount + missCount), charset));
+            row.add(LongUtil.toBytes(missCount));
             return;
         }
 
         row.add(null);
-    }
-
-    private static String getHitRate(long hitCount, long totalCount) {
-        if (totalCount <= 0) {
-            return String.format("%.2f", 0D);
-        }
-        return String.format("%.2f", (hitCount * 100F) / (totalCount));
     }
 
     /**
@@ -377,6 +409,15 @@ public final class ShowColumnarRead {
         row.add(LongUtil.toBytes(columnarManager.getAppendFileAccessCount()));
         row.add(LongUtil.toBytes(ColumnarScanExec.getSnapshotFileAccessCount()));
     }
+
+    /**
+     * PURGE_COUNT
+     */
+    private static void addPurgeCount(RowDataPacket row) {
+        DynamicColumnarManager columnarManager = DynamicColumnarManager.getInstance();
+        row.add(LongUtil.toBytes(columnarManager.getPurgeCount()));
+    }
+
 
     /**
      * OSS_READ_REQUEST

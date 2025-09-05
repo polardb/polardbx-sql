@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.oss.filesystem;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.aliyun.oss.model.OSSObjectSummary;
 import com.aliyun.oss.model.ObjectListing;
 import com.aliyun.oss.model.ObjectMetadata;
@@ -84,7 +85,6 @@ public class OSSFileSystem extends FileSystem implements RateLimitable {
     private int blockOutputActiveBlocks;
     private OSSFileSystemStore store;
     private int maxKeys;
-    private int maxReadAheadPartNumber;
     private int maxConcurrentCopyTasksPerDir;
     private ExecutorService boundedThreadPool;
     private ExecutorService boundedCopyThreadPool;
@@ -415,10 +415,6 @@ public class OSSFileSystem extends FileSystem implements RateLimitable {
         int totalTasks = OSSUtils.intPositiveOption(conf,
             Constants.MAX_TOTAL_TASKS_KEY, Constants.MAX_TOTAL_TASKS_DEFAULT);
 
-        maxReadAheadPartNumber = OSSUtils.intPositiveOption(conf,
-            Constants.MULTIPART_DOWNLOAD_AHEAD_PART_MAX_NUM_KEY,
-            Constants.MULTIPART_DOWNLOAD_AHEAD_PART_MAX_NUM_DEFAULT);
-
         this.boundedThreadPool = BlockingThreadPoolExecutorService.newInstance(
             threadNum, totalTasks, keepAliveTime, TimeUnit.SECONDS,
             "oss-transfer-shared");
@@ -642,6 +638,7 @@ public class OSSFileSystem extends FileSystem implements RateLimitable {
                 " because it is a directory");
         }
 
+        int maxReadAheadPartNumber = DynamicConfig.getInstance().getOssMaxReadAheadPartNumber();
         return new FSDataInputStream(new OSSInputStream(getConf(),
             new SemaphoredDelegatingExecutor(
                 boundedThreadPool, maxReadAheadPartNumber, true),

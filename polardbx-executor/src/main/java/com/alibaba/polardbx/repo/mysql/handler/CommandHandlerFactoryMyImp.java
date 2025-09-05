@@ -69,6 +69,7 @@ import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableGroupHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowDatasourcesHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowDsHandler;
+import com.alibaba.polardbx.executor.handler.LogicalShowBinlogDumpStatusHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowFilesHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowGlobalDeadlocksHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowHtcHandler;
@@ -419,6 +420,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_BASELINE_HANDLER = new LogicalBaselineHandler(repo);
 
         LOGICAL_CHECK_TABLE_HANDLER = new LogicalCheckTableHandler(repo);
+        LOGICAL_CHECK_TABLEGROUP_HANDLER = new LogicalCheckTableGroupHandler(repo);
 
         LOGICAL_CHECK_COLUMNAR_PARTITION_HANDLER = new LogicalCheckColumnarPartitionHandler(repo);
         LOGICAL_CHECK_COLUMNAR_SNAPSHOT_HANDLER = new LogicalCheckColumnarSnapshotHandler(repo);
@@ -499,6 +501,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_SHOW_BINLOG_EVENTS_HANDLER = new LogicalShowBinlogEventsHandler(repo);
         LOGICAL_SHOW_BINARY_STREAMS_HANDLER = new LogicalShowBinaryStreamsHandler(repo);
         LOGICAL_SHOW_CDC_STORAGE_HANDLER = new LogicalShowCdcStorageHandler(repo);
+        LOGICAL_SHOW_BINLOG_DUMP_STATUS_HANDLER = new LogicalShowBinlogDumpStatusHandler(repo);
         LOGICAL_SET_CDC_GLOBAL_HANDLER = new LogicalSetCdcGlobalHandler(repo);
         LOGICAL_FLUSH_LOGS_HANDLER = new LogicalFlushLogsHandler(repo);
         LOGICAL_CHANGE_MASTER_HANDLER = new LogicalChangeMasterHandler(repo);
@@ -728,6 +731,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler PHY_QUERY_HANDLER;
 
     private final PlanHandler LOGICAL_CHECK_TABLE_HANDLER;
+    private final PlanHandler LOGICAL_CHECK_TABLEGROUP_HANDLER;
 
     private final PlanHandler LOGICAL_CHECK_COLUMNAR_PARTITION_HANDLER;
     private final PlanHandler LOGICAL_CHECK_COLUMNAR_SNAPSHOT_HANDLER;
@@ -812,6 +816,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler LOGICAL_SHOW_MASTER_STATUS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_BINLOG_EVENTS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_BINARY_STREAMS_HANDLER;
+    private final PlanHandler LOGICAL_SHOW_BINLOG_DUMP_STATUS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_CDC_STORAGE_HANDLER;
     private final PlanHandler LOGICAL_SET_CDC_GLOBAL_HANDLER;
     private final PlanHandler LOGICAL_FLUSH_LOGS_HANDLER;
@@ -1279,6 +1284,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
                 return LOGICAL_DESC_HANDLER;
             case CHECK_TABLE:
                 return LOGICAL_CHECK_TABLE_HANDLER;
+            case CHECK_TABLEGROUP:
+                return LOGICAL_CHECK_TABLEGROUP_HANDLER;
             case CHECK_COLUMNAR_PARTITION:
                 return LOGICAL_CHECK_COLUMNAR_PARTITION_HANDLER;
             case CHECK_COLUMNAR_SNAPSHOT:
@@ -1351,6 +1358,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
                 return LOGICAL_SHOW_MASTER_STATUS_HANDLER;
             case SHOW_BINLOG_EVENTS:
                 return LOGICAL_SHOW_BINLOG_EVENTS_HANDLER;
+            case SHOW_BINLOG_DUMP_STATUS:
+                return LOGICAL_SHOW_BINLOG_DUMP_STATUS_HANDLER;
             case SHOW_BINARY_STREAMS:
                 return LOGICAL_SHOW_BINARY_STREAMS_HANDLER;
             case SHOW_CDC_STORAGE:

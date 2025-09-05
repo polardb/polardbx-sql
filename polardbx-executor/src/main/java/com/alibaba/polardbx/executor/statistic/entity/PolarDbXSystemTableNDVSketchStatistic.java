@@ -20,11 +20,15 @@ import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -34,6 +38,7 @@ import java.sql.SQLException;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.HLL_REGBYTES;
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.bitToInt;
@@ -68,22 +73,32 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
 
     private static final String DELETED_BY_TABLENAME_COLUMNS_SQL =
         "DELETE FROM `" + TABLE_NAME + "` WHERE SCHEMA_NAME = ? AND "
-            + "TABLE_NAME = ? AND COLUMN_NAMES =? ";
+            + "TABLE_NAME = ? AND COLUMN_NAMES =? AND SHARD_PART !='UNKNOWN'";
 
     private static final String DELETED_BY_TABLENAME_SQL = "DELETE FROM `" + TABLE_NAME + "` WHERE SCHEMA_NAME = ? AND "
         + "TABLE_NAME = ? ";
 
+    private static final String DELETED_BY_SCHEMA_SQL = "DELETE FROM `" + TABLE_NAME + "` WHERE SCHEMA_NAME = ? ";
+
+    private static final String MARK_TIMEOUT_SQL = "REPLACE INTO `" + TABLE_NAME +
+        "` (`SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `TIMEOUT_FLAG`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_BYTES`, `SKETCH_TYPE`) "
+        + "VALUES (?, ?, ?, 'UNKNOWN', 1, -1, -1, '', '')";
+
+    private static final String CHECK_TIMEOUT_SQL =
+        "SELECT timeout_flag FROM `" + TABLE_NAME + "` WHERE SCHEMA_NAME = ? AND "
+            + "TABLE_NAME = ? AND COLUMN_NAMES =? AND TIMEOUT_FLAG=1";
+
     private static final String LOAD_ALL_SQL =
         "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `INDEX_NAME`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM "
-            + TABLE_NAME;
+            + TABLE_NAME + " WHERE TIMEOUT_FLAG != 1";
 
     private static final String LOAD_BY_TABLE_NAME_SQL =
         "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `INDEX_NAME`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM `"
-            + TABLE_NAME + "` WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?";
+            + TABLE_NAME + "` WHERE SCHEMA_NAME = ? AND TABLE_NAME = ? AND TIMEOUT_FLAG != 1";
 
     private static final String LOAD_BY_TABLE_NAME_AND_COLUMN_NAME_SQL =
         "SELECT `SHARD_PART`, `SKETCH_BYTES` FROM `" + TABLE_NAME
-            + "` WHERE SCHEMA_NAME = ? AND TABLE_NAME = ? AND COLUMN_NAMES = ?";
+            + "` WHERE SCHEMA_NAME = ? AND TABLE_NAME = ? AND COLUMN_NAMES = ? AND TIMEOUT_FLAG != 1";
 
     /**
      * select table rows sql, need to concat with values
@@ -191,6 +206,23 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
     }
 
     @Override
+    public void deleteBySchemaName(String schemaName) {
+        if (!ConfigDataMode.isMasterMode()) {
+            return;
+        }
+        PreparedStatement ps = null;
+        try (Connection conn = MetaDbDataSource.getInstance().getDataSource().getConnection()) {
+            ps = conn.prepareStatement(DELETED_BY_SCHEMA_SQL);
+            ps.setString(1, schemaName.toLowerCase());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.error("delete " + TABLE_NAME + " error, sql = " + DELETED_BY_SCHEMA_SQL, e);
+        } finally {
+            JdbcUtils.close(ps);
+        }
+    }
+
+    @Override
     public SketchRow[] loadAll() {
         Connection conn = null;
         PreparedStatement ps = null;
@@ -228,6 +260,35 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
             JdbcUtils.close(conn);
         }
         return rows.toArray(new SketchRow[0]);
+    }
+
+    public Map<String, Set<String>> loadAllSchemaAndTableName() {
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        Map<String, Set<String>> schemaMap = Maps.newHashMap();
+        try {
+            conn = MetaDbUtil.getConnection();
+            ps = conn.prepareStatement(LOAD_ALL_SQL);
+            rs = ps.executeQuery();
+
+            while (rs.next()) {
+                String schema = rs.getString("SCHEMA_NAME").toLowerCase();
+                String table = rs.getString("TABLE_NAME").toLowerCase();
+                if (schemaMap.containsKey(schema)) {
+                    schemaMap.get(schema).add(table);
+                } else {
+                    schemaMap.put(schema, Sets.newHashSet(table));
+                }
+            }
+        } catch (Exception e) {
+            logger.error("loadAllSchemaAndTableName error", e);
+        } finally {
+            JdbcUtils.close(rs);
+            JdbcUtils.close(ps);
+            JdbcUtils.close(conn);
+        }
+        return schemaMap;
     }
 
     @Override
@@ -273,7 +334,11 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
     }
 
     @Override
-    public void batchReplace(SketchRow[] sketchRows) {
+    public void batchReplace(SketchRow[] sketchRows) throws SQLException {
+        if (FailPoint.isKeyEnable(FailPointKey.FP_INJECT_IGNORE_PERSIST_NDV_STATISTIC)) {
+            throw new SQLException("ignore persist ndv statistic");
+        }
+
         Connection conn = null;
         PreparedStatement ps = null;
         try {
@@ -292,14 +357,10 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
                 ps.setString(9, sketchRow.getSketchType());
                 ps.addBatch();
             }
-
-            try {
-                ps.executeBatch();
-            } catch (Exception e) {
-                logger.error("parse row of " + TABLE_NAME + " error", e);
-            }
-        } catch (Exception e) {
+            ps.executeBatch();
+        } catch (SQLException e) {
             logger.error("select " + TABLE_NAME + " error", e);
+            throw e;
         } finally {
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
@@ -308,7 +369,7 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
 
     @Override
     public void updateCompositeCardinality(String schemaName, String tableName, String columnNames,
-                                           long compositeCardinality) {
+                                           long compositeCardinality) throws SQLException {
         Connection conn = null;
         PreparedStatement ps = null;
         try {
@@ -320,13 +381,10 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
             ps.setString(3, tableName);
             ps.setString(4, columnNames);
 
-            try {
-                ps.execute();
-            } catch (Exception e) {
-                logger.error("parse row of " + TABLE_NAME + " error", e);
-            }
-        } catch (Exception e) {
+            ps.execute();
+        } catch (SQLException e) {
             logger.error("select " + TABLE_NAME + " error", e);
+            throw e;
         } finally {
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
@@ -427,6 +485,76 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
         } finally {
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
+        }
+    }
+
+    public boolean markTimeout(String schemaName, String tableName, String columns) {
+        return markTimeout(schemaName, tableName, columns, MetaDbDataSource.getInstance().getDataSource());
+    }
+
+    public boolean markTimeout(String schemaName, String tableName, String columns, DataSource dataSource) {
+        // Return early if not in master mode
+        if (!ConfigDataMode.isMasterMode() || dataSource == null) {
+            return false;
+        }
+
+        Connection conn = null;
+        PreparedStatement ps = null;
+
+        try {
+            conn = dataSource.getConnection();
+            ps = conn.prepareStatement(MARK_TIMEOUT_SQL);
+
+            // Set parameter values (converted to lowercase)
+            ps.setString(1, schemaName.toLowerCase());
+            ps.setString(2, tableName.toLowerCase());
+            ps.setString(3, columns.toLowerCase());
+
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            // Log error message
+            logger.error("REPLACE " + TABLE_NAME + " error, SQL statement: " + MARK_TIMEOUT_SQL
+                + ", parameters: " + schemaName + "," + tableName + "," + columns, e);
+            return false;
+        } finally {
+            JdbcUtils.close(ps);
+            JdbcUtils.close(conn);
+        }
+    }
+
+    public boolean isTimeoutMarked(String schemaName, String tableName, String columns, DataSource dataSource) {
+        if (dataSource == null) {
+            return false;
+        }
+
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            conn = dataSource.getConnection();
+            ps = conn.prepareStatement(CHECK_TIMEOUT_SQL);
+
+            // Set parameter values (converted to lowercase)
+            ps.setString(1, schemaName.toLowerCase());
+            ps.setString(2, tableName.toLowerCase());
+            ps.setString(3, columns.toLowerCase());
+
+            rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("timeout_flag") == 1;
+            } else {
+                return false;
+            }
+        } catch (SQLException e) {
+            // Log error message
+            logger.error("UPDATE " + TABLE_NAME + " error, SQL statement: " + MARK_TIMEOUT_SQL
+                + ", parameters: " + schemaName + "," + tableName + "," + columns, e);
+            return false;
+        } finally {
+            JdbcUtils.close(ps);
+            JdbcUtils.close(conn);
+            JdbcUtils.close(rs);
         }
     }
 }

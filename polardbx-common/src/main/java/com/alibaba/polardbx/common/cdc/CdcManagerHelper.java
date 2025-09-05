@@ -91,6 +91,10 @@ public class CdcManagerHelper {
         cdcManager.notifyDdl(cdcDDLContext);
     }
 
+    public void syncToLeaderMarkDdl(CdcDDLContext cdcDDLContext) {
+        cdcManager.syncToLeaderMarkDdl(cdcDDLContext);
+    }
+
     public List<CdcDdlRecord> queryDdl(String schemaName,
                                        String tableName,
                                        String sqlKind,

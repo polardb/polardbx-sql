@@ -31,13 +31,14 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class AlterTableDiscardTableSpaceBuilder extends DdlPhyPlanBuilder {
 
     final static String SQL_TEMPLATE = "ALTER TABLE ? DISCARD TABLESPACE";
 
     public AlterTableDiscardTableSpaceBuilder(DDL ddl, DdlPreparedData preparedData,
-                                              Map<String, List<List<String>>> tableTopology,
+                                              TreeMap<String, List<List<String>>> tableTopology,
                                               ExecutionContext executionContext) {
         super(ddl, preparedData, executionContext);
         this.tableTopology = tableTopology;
@@ -45,7 +46,7 @@ public class AlterTableDiscardTableSpaceBuilder extends DdlPhyPlanBuilder {
 
     public static AlterTableDiscardTableSpaceBuilder createBuilder(String schemaName,
                                                                    String logicalTableName,
-                                                                   Map<String, List<List<String>>> tableTopology,
+                                                                   TreeMap<String, List<List<String>>> tableTopology,
                                                                    ExecutionContext executionContext) {
         ReplaceTableNameWithQuestionMarkVisitor visitor =
             new ReplaceTableNameWithQuestionMarkVisitor(schemaName, executionContext);

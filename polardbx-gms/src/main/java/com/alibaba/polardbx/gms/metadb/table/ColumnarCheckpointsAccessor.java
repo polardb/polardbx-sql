@@ -52,7 +52,7 @@ public class ColumnarCheckpointsAccessor extends AbstractAccessor {
 
     private static final String ORDER_BY_TSO_DESC_LIMIT_1 = " order by `checkpoint_tso` desc limit 1";
     private static final String WHERE_READABLE_CHECKPOINT_TYPE =
-        " where `checkpoint_type` in ('STREAM', 'SNAPSHOT_FINISHED', 'COMPACTION', 'DDL', 'HEARTBEAT') ";
+        " where `checkpoint_type` in ('STREAM', 'DDL', 'HEARTBEAT') ";
 
     private static final String QUERY_LAST_CHECKPOINT = "select * from " + COLUMNAR_CHECKPOINT_TABLE
         + " where `checkpoint_type` = ?" + ORDER_BY_TSO_DESC_LIMIT_1;
@@ -122,6 +122,14 @@ public class ColumnarCheckpointsAccessor extends AbstractAccessor {
         "delete from " + COLUMNAR_CHECKPOINT_TABLE
             + " where `checkpoint_tso` < ? and `checkpoint_type` in ( %s ) and info is null limit ? ";
 
+    private static final String DELETE_SNAPSHOT_BY_TSO_AND_SCHEMA_TABLE_LIMIT =
+        "delete from " + COLUMNAR_CHECKPOINT_TABLE
+            + " where `logical_schema` = ? and `logical_table` = ? and `checkpoint_tso` < ? and `checkpoint_type` in ( %s ) limit ? ";
+
+    private static final String DELETE_SNAPSHOT_BY_TSO_AND_SCHEMA_LIMIT =
+        "delete from " + COLUMNAR_CHECKPOINT_TABLE
+            + " where `logical_schema` = ? and `checkpoint_tso` < ? and `checkpoint_type` in ( %s ) limit ? ";
+
     private static final String QUERY_BY_TSO_AND_TYPES = "select * from " + COLUMNAR_CHECKPOINT_TABLE
         + " where `checkpoint_tso` <= ? and `checkpoint_type` in ( %s )" + ORDER_BY_TSO_DESC_LIMIT_1;
 
@@ -141,6 +149,14 @@ public class ColumnarCheckpointsAccessor extends AbstractAccessor {
      */
     private static final String QUERY_COLUMNAR_TSO_BY_BINLOG_TSO = "select * from " + COLUMNAR_CHECKPOINT_TABLE
         + " where `binlog_tso` >= ? and `checkpoint_type` in ('STREAM', 'HEARTBEAT', 'DDL') order by binlog_tso, checkpoint_tso desc limit 1";
+
+    /**
+     * 根据行存tso获取最接近列存的版本tso, checkpoint_tso增序排序, 有可能binlog_tso会有相同值（ddl多语句；cdc旧版本单机事务），async commit导致同一个binlog tso，获取列存第一个。
+     * columnar_flush事件、columnar_backup事件用这个获取对应的列存版本。
+     */
+    private static final String QUERY_COLUMNAR_TSO_BY_BINLOG_TSO_CHECKPOINT_TSO_ASC =
+        "select * from " + COLUMNAR_CHECKPOINT_TABLE
+            + " where `binlog_tso` >= ? and `checkpoint_type` in ('STREAM', 'HEARTBEAT', 'DDL') order by binlog_tso, checkpoint_tso limit 1";
 
     private static final String QUERY_COMPACTION_BY_START_TSO_AND_END_TSO = "select * from " + COLUMNAR_CHECKPOINT_TABLE
         + " where checkpoint_tso >= ? and checkpoint_tso < ? and checkpoint_type in ('COMPACTION', 'SNAPSHOT', 'SNAPSHOT_END', 'SNAPSHOT_FINISHED') ";
@@ -301,6 +317,22 @@ public class ColumnarCheckpointsAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, binlogTso);
 
             return MetaDbUtil.query(QUERY_COLUMNAR_TSO_BY_BINLOG_TSO, params, ColumnarCheckpointsRecord.class,
+                connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + COLUMNAR_CHECKPOINT_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                COLUMNAR_CHECKPOINT_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ColumnarCheckpointsRecord> queryColumnarTsoByBinlogTsoAndCheckpointTsoAsc(long binlogTso) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(1);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, binlogTso);
+
+            return MetaDbUtil.query(QUERY_COLUMNAR_TSO_BY_BINLOG_TSO_CHECKPOINT_TSO_ASC, params,
+                ColumnarCheckpointsRecord.class,
                 connection);
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + COLUMNAR_CHECKPOINT_TABLE, e);
@@ -631,6 +663,55 @@ public class ColumnarCheckpointsAccessor extends AbstractAccessor {
             }
 
             MetaDbUtil.setParameter(2 + checkPointTypes.size(), params, ParameterMethod.setLong, limit);
+
+            DdlMetaLogUtil.logSql(sql, params);
+            return MetaDbUtil.delete(sql, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_CHECKPOINT_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_CHECKPOINT_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int deleteLimitByTsoAndSchemaTable(String logicalSchema, String logicalTable, long tso,
+                                              List<CheckPointType> checkPointTypes, long limit) {
+        try {
+            String sql = String.format(DELETE_SNAPSHOT_BY_TSO_AND_SCHEMA_TABLE_LIMIT,
+                String.join(",", Collections.nCopies(checkPointTypes.size(), "?")));
+            Map<Integer, ParameterContext> params = new HashMap<>(8 + checkPointTypes.size());
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTable);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, tso);
+            for (int i = 0; i < checkPointTypes.size(); i++) {
+                MetaDbUtil.setParameter(4 + i, params, ParameterMethod.setString, checkPointTypes.get(i).name());
+            }
+
+            MetaDbUtil.setParameter(4 + checkPointTypes.size(), params, ParameterMethod.setLong, limit);
+
+            DdlMetaLogUtil.logSql(sql, params);
+            return MetaDbUtil.delete(sql, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_CHECKPOINT_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_CHECKPOINT_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int deleteLimitByTsoAndSchema(String logicalSchema, long tso, List<CheckPointType> checkPointTypes,
+                                         long limit) {
+        try {
+            String sql = String.format(DELETE_SNAPSHOT_BY_TSO_AND_SCHEMA_LIMIT,
+                String.join(",", Collections.nCopies(checkPointTypes.size(), "?")));
+            Map<Integer, ParameterContext> params = new HashMap<>(8 + checkPointTypes.size());
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            for (int i = 0; i < checkPointTypes.size(); i++) {
+                MetaDbUtil.setParameter(3 + i, params, ParameterMethod.setString, checkPointTypes.get(i).name());
+            }
+
+            MetaDbUtil.setParameter(3 + checkPointTypes.size(), params, ParameterMethod.setLong, limit);
 
             DdlMetaLogUtil.logSql(sql, params);
             return MetaDbUtil.delete(sql, params, connection);

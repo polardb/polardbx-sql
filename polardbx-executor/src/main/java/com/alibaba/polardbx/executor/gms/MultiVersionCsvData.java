@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.columnar.CSVFileReader;
 import com.alibaba.polardbx.executor.columnar.CsvDataIterator;
 import com.alibaba.polardbx.executor.columnar.RawOrcTypeCsvReader;
 import com.alibaba.polardbx.executor.columnar.SimpleCSVFileReader;
@@ -43,6 +42,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -54,20 +54,29 @@ public class MultiVersionCsvData implements Purgeable {
     // tso - <end position, cache>
     private SortedMap<Long, Pair<Long, List<Chunk>>> allChunks = new ConcurrentSkipListMap<>();
     private final AtomicLong openedFileCount;
+    private final AtomicLong memoryUsed;
+    private final AtomicLong currentMemoryUsed = new AtomicLong();
+    private final AtomicInteger totalRowCount = new AtomicInteger();
     private final Lock lock = new ReentrantLock();
 
-    public MultiVersionCsvData(String csvFileName, AtomicLong openedFileCount) {
+    public MultiVersionCsvData(String csvFileName, AtomicLong openedFileCount, AtomicLong memoryUsed) {
         this.csvFileName = csvFileName;
         this.openedFileCount = openedFileCount;
+        this.memoryUsed = memoryUsed;
+    }
+
+    boolean isCsvPositionLoaded(long tso) {
+        return !allChunks.isEmpty() && allChunks.lastKey() >= tso;
     }
 
     @Nullable
-    public SortedMap<Long, Pair<Long, List<Chunk>>> getChunksWithTso(long tso) {
+    public SortedMap<Long, Pair<Long, List<Chunk>>> getChunksWithTso(long checkpointTso, long readTso) {
         // current tso is not loaded, should read from files
-        if (allChunks.isEmpty() || allChunks.lastKey() < tso) {
+        if (allChunks.isEmpty() || allChunks.lastKey() < checkpointTso) {
             return null;
         }
-        return allChunks.headMap(tso + 1);
+        // since PURGE may merge versions and generate tso > checkpointTso, so we should use readTso
+        return allChunks.headMap(readTso + 1);
     }
 
     private List<ColumnarAppendedFilesRecord> loadDeltaStateFromGms(long minTso, long latestTso, long tso) {
@@ -122,22 +131,30 @@ public class MultiVersionCsvData implements Purgeable {
             long maxReadPosition = lastRecord.appendOffset + lastRecord.appendLength;
             openedFileCount.incrementAndGet();
             try (SimpleCSVFileReader csvFileReader = new SimpleCSVFileReader()) {
-                csvFileReader.open(new ExecutionContext(), columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine,
-                    csvFileName,
+                csvFileReader.open(ColumnarStoreUtils.newEcForCache(),
+                    columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine, csvFileName,
                     (int) lastEndPosition,
                     (int) (maxReadPosition - lastEndPosition));
+                int lastRowCount = totalRowCount.get();
                 for (ColumnarAppendedFilesRecord record : appendedFilesRecords) {
                     long newEndPosition = record.appendOffset + record.appendLength;
+                    int expectedRowCount = (int) record.totalRows - lastRowCount;
 
                     List<Chunk> results = new ArrayList<>();
 
                     Chunk result;
-                    while ((result = csvFileReader.nextUntilPosition(newEndPosition)) != null) {
+                    while ((result = csvFileReader.nextUntilPosition(newEndPosition, expectedRowCount)) != null) {
                         results.add(result);
+                        long chunkSizeEstimate = result.estimateSize();
+                        memoryUsed.addAndGet(chunkSizeEstimate);
+                        currentMemoryUsed.addAndGet(chunkSizeEstimate);
+                        expectedRowCount -= result.getPositionCount();
                     }
 
                     allChunks.put(record.checkpointTso, Pair.of(newEndPosition, results));
+                    lastRowCount = (int) record.totalRows;
                 }
+                totalRowCount.set(lastRowCount);
             } catch (Throwable t) {
                 throw new TddlRuntimeException(ErrorCode.ERR_LOAD_CSV_FILE, t,
                     String.format("Failed to load read csv file, file name: %s, last tso: %d, snapshot tso: %d",
@@ -224,10 +241,9 @@ public class MultiVersionCsvData implements Purgeable {
             Engine engine = fileMeta.getEngine();
             List<ColumnMeta> columnMetas = fileMeta.getColumnMetas();
 
-            csvFileReader.open(new ExecutionContext(), columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine,
-                csvFileName,
-                (int) firstPos,
-                (int) (purgePos - firstPos));
+            csvFileReader.open(ColumnarStoreUtils.newEcForCache(),
+                columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine, csvFileName,
+                (int) firstPos, (int) (purgePos - firstPos));
             Chunk result;
             while ((result = csvFileReader.next()) != null) {
                 if (result.getPositionCount() >= FileVersionStorage.CSV_CHUNK_LIMIT) {
@@ -269,5 +285,9 @@ public class MultiVersionCsvData implements Purgeable {
         } finally {
             lock.unlock();
         }
+    }
+
+    public long getCurrentMemoryUsed() {
+        return currentMemoryUsed.get();
     }
 }

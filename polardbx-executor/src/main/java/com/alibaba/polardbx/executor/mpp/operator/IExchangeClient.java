@@ -43,4 +43,6 @@ public interface IExchangeClient extends Closeable {
     SerializedChunk pollPage();
 
     SerializedChunk getNextPageForDagWithDataDivide(Duration maxWaitTime) throws InterruptedException;
+
+    HttpPageBufferClient buildHttpPageBufferClient(TaskLocation location);
 }

@@ -114,7 +114,7 @@ public class RexUtil {
   /**
    * DNF_REX_NODE_LIMIT may be reset by instanct_properties, default is 2000
    */
-  public static volatile int DNF_REX_NODE_LIMIT = 2000;
+  public static volatile int DNF_REX_NODE_LIMIT = 10000;
 
   /**
    * DNF_REX_NODE_LIMIT may be reset by instanct_properties, default is 500
@@ -2747,13 +2747,14 @@ public class RexUtil {
         for (RexNode h : headCnfs) {
           for (RexNode t : tailCnfs) {
             list.add(or(ImmutableList.of(h, t)));
+            if (list.size() > RexUtil.CNF_REX_NODE_LIMIT) {
+              if (RexMemoryLimitHelper.ENABLE_REX_MEMORY_LIMIT) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TOCNF_LIMIT_EXCEED);
+              }
+            }
           }
         }
-        if (list.size() > RexUtil.CNF_REX_NODE_LIMIT) {
-          if (RexMemoryLimitHelper.ENABLE_REX_MEMORY_LIMIT) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TOCNF_LIMIT_EXCEED);
-          }
-        }
+
         return and(list);
       case NOT:
         final RexNode arg = ((RexCall) rex).getOperands().get(0);
@@ -2889,11 +2890,11 @@ public class RexUtil {
         for (RexNode h : headDnfs) {
           for (RexNode t : tailDnfs) {
             list.add(and(ImmutableList.of(h, t)));
-          }
-        }
-        if (list.size() > RexUtil.DNF_REX_NODE_LIMIT) {
-          if (RexMemoryLimitHelper.ENABLE_REX_MEMORY_LIMIT) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TODNF_LIMIT_EXCEED);
+            if (list.size() > RexUtil.DNF_REX_NODE_LIMIT) {
+              if (RexMemoryLimitHelper.ENABLE_REX_MEMORY_LIMIT) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TODNF_LIMIT_EXCEED);
+              }
+            }
           }
         }
 

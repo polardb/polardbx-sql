@@ -773,17 +773,4 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
         Assert.assertThat(trace.size(), is(2));
         assertTraceContains(trace, "DELETE", 0);
     }
-
-    protected void assertTraceContains(List<List<String>> trace, String targetStr, int count) {
-        int c = 0;
-        for (List<String> item : trace) {
-            for (String s : item) {
-                if (StringUtils.containsIgnoreCase(s, targetStr)) {
-                    c++;
-                }
-            }
-        }
-        //make sure now() is pushed down, instead of logical execution
-        org.junit.Assert.assertEquals(count, c);
-    }
 }

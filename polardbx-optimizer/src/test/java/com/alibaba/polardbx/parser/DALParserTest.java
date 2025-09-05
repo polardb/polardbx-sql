@@ -34,6 +34,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSetTransa
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowAuthorsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinLogEventsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinaryLogsStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinlogDumpStatusStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBroadcastsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowCharacterSetStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowCollationStatement;
@@ -1487,6 +1488,26 @@ public class DALParserTest extends TestCase {
         parser.match(Token.EOF);
         String output = SQLUtils.toMySqlString(stmt);
         assertEquals("SHOW FULL MASTER LOGS WITH group1_stream_0", output);
+    }
+
+    public void test_show_binlog_dump_status() {
+        String sql = "SHOW BINLOG DUMP STATUS";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinlogDumpStatusStatement stmt =
+            (MySqlShowBinlogDumpStatusStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW BINLOG DUMP STATUS", output);
+    }
+
+    public void test_show_binlog_dump_status_with() {
+        String sql = "SHOW BINLOG DUMP STATUS WITH \"127.0.0.1:5555\"";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinlogDumpStatusStatement stmt =
+            (MySqlShowBinlogDumpStatusStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW BINLOG DUMP STATUS WITH '127.0.0.1:5555'", output);
     }
 
 //

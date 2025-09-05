@@ -20,6 +20,7 @@ package com.alibaba.polardbx.gms.metadb.columnar;
 
 import com.alibaba.polardbx.gms.metadb.table.FileInfoRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.OrcFileStatusRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import org.junit.Assert;
 import org.junit.Test;
@@ -53,6 +54,15 @@ public class FilesAccessorTest {
             Assert.assertEquals(1, result.size());
 
             result = accessor.queryFileInfoByLogicalSchemaTableTso("schema", "10", 123L);
+            Assert.assertEquals(1, result.size());
+
+            result = accessor.queryFileInfoByLogicalSchemaTableTsoLimitOne("schema", "table", 123L);
+            Assert.assertEquals(1, result.size());
+
+            result = accessor.queryCSVFileInfoByLogicalSchemaTableRangeTso("schema", "table", 123L, 234L);
+            Assert.assertEquals(1, result.size());
+
+            result = accessor.queryCSVFileInfoByLogicalSchemaTableRangeTsoLimitOne("schema", "table", 123L, 234L);
             Assert.assertEquals(1, result.size());
         }
     }
@@ -156,6 +166,10 @@ public class FilesAccessorTest {
             count = accessor.deleteCompactionFileByCommitTso("a", "b", 2048);
             Assert.assertEquals(10, count);
 
+            deleteCount.set(12);
+            count = accessor.deleteLimitByTableAndTso("a", "b", 2048L, 200L);
+            Assert.assertEquals(12, count);
+
         }
     }
 
@@ -175,6 +189,37 @@ public class FilesAccessorTest {
             count = accessor.updateCompactionRemoveTsByTso("a", "b", 2048);
             Assert.assertEquals(10, count);
 
+            updateCount.set(12);
+            count = accessor.updateFileSizeAndRowsByFileName(1212, 3234, "file2");
+            Assert.assertEquals(12, count);
+
+            updateCount.set(13);
+            count = accessor.updateTableRemoveTs(null, "db", "table");
+            Assert.assertEquals(13, count);
+
+            updateCount.set(14);
+            count = accessor.updateTableRemoveTsLimit(null, "db", "table", 100);
+            Assert.assertEquals(14, count);
+
+            updateCount.set(15);
+            count = accessor.updateTableRemoveTsLimit(123L, "db", "table", 100);
+            Assert.assertEquals(15, count);
         }
     }
+
+    @Test
+    public void testSelectOrcFileStatusRecord() {
+        try (final MockedStatic<MetaDbUtil> metaDbUtilMockedStatic = mockStatic(MetaDbUtil.class)) {
+            List<OrcFileStatusRecord> recordList = new ArrayList<>();
+            recordList.add(new OrcFileStatusRecord());
+
+            metaDbUtilMockedStatic.when(() -> MetaDbUtil.query(Mockito.anyString(), Mockito.anyMap(),
+                Mockito.eq(OrcFileStatusRecord.class), Mockito.any())).thenReturn(recordList);
+            FilesAccessor accessor = new FilesAccessor();
+            List<OrcFileStatusRecord> result =
+                accessor.querySnapshotCSVFileStatusByTsoAndTableId(30, "schema", "table");
+            Assert.assertEquals(1, result.size());
+        }
+    }
+
 }

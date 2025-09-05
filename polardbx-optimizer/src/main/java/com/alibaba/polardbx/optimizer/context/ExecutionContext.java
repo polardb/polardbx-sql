@@ -32,6 +32,7 @@ import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.ConcurrentHashSet;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -40,8 +41,10 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.gms.metadb.columnar.ColumnarSnapshotCacheManager;
 import com.alibaba.polardbx.gms.metadb.columnar.FlashbackColumnarManager;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.privilege.AccountType;
@@ -68,9 +71,9 @@ import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
+import com.alibaba.polardbx.rpc.perf.SwitchoverPerfCollection;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.util.ValueHolder;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -90,9 +93,9 @@ import java.io.InputStream;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -101,6 +104,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
 
@@ -238,7 +242,7 @@ public class ExecutionContext {
 
     private ExplainResult explain;
     private SqlType sqlType;
-    private BitSet planProperties = new BitSet(ExecutionPlanProperties.getMaxPropertyValue());
+    private ConcurrentHashSet<Integer> planProperties = new ConcurrentHashSet<>();
 
     /**
      * 用于sql.log日志，方便sql审计 hasScanWholeTable 是否存在全表扫描 :
@@ -409,6 +413,16 @@ public class ExecutionContext {
         return cursorFetchMode;
     }
 
+    public boolean getForbidBuildLocalIndexLater() {
+        return forbidBuildLocalIndexLater;
+    }
+
+    public void setForbidBuildLocalIndexLater(boolean forbidBuildLocalIndexLater) {
+        this.forbidBuildLocalIndexLater = forbidBuildLocalIndexLater;
+    }
+
+    private boolean forbidBuildLocalIndexLater = false;
+
     private CalcitePlanOptimizerTrace calcitePlanOptimizerTrace;
 
     private String partitionHint;
@@ -449,6 +463,30 @@ public class ExecutionContext {
      * Set this flag to true when executing user sql.
      */
     private boolean userSql = false;
+
+    /**
+     * Record first switchover wait time.
+     */
+    @Getter
+    @Setter
+    private long firstSwitchoverWaitTime = 0L;
+
+    /**
+     * Record reschedule wait data sources.
+     */
+    @Getter
+    private final Set<SwitchoverPerfCollection> switchoverPerfCollections = new HashSet<>();
+
+    /**
+     * Record whether we should check switchover when get connection or not.
+     */
+    @Getter
+    @Setter
+    private boolean checkSwitchoverWhenGetConnection = false;
+
+    @Setter
+    @Getter
+    private boolean multiStmtHasMore = false;
 
     public ExecutionContext() {
     }
@@ -801,6 +839,9 @@ public class ExecutionContext {
     }
 
     public void setFlashbackArea(boolean flashbackArea) {
+        if (null != this.getParamManager()) {
+            flashbackArea = flashbackArea && this.getParamManager().getBoolean(ConnectionParams.ENABLE_FLASHBACK_AREA);
+        }
         this.flashbackArea = flashbackArea;
     }
 
@@ -849,6 +890,16 @@ public class ExecutionContext {
             constantValues.put(name, buildConstantFunction(function, args));
         }
         return constantValues.get(name);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T getConstantValue(String name, Supplier<T> supplier) {
+        return (T) constantValues.compute(name, (k, v) -> {
+            if (v == null) {
+                v = supplier.get();
+            }
+            return v;
+        });
     }
 
     private Object buildConstantFunction(AbstractScalarFunction function, Object[] args) {
@@ -1038,87 +1089,91 @@ public class ExecutionContext {
     }
 
     public boolean isModifyBroadcastTable() {
-        return getPlanProperties().get(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
+        return getPlanProperties().contains(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
     }
 
     public void setModifyBroadcastTable(boolean modifyBroadcastTable) {
-        getPlanProperties().set(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE, modifyBroadcastTable);
+        setPlanProperty(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE, modifyBroadcastTable);
     }
 
     public boolean isModifyGsiTable() {
-        return getPlanProperties().get(ExecutionPlanProperties.MODIFY_GSI_TABLE);
+        return getPlanProperties().contains(ExecutionPlanProperties.MODIFY_GSI_TABLE);
     }
 
     public void setModifyGsiTable(boolean modifyGsiTable) {
-        getPlanProperties().set(ExecutionPlanProperties.MODIFY_GSI_TABLE, modifyGsiTable);
+        setPlanProperty(ExecutionPlanProperties.MODIFY_GSI_TABLE, modifyGsiTable);
     }
 
     public boolean isScaleoutWritableTable() {
-        return getPlanProperties().get(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
+        return getPlanProperties().contains(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
     }
 
     public void setScaleoutWritableTable(boolean modifyScaleoutTable) {
-        getPlanProperties().set(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE, modifyScaleoutTable);
+        setPlanProperty(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE, modifyScaleoutTable);
     }
 
     public boolean isModifyOnlineColumnTable() {
-        return getPlanProperties().get(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
+        return getPlanProperties().contains(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
     }
 
     public void setModifyOnlineColumnTable(boolean modifyOnlineColumnTable) {
-        getPlanProperties().set(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE, modifyOnlineColumnTable);
+        setPlanProperty(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE, modifyOnlineColumnTable);
     }
 
     public boolean isModifyReplicateTable() {
-        return getPlanProperties().get(ExecutionPlanProperties.REPLICATE_TABLE);
+        return getPlanProperties().contains(ExecutionPlanProperties.REPLICATE_TABLE);
     }
 
     public void setModifyReplicateTable(boolean modifyReplicateTable) {
-        getPlanProperties().set(ExecutionPlanProperties.REPLICATE_TABLE, modifyReplicateTable);
+        setPlanProperty(ExecutionPlanProperties.REPLICATE_TABLE, modifyReplicateTable);
     }
 
     public boolean isModifyShardingColumn() {
-        return getPlanProperties().get(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
+        return getPlanProperties().contains(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
     }
 
     public boolean isModifyForeignKey() {
-        return getPlanProperties().get(ExecutionPlanProperties.MODIFY_FOREIGN_KEY);
+        return getPlanProperties().contains(ExecutionPlanProperties.MODIFY_FOREIGN_KEY);
     }
 
     public void setModifyShardingColumn(boolean modifyShardingColumn) {
-        getPlanProperties().set(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN, modifyShardingColumn);
+        setPlanProperty(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN, modifyShardingColumn);
     }
 
     public void setModifyForeignKey(boolean modifyForeignKey) {
-        getPlanProperties().set(ExecutionPlanProperties.MODIFY_FOREIGN_KEY, modifyForeignKey);
+        setPlanProperty(ExecutionPlanProperties.MODIFY_FOREIGN_KEY, modifyForeignKey);
     }
 
     public void setModifyScaleOutGroup(boolean isModifyScaleOutGroup) {
-        getPlanProperties().set(ExecutionPlanProperties.MODIFY_SCALE_OUT_GROUP, isModifyScaleOutGroup);
+        setPlanProperty(ExecutionPlanProperties.MODIFY_SCALE_OUT_GROUP, isModifyScaleOutGroup);
     }
 
     public void isModifyScaleOutGroup() {
-        getPlanProperties().get(ExecutionPlanProperties.MODIFY_SCALE_OUT_GROUP);
+        getPlanProperties().contains(ExecutionPlanProperties.MODIFY_SCALE_OUT_GROUP);
     }
 
     public boolean isModifyCrossDb() {
-        return getPlanProperties().get(ExecutionPlanProperties.MODIFY_CROSS_DB);
+        return getPlanProperties().contains(ExecutionPlanProperties.MODIFY_CROSS_DB);
     }
 
     public void setModifyCrossDb(boolean modifyShardingColumn) {
-        getPlanProperties().set(ExecutionPlanProperties.MODIFY_CROSS_DB, modifyShardingColumn);
+        setPlanProperty(ExecutionPlanProperties.MODIFY_CROSS_DB, modifyShardingColumn);
     }
 
-    public void setPlanProperties(BitSet planProperties) {
-        this.planProperties = planProperties;
+    public void setPlanProperty(Integer key, boolean value) {
+        if (value) {
+            getPlanProperties().add(key);
+        } else {
+            getPlanProperties().remove(key);
+        }
     }
 
-    public BitSet getPlanProperties() {
+    public ConcurrentHashSet<Integer> getPlanProperties() {
         return planProperties;
     }
 
-    public boolean is(BitSet propertySet) {
-        return getPlanProperties().intersects(propertySet);
+    public boolean is(Set<Integer> propertySet) {
+        return getPlanProperties().stream().anyMatch(propertySet::contains);
     }
 
     public boolean hasUnpushedJoin() {
@@ -1220,8 +1275,28 @@ public class ExecutionContext {
         this.traceId = traceId;
     }
 
+    public ConcurrentHashSet<Integer> copyPlanProperties() {
+        final ConcurrentHashSet<Integer> newPlanProperties = new ConcurrentHashSet<>();
+        newPlanProperties.addAll(getPlanProperties());
+        return newPlanProperties;
+    }
+
     public ExecutionContext copy(Parameters params) {
         return this.copy(new CopyOption().setParameters(params));
+    }
+
+    /**
+     * concurrent safe copy
+     */
+    public ExecutionContext copyForSharding(String schema,
+                                            Parameters params,
+                                            Map<String, SchemaManager> schemaManagers,
+                                            InternalTimeZone timeZone) {
+        ExecutionContext ec = new ExecutionContext(schema);
+        ec.params = params;
+        ec.schemaManagers = schemaManagers;
+        ec.timeZone = timeZone;
+        return ec;
     }
 
     public ExecutionContext copy(CopyOption option) {
@@ -1272,11 +1347,12 @@ public class ExecutionContext {
         ec.scalarSubqueryCtxMap = Maps.newHashMap(getScalarSubqueryCtxMap());
         ec.explain = getExplain();
         ec.sqlType = getSqlType();
-        ec.planProperties = (BitSet) getPlanProperties().clone();
+        ec.planProperties = copyPlanProperties();
         ec.runtimeStatistics = getRuntimeStatistics();
         ec.sqlTemplateId = getSqlTemplateId();
         ec.asyncDDLContext = getAsyncDDLContext();
         ec.ddlContext = getDdlContext();
+        ec.forbidBuildLocalIndexLater = getForbidBuildLocalIndexLater();
         ec.phyDdlExecutionRecord = getPhyDdlExecutionRecord();
         ec.multiDdlContext = getMultiDdlContext();
         ec.phyTableRenamed = isPhyTableRenamed();
@@ -1352,6 +1428,10 @@ public class ExecutionContext {
         ec.pruningTime = getPruningTime();
         ec.overrideDdlParams = isOverrideDdlParams();
         ec.userSql = isUserSql();
+        ec.firstSwitchoverWaitTime = getFirstSwitchoverWaitTime();
+        synchronized (switchoverPerfCollections) {
+            ec.switchoverPerfCollections.addAll(switchoverPerfCollections);
+        }
         return ec;
     }
 
@@ -1858,7 +1938,7 @@ public class ExecutionContext {
         useColumnar = false;
         columnarPlanCache = false;
 
-        planProperties = new BitSet();
+        planProperties = new ConcurrentHashSet<>();
     }
 
     /**
@@ -2091,7 +2171,6 @@ public class ExecutionContext {
         return enableOssCompatible;
     }
 
-    @VisibleForTesting
     public void setEnableOssCompatible(Boolean enableOssCompatible) {
         this.enableOssCompatible = enableOssCompatible;
     }
@@ -2169,6 +2248,14 @@ public class ExecutionContext {
         }
     }
 
+    public boolean dmlReplaceImplicitDefault() {
+        return this.getParamManager().getBoolean(ConnectionParams.DML_REPLACE_IMPLICIT_DEFAULT);
+    }
+
+    public boolean dmlReplaceDynamicImplicitDefault() {
+        return this.getParamManager().getBoolean(ConnectionParams.DML_REPLACE_DYNAMIC_IMPLICIT_DEFAULT);
+    }
+
     public boolean isSuperUser() {
         return this.getPrivilegeContext().getPolarUserInfo().getAccountType().isSuperUser();
     }
@@ -2227,7 +2314,7 @@ public class ExecutionContext {
 
     public boolean enableForcePrimaryForTso() {
         // Return false by default.
-        return null != this.getParamManager() && this.getParamManager()
+        return !InstanceVersion.isMYSQL80() && null != this.getParamManager() && this.getParamManager()
             .getBoolean(ConnectionParams.ENABLE_FORCE_PRIMARY_FOR_TSO);
     }
 
@@ -2475,9 +2562,18 @@ public class ExecutionContext {
         return false;
     }
 
+    private ColumnarSnapshotCacheManager scManager = null;
+
+    public void setColumnarSnapshotCacheManager(ColumnarSnapshotCacheManager scManager) {
+        this.scManager = scManager;
+    }
+
     public FlashbackColumnarManager getFlashbackColumnarManager(Long tso, String logicalSchema, String logicalTable) {
         List<Object> fcKey = Arrays.asList(tso, logicalSchema, logicalTable);
-        return fcManager.computeIfAbsent(fcKey, k -> new FlashbackColumnarManager(tso, logicalSchema, logicalTable));
+        boolean autoPosition = getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_SNAPSHOT_AUTO_POSITION);
+        return fcManager.computeIfAbsent(fcKey,
+            k -> scManager == null ? new FlashbackColumnarManager(tso, logicalSchema, logicalTable, autoPosition) :
+                scManager.getFlashbackColumnarManager(tso, logicalSchema, logicalTable, autoPosition));
     }
 
 }

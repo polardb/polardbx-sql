@@ -133,8 +133,8 @@ public class CdcImplicitTableGroupTest extends CdcBaseTest {
     }
 
     @Test
-    public void testModifyPartitionColumn() {
-        executeWithCallBack(parameter -> testModifyPartitionColumn(
+    public void testModifyPartitions() {
+        executeWithCallBack(parameter -> testModifyPartitions(
             parameter.getSchemaName(),
             parameter.getStmt(),
             parameter.getReplaySqlList()
@@ -738,7 +738,7 @@ public class CdcImplicitTableGroupTest extends CdcBaseTest {
     }
 
     @SneakyThrows
-    private void testModifyPartitionColumn(String schemaName, Statement stmt, List<String> replaySqlList) {
+    private void testModifyPartitions(String schemaName, Statement stmt, List<String> replaySqlList) {
         // rename partition
         String createSqlTemplate = "CREATE TABLE `%s` (\n"
             + "  `id` bigint(20) NOT NULL AUTO_INCREMENT,\n"
@@ -953,6 +953,26 @@ public class CdcImplicitTableGroupTest extends CdcBaseTest {
         Set<String> tgRemove3 = new HashSet<>();
         implicitTableGroupChecker.checkSql(schemaName, "t3", markSql, tgRemove3);
         Assert.assertEquals(1, tgRemove3.size());
+        replaySqlList.add(markSql);
+
+        // test modify partition numbers
+        String createTable4ModifyPartitionNum = "/*+TDDL:cmd_extra(AUTO_PARTITION=true)*/"
+            + "create table if not exists t_modify_partition_num(a int NOT NULL AUTO_INCREMENT,b int, c varchar(32), PRIMARY KEY(a))";
+        stmt.execute(createTable4ModifyPartitionNum);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t_modify_partition_num");
+        Set<String> tgModifyPartitionNum = new HashSet<>();
+        implicitTableGroupChecker.checkSql(schemaName, "t_modify_partition_num", markSql, tgModifyPartitionNum);
+        Assert.assertEquals(1, tgModifyPartitionNum.size());
+        replaySqlList.add(markSql);
+
+        String alterTable4ModifyPartitionNum =
+            "/*+TDDL:cmd_extra(GSI_BUILD_LOCAL_INDEX_LATER=true,GSI_BACKFILL_BY_PK_RANGE=true,GSI_BACKFILL_BY_PK_PARTITION=false)*/ "
+                + "alter table t_modify_partition_num partitions 31";
+        stmt.execute(alterTable4ModifyPartitionNum);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t_modify_partition_num");
+        Set<String> tgModifyPartitionNum2 = new HashSet<>();
+        implicitTableGroupChecker.checkSql(schemaName, "t_modify_partition_num", markSql, tgModifyPartitionNum2);
+        Assert.assertEquals(1, tgModifyPartitionNum2.size());
         replaySqlList.add(markSql);
     }
 

@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterJoinGroupValid
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterJoinGroupPreparedData;
 import com.google.common.collect.Lists;
@@ -35,7 +36,6 @@ import com.google.common.collect.Lists;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -67,8 +67,8 @@ public class AlterJoinGroupJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
 
-        Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         AlterJoinGroupValidateTask validateTask =
@@ -84,8 +84,8 @@ public class AlterJoinGroupJobFactory extends DdlJobFactory {
             new CdcAlterJoinGroupMarkTask(preparedData.getSchemaName(), preparedData.getJoinGroupName());
 
         TablesSyncTask syncTask =
-            new TablesSyncTask(preparedData.getSchemaName(), new ArrayList<>(preparedData.getTablesVersion().keySet()),
-                true, initWait, interval, TimeUnit.MILLISECONDS);
+            new TablesSyncTask(preparedData.getSchemaName(), preparedData.getTablesVersion().keySet().stream().collect(
+                Collectors.toList()), true, preemptiveTime);
 
         executableDdlJob.addSequentialTasks(
             Lists.newArrayList(validateTask, alterJoinGroupAddMetaTask, cdcAlterJoinGroupMarkTask, syncTask));

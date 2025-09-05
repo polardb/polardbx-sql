@@ -60,17 +60,20 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
     private final String primaryTableName;
     private final String indexTableName;
     private final Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData;
+    private final Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareDataForLocalIndex;
     private final ExecutionContext executionContext;
     private final Map<String, List<String>> dropColumns;
 
     public RemovePartitioningJobFactory(String schemaName, String primaryTableName, String indexTableName,
                                         Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData,
+                                        Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareDataForLocalIndex,
                                         Map<String, List<String>> dropColumns,
                                         ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.primaryTableName = primaryTableName;
         this.indexTableName = indexTableName;
         this.globalIndexPrepareData = globalIndexPrepareData;
+        this.globalIndexPrepareDataForLocalIndex = globalIndexPrepareDataForLocalIndex;
         this.dropColumns = dropColumns;
         this.executionContext = executionContext;
     }
@@ -107,8 +110,9 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
         // create gsi
         List<ExecutableDdlJob4CreatePartitionGsi> createGsiJobs = new ArrayList<>();
         for (Map.Entry<CreateGlobalIndexPreparedData, PhysicalPlanData> entry : globalIndexPrepareData.entrySet()) {
+            PhysicalPlanData physicalPlanDataForLocalIndex = globalIndexPrepareDataForLocalIndex.get(entry.getKey());
             CreateGsiJobFactory createGsiJobFactory =
-                    CreateGsiJobFactory.create(entry.getKey(), entry.getValue(), null, executionContext);
+                    CreateGsiJobFactory.create(entry.getKey(), entry.getValue(), physicalPlanDataForLocalIndex, executionContext);
 
             if (StringUtils.equalsIgnoreCase(entry.getKey().getIndexTableName(), indexTableName)) {
                 createGsiJobFactory.stayAtBackFill = true;

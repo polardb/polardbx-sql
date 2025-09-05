@@ -24,7 +24,6 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -59,7 +58,6 @@ import java.sql.SQLException;
 import java.sql.Wrapper;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -76,6 +74,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.DEFAULT_PARAMETER_METHOD;
@@ -216,14 +215,19 @@ public class GsiBackfillManager {
 
     public void initBackfillMeta(ExecutionContext ec, List<BackfillObjectRecord> initBackfillObjects) {
         // insert logicalBfo for physicalBfo
-        //
         final BackfillObjectRecord bfo = initBackfillObjects.get(0);
         final BackfillObjectRecord logicalBfo = bfo.copy();
         logicalBfo.setPhysicalDb(null);
         logicalBfo.setPhysicalTable(null);
         logicalBfo.setLastValue("0");
-        BackfillExtraFieldJSON extraJson = BackfillExtraFieldJSON.fromJson(bfo.extra);
+        BackfillExtraFieldJSON extraJson = new BackfillExtraFieldJSON();
         extraJson.setLogical(true);
+        long approximateRowCount = 0;
+        for (BackfillObjectRecord record : initBackfillObjects) {
+            BackfillExtraFieldJSON extra = BackfillExtraFieldJSON.fromJson(record.getExtra());
+            approximateRowCount += Long.parseLong(extra.approximateRowCount);
+        }
+        extraJson.setApproximateRowCount(String.valueOf(approximateRowCount));
         logicalBfo.setExtra(BackfillExtraFieldJSON.toJson(extraJson));
         initBackfillObjects.add(0, logicalBfo);
         insertBackfillMeta(ec, initBackfillObjects, true);
@@ -341,7 +345,7 @@ public class GsiBackfillManager {
                 final String columnValue = emptyMark ? null : Transformer.serializeParam(param);
 
                 if (!emptyMark && first.get()) {
-                    partitionProgress.set(computeProgress(bfo, param));
+                    partitionProgress.set(computeProgress(bfo, param, successCount));
                     first.set(false);
                 }
 
@@ -375,7 +379,18 @@ public class GsiBackfillManager {
         return partitionProgress.get();
     }
 
-    private Integer computeProgress(BackfillObjectBean bfo, ParameterContext param) {
+    private Integer computeProgress(BackfillObjectBean bfo, ParameterContext param, long successCount) {
+        if (bfo.extra != null && bfo.extra.getApproximateRowCount() != null) {
+            long approximateRowCount = Long.parseLong(bfo.extra.getApproximateRowCount());
+            if (approximateRowCount != 0) {
+                int progress = (int) (successCount * 100 / approximateRowCount);
+                if (progress > 100) {
+                    progress = 100;
+                }
+                return progress;
+            }
+        }
+
         try {
             final Object arg = param.getArgs()[1];
             final DataType type = DataTypeUtil.getTypeOfObject(arg);
@@ -441,8 +456,10 @@ public class GsiBackfillManager {
     }
 
     public void updateLogicalBackfillProcess(String progress, Long backfillId) {
+        updateLogicalBackfillProcess(new BackfillExtraFieldJSON(), progress, backfillId);
+    }
 
-        BackfillExtraFieldJSON extra = new BackfillExtraFieldJSON();
+    public void updateLogicalBackfillProcess(BackfillExtraFieldJSON extra, String progress, Long backfillId) {
         extra.setProgress(progress);
         extra.setLogical(true);
         String extraStr = BackfillExtraFieldJSON.toJson(extra);
@@ -1023,19 +1040,10 @@ public class GsiBackfillManager {
         }
 
         public static BackfillObjectBean create(BackfillObjectRecord bfoRecord) {
-            final String maxValue = bfoRecord.getMaxValue();
-            final String lastValue = bfoRecord.getLastValue();
-
-            Integer progress = 0;
-            if (TStringUtil.isNotEmpty(maxValue) && TStringUtil.isNotEmpty(lastValue)) {
-                try {
-                    final BigDecimal max = new BigDecimal(maxValue);
-                    final BigDecimal last = new BigDecimal(lastValue);
-
-                    progress = last.divide(max, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100L)).intValue();
-                } catch (Exception e) {
-
-                }
+            BackfillExtraFieldJSON extra = BackfillExtraFieldJSON.fromJson(bfoRecord.extra);
+            int progress = 0;
+            if (extra.getProgress() != null) {
+                progress = Integer.parseInt(extra.getProgress());
             }
 
             return new BackfillObjectBean(bfoRecord.id,
@@ -1056,7 +1064,7 @@ public class GsiBackfillManager {
                 bfoRecord.successRowCount,
                 bfoRecord.startTime,
                 bfoRecord.endTime,
-                BackfillExtraFieldJSON.fromJson(bfoRecord.extra),
+                extra,
                 progress);
         }
 

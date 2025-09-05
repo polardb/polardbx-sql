@@ -1,0 +1,24 @@
+drop table if exists tb_log_1;
+CREATE PARTITION TABLE `tb_log_1`  (
+`id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '主键',
+`action` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL ,
+`server_ip` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL ,
+`account_masked` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+`user_masked` varchar(55) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+`state` int(11) NULL DEFAULT NULL COMMENT '状态',
+`request_content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '请求内容',
+`response_content` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '响应内容',
+`res_time` datetime(0) NULL DEFAULT NULL COMMENT '响应时间',
+`create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
+`consumer_tag` tinyint(1) NULL DEFAULT NULL,
+`update_time` datetime(0) NULL DEFAULT NULL COMMENT '更新时间',
+`delete_tag` tinyint(1) NULL DEFAULT NULL,
+`main_user_masked` varchar(55) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+PRIMARY KEY (`id`) USING BTREE,
+INDEX `idx_action`(`action`) USING BTREE,
+INDEX `idx_user_masked`(`user_masked`) USING BTREE,
+INDEX `idx_server_ip`(`server_ip`) USING BTREE,
+INDEX `idx_action_consumerTag`(`action`, `consumer_tag`) USING BTREE
+) ENGINE = InnoDB;
+ALTER TABLE tb_log_1 PARTITION BY KEY(main_user_masked) partitions 3 locality='';
+show full create table tb_log_1;

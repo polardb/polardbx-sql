@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.balancer.policy;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -38,6 +37,7 @@ import com.alibaba.polardbx.executor.balancer.action.ActionTaskAdapter;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.ActionWriteDataDistLog;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
+import com.alibaba.polardbx.executor.balancer.action.EventLogger;
 import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
 import com.alibaba.polardbx.executor.balancer.solver.MixedModel;
 import com.alibaba.polardbx.executor.balancer.solver.Solution;
@@ -259,7 +259,7 @@ public class PolicyDataBalance implements BalancePolicy {
                                                   BalanceStats stats,
                                                   String schemaName) {
         DdlHelper.getServerConfigManager().executeBackgroundSql("refresh topology", schemaName, null);
-        final BalanceStats balanceStats = Balancer.collectBalanceStatsOfDatabase(schemaName);
+        final BalanceStats balanceStats = Balancer.collectBalanceStatsOfDatabase(schemaName, ec);
 
         List<BalanceAction> actions = new ArrayList<>();
 
@@ -863,10 +863,14 @@ public class PolicyDataBalance implements BalancePolicy {
 
             if (!moved.contains(partition) && partition.getTableGroupName().equals(tableGroupName)) {
                 String targetInst = "";
-                targetInst = chooseTargetInst(
-                    availableInstListForPartitionGroup.getOrDefault(partition.getPartitionName(), availableInstList));
-                moved.add(partition);
-                movePartitions.add(Pair.of(partition, targetInst));
+                List<PolicyDrainNode.MoveInDn> dnList =
+                    availableInstListForPartitionGroup.getOrDefault(partition.getPartitionName(), availableInstList);
+                Set<String> allowedDnList = dnList.stream().map(o->o.getDnDiskInfo().getInstance()).collect(Collectors.toSet());
+                if(!allowedDnList.contains(inst)) {
+                    targetInst = chooseTargetInst(dnList);
+                    moved.add(partition);
+                    movePartitions.add(Pair.of(partition, targetInst));
+                }
             }
         }
         GeneralUtil.emptyIfNull(movePartitions).stream()

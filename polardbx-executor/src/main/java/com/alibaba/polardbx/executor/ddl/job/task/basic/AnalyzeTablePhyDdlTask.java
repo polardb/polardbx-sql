@@ -32,7 +32,6 @@ import com.alibaba.polardbx.gms.module.LogLevel;
 import com.alibaba.polardbx.gms.module.LogPattern;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.repo.mysql.spi.DatasourceMySQLImplement;
@@ -46,7 +45,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_HLL;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SKIP_PHYSICAL_ANALYZE;
-import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.forceAnalyzeColumnsDdl;
+import static com.alibaba.polardbx.executor.gms.util.StatisticFullProcessUtils.forceAnalyzeColumnsDdl;
 
 @Getter
 @TaskName(name = "AnalyzeTablePhyDdlTask")

@@ -99,7 +99,6 @@ public class TableScanSortExec extends TableScanExec {
 
     @Override
     public void addSplit(Split split) {
-        getJdbcByDeletegate(split);
         if (fetched > 0) {
             JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
             jdbcSplit.setLimit(skipped + fetched);

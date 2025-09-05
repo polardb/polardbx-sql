@@ -844,6 +844,28 @@
 
     LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb5", sql="SELECT (`test_hash_tb5`.`id` - `test_hash_tb5`.`int_col2`) AS `id - int_col2` FROM `test_hash_tb5` AS `test_hash_tb5` WHERE (EXISTS (SELECT 1 FROM `test_hash_tb5` AS `x` WHERE (`x`.`int_col2` < `test_hash_tb5`.`int_col2`))) ORDER BY 1")
 
+-
+  sql: |
+    SELECT *
+    FROM test_hash_tb t1
+    WHERE EXISTS
+        (SELECT 1
+         FROM test_hash_tb2 t2
+         WHERE t1.int_col1=t2.int_col1
+           AND convert(t1.int_col2, char) = convert(t2.int_col2, char));
+  plan: |
+    project(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6")
+      filter(condition="apply_boolean")
+        correlateapply(cor=$cor, leftconditions=[], opkind=null, type=semi)
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb` as `test_hash_tb`")
+          filter(condition="$cor.int_col1 = int_col1 and cast($cor.int_col2) = cast(int_col2)")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
+    cache node:
+
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
 
 # not support cross schema test
 #-

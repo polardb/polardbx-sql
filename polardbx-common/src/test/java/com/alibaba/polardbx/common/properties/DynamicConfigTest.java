@@ -7,6 +7,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -25,6 +26,13 @@ public class DynamicConfigTest {
         assertTrue(DynamicConfig.getInstance().getInDegradationNum() == 100L);
         DynamicConfig.getInstance().loadValue(null, ConnectionProperties.STATISTIC_IN_DEGRADATION_NUMBER, "1357");
         assertTrue(DynamicConfig.getInstance().getInDegradationNum() == 1357L);
+    }
+
+    @Test
+    public void testEnableAccurateInfoSchemaTables() {
+        assertTrue(DynamicConfig.getInstance().isEnableAccurateInfoSchemaTables());
+        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENABLE_ACCURATE_INFO_SCHEMA_TABLES, "false");
+        assertFalse(DynamicConfig.getInstance().isEnableAccurateInfoSchemaTables());
     }
 
     @Test
@@ -102,6 +110,17 @@ public class DynamicConfigTest {
     }
 
     @Test
+    public void testColumnarSnapshotCache() {
+        assertFalse(DynamicConfig.getInstance().enableColumnarSnapshotCache());
+        DynamicConfig.getInstance().loadValue(logger, ConnectionProperties.ENABLE_COLUMNAR_SNAPSHOT_CACHE, "true");
+        assertTrue(DynamicConfig.getInstance().enableColumnarSnapshotCache());
+
+        assertEquals(60000, DynamicConfig.getInstance().getColumnarSnapshotCacheTtlMs());
+        DynamicConfig.getInstance().loadValue(logger, ConnectionProperties.COLUMNAR_SNAPSHOT_CACHE_TTL_MS, "1000");
+        assertEquals(1000, DynamicConfig.getInstance().getColumnarSnapshotCacheTtlMs());
+    }
+
+    @Test
     public void testExistColumnarNodes() {
         assertTrue(!DynamicConfig.getInstance().existColumnarNodes());
         DynamicConfig.getInstance().existColumnarNodes(true);
@@ -119,5 +138,40 @@ public class DynamicConfigTest {
         mppQueryResultMaxWaitInMillis = DynamicConfig.getInstance().getMppQueryResultMaxWaitInMillis();
 
         Assert.assertTrue(mppQueryResultMaxWaitInMillis == 1000L);
+    }
+
+    public void testSwitchoverParams() {
+        boolean enableSmoothSwitchover = DynamicConfig.getInstance().isEnableSmoothSwitchover();
+        Assert.assertTrue(enableSmoothSwitchover);
+        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENABLE_SMOOTH_SWITCHOVER, "false");
+        enableSmoothSwitchover = DynamicConfig.getInstance().isEnableSmoothSwitchover();
+        Assert.assertFalse(enableSmoothSwitchover);
+
+        int switchoverTimeoutMillis = DynamicConfig.getInstance().getSwitchoverTimeoutMillis();
+        Assert.assertEquals(10000, switchoverTimeoutMillis);
+        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.SWITCHOVER_WAIT_TIMEOUT_IN_MILLIS, "30000");
+        switchoverTimeoutMillis = DynamicConfig.getInstance().getSwitchoverTimeoutMillis();
+        Assert.assertEquals(30000, switchoverTimeoutMillis);
+
+        int switchoverCheckIntervalMillis = DynamicConfig.getInstance().getSwitchoverCheckIntervalMillis();
+        Assert.assertEquals(100, switchoverCheckIntervalMillis);
+        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.SWITCHOVER_CHECK_INTERVAL_IN_MILLIS, "300");
+        switchoverCheckIntervalMillis = DynamicConfig.getInstance().getSwitchoverCheckIntervalMillis();
+        Assert.assertEquals(300, switchoverCheckIntervalMillis);
+
+        boolean releaseDirtyReadConnectionWhenSwitchover =
+            DynamicConfig.getInstance().isReleaseDirtyReadConnectionWhenSwitchover();
+        Assert.assertTrue(releaseDirtyReadConnectionWhenSwitchover);
+        DynamicConfig.getInstance()
+            .loadValue(null, ConnectionProperties.RELEASE_DIRTY_READ_CONNECTION_WHEN_SWITCHOVER, "false");
+        releaseDirtyReadConnectionWhenSwitchover =
+            DynamicConfig.getInstance().isReleaseDirtyReadConnectionWhenSwitchover();
+        Assert.assertFalse(releaseDirtyReadConnectionWhenSwitchover);
+
+        int storageHaTaskPeriod = DynamicConfig.getInstance().getStorageHaTaskPeriod();
+        Assert.assertEquals(2000, storageHaTaskPeriod);
+        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.STORAGE_HA_TASK_PERIOD, "3000");
+        storageHaTaskPeriod = DynamicConfig.getInstance().getStorageHaTaskPeriod();
+        Assert.assertEquals(3000, storageHaTaskPeriod);
     }
 }

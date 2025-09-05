@@ -40,6 +40,8 @@ public abstract class AbstractDdlJob implements DdlJob {
     protected final Set<String> sharedResources = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     protected int maxParallelism = 1;
 
+    protected String ddlJobFactoryName;
+
     public AbstractDdlJob() {
         taskGraph = DirectedAcyclicGraph.create();
     }
@@ -265,7 +267,7 @@ public abstract class AbstractDdlJob implements DdlJob {
     public List<String> getExplainInfo() {
         try {
             List<String> result = new ArrayList<>();
-            List<DirectedAcyclicGraph.Vertex> vertexes = taskGraph.getSequentialVertexByTopologyOrder();
+            List<DirectedAcyclicGraph.Vertex> vertexes = taskGraph.clone().getSequentialVertexByTopologyOrder();
             if (vertexes.isEmpty()) {
                 return result;
             }
@@ -295,6 +297,14 @@ public abstract class AbstractDdlJob implements DdlJob {
             throw GeneralUtil.nestedException("explainTasks failed:  " + t.getMessage(), t);
         }
 
+    }
+
+    public void setDdlJobFactoryName(String ddlJobFactoryName) {
+        this.ddlJobFactoryName = ddlJobFactoryName;
+    }
+
+    public String getDdlJobFactoryName() {
+        return ddlJobFactoryName;
     }
 }
 

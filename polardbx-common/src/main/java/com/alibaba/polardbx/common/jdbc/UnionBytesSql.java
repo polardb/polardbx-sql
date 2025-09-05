@@ -44,6 +44,8 @@ public class UnionBytesSql extends BytesSql {
 
     @JsonProperty
     private byte[] limit;
+    
+    private byte[] unionHead;
 
     @JsonCreator
     public UnionBytesSql(@JsonProperty("bytesArray") byte[][] bytesArray,
@@ -55,6 +57,16 @@ public class UnionBytesSql extends BytesSql {
         this.unionSize = unionSize;
         this.order = order;
         this.limit = limit;
+        this.unionHead = UNION_HEAD;
+    }
+
+    public UnionBytesSql(byte[][] bytesArray, boolean parameterLast, int unionSize, byte[] order, byte[] limit,
+                         byte[] unionHead) {
+        super(bytesArray, parameterLast);
+        this.unionSize = unionSize;
+        this.order = order;
+        this.limit = limit;
+        this.unionHead = unionHead;
     }
 
     /**
@@ -81,7 +93,7 @@ public class UnionBytesSql extends BytesSql {
                 + unionSize * PARENTHESES_END.length;
         if (order != null) {
             length +=
-                UNION_HEAD.length + PARENTHESES_END.length + UNION_ALIAS.length + ORDERBY_KW.length + order.length;
+                unionHead.length + PARENTHESES_END.length + UNION_ALIAS.length + ORDERBY_KW.length + order.length;
         }
         if (limit != null) {
             length += LIMIT_KW.length + limit.length;
@@ -89,7 +101,7 @@ public class UnionBytesSql extends BytesSql {
         byte[] rs = new byte[length];
         int currentLenght = 0;
         if (order != null) {
-            currentLenght = arrayCopy(UNION_HEAD, rs, currentLenght);
+            currentLenght = arrayCopy(unionHead, rs, currentLenght);
         }
         currentLenght = arrayCopy(PARENTHESES_FRONT, rs, currentLenght);
         currentLenght = arrayCopy(originBytes, rs, currentLenght);
@@ -140,7 +152,7 @@ public class UnionBytesSql extends BytesSql {
             + unionSize * PARENTHESES_END.length;
         if (order != null) {
             length +=
-                UNION_HEAD.length + PARENTHESES_END.length + UNION_ALIAS.length + ORDERBY_KW.length + order.length;
+                unionHead.length + PARENTHESES_END.length + UNION_ALIAS.length + ORDERBY_KW.length + order.length;
         }
         if (limit != null) {
             length += LIMIT_KW.length + limit.length;
@@ -148,7 +160,7 @@ public class UnionBytesSql extends BytesSql {
         byte[] rs = new byte[length];
         int currentLenght = 0;
         if (order != null) {
-            currentLenght = arrayCopy(UNION_HEAD, rs, currentLenght);
+            currentLenght = arrayCopy(unionHead, rs, currentLenght);
         }
         currentLenght = arrayCopy(PARENTHESES_FRONT, rs, currentLenght);
         currentLenght = arrayCopy(originBytesArray[0], rs, currentLenght);

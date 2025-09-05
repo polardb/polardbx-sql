@@ -30,7 +30,9 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
+import com.alibaba.polardbx.common.oss.ColumnarPartitionPrunedSnapshot;
 import com.alibaba.polardbx.executor.gms.DynamicColumnarManager;
+import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -42,22 +44,21 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.LookupSql;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.util.DynamicParamInfo;
 import com.alibaba.polardbx.optimizer.core.rel.util.IndexedDynamicParamInfo;
-import com.alibaba.polardbx.optimizer.partition.PartSpecBase;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.utils.GroupConnId;
 import com.alibaba.polardbx.optimizer.utils.IColumnarTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
@@ -66,10 +67,14 @@ import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelPartitionWise;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
@@ -84,12 +89,14 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.alibaba.polardbx.executor.mpp.split.OssSplit.NO_PARTITION_INFO;
 import static com.alibaba.polardbx.group.jdbc.TGroupDataSource.LOCAL_ADDRESS;
 import static com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy.CONCURRENT;
 import static com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy.FILE_CONCURRENT;
@@ -219,7 +226,7 @@ public class SplitManagerImpl implements SplitManager {
             false,
             intraGroupSortKey,
             galaxyDigest,
-            galaxyDigest != null && logicalView.isSupportGalaxyPrepare());
+            galaxyDigest != null && logicalView.isSupportGalaxyPrepare(), null, null);
         splitList.add(new Split(false, split));
 
         HashMap<String, String> groups = new HashMap<>();
@@ -464,21 +471,26 @@ public class SplitManagerImpl implements SplitManager {
 
                 finalResult.put(
                     lowerBoundTso,
-                    tablePrunedResult.getPrunedParttions().stream().map(
+                    tablePrunedResult.getPrunedPartitions().stream().map(
                         PhysicalPartitionInfo::getPartName
                     ).collect(Collectors.toSet())
                 );
             });
         }
 
-        PartitionInfo currentPartitionInfo = multiVersionPartitionInfo.get(multiVersionPartitionInfo.lastKey());
-
-        // TODO(siyun): optimize codes
         SqlNode sqlTemplate = ossTableScan.getSqlTemplate(executionContext);
         List<DynamicParamInfo> dynamicParamList = PlannerUtils.getDynamicParamInfoList(sqlTemplate);
         Map<Integer, ParameterContext> params =
             executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
         Map<Integer, ParameterContext> results = new HashMap<>();
+
+        RelPartitionWise partitionWise = ossTableScan.getTraitSet().getPartitionWise();
+        boolean needPartition = partitionWise.isRemotePartition() || executionContext.getParamManager()
+            .getBoolean(ConnectionParams.SCHEDULE_BY_PARTITION);
+
+        boolean localPairWise =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
+                && partitionWise.isLocalPartition();
 
         if (params != null) {
             for (DynamicParamInfo dynamicParamInfo : dynamicParamList) {
@@ -494,72 +506,108 @@ public class SplitManagerImpl implements SplitManager {
             }
         }
 
-        List<Split> splitList;
-        if (ossTableScan.isFlashbackQuery()) {
+        boolean forceDisableCsvCache =
+            !executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_CSV_CACHE);
+        final List<Split> splitList = new ArrayList<>();
+        boolean autoPosition =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_SNAPSHOT_AUTO_POSITION);
+        if (ossTableScan.isFlashbackQuery() || forceDisableCsvCache) {
             FlashbackColumnarManager flashbackColumnarManager =
-                new FlashbackColumnarManager(tso, schemaName, tableName);
+                dynamicColumnarManager.getFlashbackColumnarManager(tso, schemaName, tableName, autoPosition);
             Map<String, List<Pair<String, Long>>> deletePositionMap =
                 flashbackColumnarManager.getDeletePositions(multiVersionPartitionResult);
-            splitList = flashbackColumnarManager.getSnapshotInfo(multiVersionPartitionResult)
-                .entrySet().stream().flatMap(entry -> {
-                    String partName = entry.getKey();
-                    int partition = currentPartitionInfo.getPartitionBy().getPartitions().stream()
-                        .filter(part -> part.getName().equalsIgnoreCase(partName))
-                        .findFirst().map(PartSpecBase::getPosition).map(Long::intValue).orElse(0);
-                    List<String> orcFileNames = entry.getValue().getKey();
-                    List<Pair<String, Long>> csvFileNamesAndPos = entry.getValue().getValue();
+            Long deltaTso = flashbackColumnarManager.getColumnarDeltaCheckpointTso();
+            for (Map.Entry<String, ColumnarPartitionPrunedSnapshot> entry :
+                flashbackColumnarManager.getSnapshotInfo(multiVersionPartitionResult).entrySet()) {
+                String partName = entry.getKey();
+                List<Pair<String, Long>> orcFileNames = entry.getValue().getOrcFilesAndSchemaTs();
+                List<Pair<String, Pair<Long, Long>>> csvFileNamesAndPos =
+                    entry.getValue().getCsvFilesAndSchemaTsWithPos();
 
-                    return Stream.concat(
-                        orcFileNames.stream().map(fileName -> {
-                            OssSplit.DeltaReadOption deltaReadOption = new OssSplit.DeltaReadOption(tso);
-                            deltaReadOption.setAllDelPositions(deletePositionMap);
-                            return new Split(false, new OssSplit(
-                                schemaName, "", results, tableName, null,
-                                Collections.singletonList(fileName), deltaReadOption, tso, partition, false
-                            ));
-                        }),
-                        csvFileNamesAndPos.stream().map(fileNameAndPos -> {
-                            OssSplit.DeltaReadOption deltaReadOption = new OssSplit.DeltaReadOption(tso);
-                            deltaReadOption.setAllCsvFiles(Collections.singletonMap(partName,
-                                Collections.singletonList(fileNameAndPos.getKey())));
-                            deltaReadOption.setAllPositions(Collections.singletonMap(partName,
-                                Collections.singletonList(fileNameAndPos.getValue())));
-                            deltaReadOption.setAllDelPositions(deletePositionMap);
-                            return new Split(false, new OssSplit(
-                                schemaName, "", results, tableName, null, null, deltaReadOption, tso, partition, false
-                            ));
-                        })
-                    );
-                }).collect(Collectors.toList());
+                for (Pair<String, Long> fileAndSchemaTs : orcFileNames) {
+                    PartitionInfo currentPartitionInfo = multiVersionPartitionInfo.get(fileAndSchemaTs.getValue());
+                    OssSplit.DeltaReadOption deltaReadOption =
+                        new OssSplit.DeltaReadOption(deltaTso != null ? deltaTso : tso);
+                    deltaReadOption.setAllDelPositions(deletePositionMap);
+                    Pair<Integer, Pair<String, String>> partSpecInfo =
+                        PartitionUtils.calcPartition(currentPartitionInfo, partName);
+                    int partition = needPartition ? partSpecInfo.getKey() : NO_PARTITION_INFO;
+                    String phySchema = partSpecInfo.getValue().getKey();
+                    String phyTableName = partSpecInfo.getValue().getValue();
 
+                    splitList.add(new Split(false, new OssSplit(
+                        schemaName, phySchema, results, tableName, Collections.singletonList(phyTableName),
+                        Collections.singletonList(fileAndSchemaTs.getKey()), deltaReadOption, tso, partition,
+                        localPairWise
+                    )));
+                }
+
+                for (Pair<String, Pair<Long, Long>> fileNameAndTsWithPos : csvFileNamesAndPos) {
+                    PartitionInfo currentPartitionInfo =
+                        multiVersionPartitionInfo.get(fileNameAndTsWithPos.getValue().getKey());
+                    OssSplit.DeltaReadOption deltaReadOption =
+                        new OssSplit.DeltaReadOption(deltaTso != null ? deltaTso : tso);
+                    deltaReadOption.setAllCsvFiles(Collections.singletonMap(partName,
+                        Collections.singletonList(fileNameAndTsWithPos.getKey())));
+                    deltaReadOption.setAllPositions(Collections.singletonMap(partName,
+                        Collections.singletonList(fileNameAndTsWithPos.getValue().getValue())));
+                    deltaReadOption.setAllDelPositions(deletePositionMap);
+
+                    Pair<Integer, Pair<String, String>> partSpecInfo =
+                        PartitionUtils.calcPartition(currentPartitionInfo, partName);
+                    int partition = needPartition ? partSpecInfo.getKey() : NO_PARTITION_INFO;
+                    String phySchema = partSpecInfo.getValue().getKey();
+                    String phyTableName = partSpecInfo.getValue().getValue();
+
+                    splitList.add(new Split(false, new OssSplit(
+                        schemaName, phySchema, results, tableName, Collections.singletonList(phyTableName), null,
+                        deltaReadOption, tso, partition, localPairWise
+                    )));
+                }
+            }
         } else {
-            splitList = dynamicColumnarManager.findFileNames(tso, schemaName, tableName, multiVersionPartitionResult)
-                .entrySet().stream().flatMap(entry -> {
-                    String partName = entry.getKey();
-                    int partition = currentPartitionInfo.getPartitionBy().getPartitions().stream()
-                        .filter(part -> part.getName().equalsIgnoreCase(partName))
-                        .findFirst().map(PartSpecBase::getPosition).map(Long::intValue).orElse(0);
-                    List<String> orcFileNames = entry.getValue().getKey();
-                    List<String> csvFileNames = entry.getValue().getValue();
+            for (Map.Entry<String, ColumnarPartitionPrunedSnapshot> entry : dynamicColumnarManager.findFileNames(
+                tso, schemaName, tableName, multiVersionPartitionResult).entrySet()) {
+                String partName = entry.getKey();
+                ColumnarPartitionPrunedSnapshot snapshotInfo = entry.getValue();
+                List<Pair<String, Long>> orcFilesAndSchemaTs = snapshotInfo.getOrcFilesAndSchemaTs();
+                List<Pair<String, Pair<Long, Long>>> csvFilesAndSchemaTsWithPos =
+                    snapshotInfo.getCsvFilesAndSchemaTsWithPos();
 
-                    return Stream.concat(
-                        orcFileNames.stream()
-                            .map(fileName -> new Split(false, new OssSplit(
-                                schemaName, "", results, tableName, null,
-                                Collections.singletonList(fileName), null, tso, partition, false
-                            ))),
-                        csvFileNames.stream()
-                            .map(fileName -> {
-                                OssSplit.DeltaReadOption deltaReadOption = new OssSplit.DeltaReadOption(tso);
-                                deltaReadOption.setAllCsvFiles(
-                                    Collections.singletonMap(partName, Collections.singletonList(fileName)));
-                                return new Split(false, new OssSplit(
-                                    schemaName, "", results, tableName, null, null, deltaReadOption, tso, partition,
-                                    false
-                                ));
-                            })
+                for (Pair<String, Long> fileAndSchemaTs : orcFilesAndSchemaTs) {
+                    PartitionInfo currentPartitionInfo = multiVersionPartitionInfo.get(fileAndSchemaTs.getValue());
+                    Pair<Integer, Pair<String, String>> partSpecInfo =
+                        PartitionUtils.calcPartition(currentPartitionInfo, partName);
+                    int partition = needPartition ? partSpecInfo.getKey() : NO_PARTITION_INFO;
+                    String phySchema = partSpecInfo.getValue().getKey();
+                    String phyTableName = partSpecInfo.getValue().getValue();
+                    splitList.add(new Split(false, new OssSplit(
+                        schemaName, phySchema, results, tableName, Collections.singletonList(phyTableName),
+                        Collections.singletonList(fileAndSchemaTs.getKey()), null, tso, partition, localPairWise
+                    )));
+                }
+
+                for (Pair<String, Pair<Long, Long>> fileNameAndTsWithPos : csvFilesAndSchemaTsWithPos) {
+                    PartitionInfo currentPartitionInfo =
+                        multiVersionPartitionInfo.get(fileNameAndTsWithPos.getValue().getKey());
+
+                    Pair<Integer, Pair<String, String>> partSpecInfo =
+                        PartitionUtils.calcPartition(currentPartitionInfo, partName);
+                    int partition = needPartition ? partSpecInfo.getKey() : NO_PARTITION_INFO;
+                    String phySchema = partSpecInfo.getValue().getKey();
+                    String phyTableName = partSpecInfo.getValue().getValue();
+
+                    OssSplit.DeltaReadOption deltaReadOption = new OssSplit.DeltaReadOption(tso);
+                    deltaReadOption.setAllCsvFiles(
+                        Collections.singletonMap(partName, Collections.singletonList(fileNameAndTsWithPos.getKey()))
                     );
-                }).collect(Collectors.toList());
+
+                    splitList.add(new Split(false, new OssSplit(
+                        schemaName, phySchema, results, tableName, Collections.singletonList(phyTableName), null,
+                        deltaReadOption, tso, partition, localPairWise
+                    )));
+                }
+            }
         }
 
         if (splitList.size() > 0) {
@@ -579,35 +627,7 @@ public class SplitManagerImpl implements SplitManager {
             ExecUtils.getQueryConcurrencyPolicy(executionContext, ossTableScan);
 
         // Before allocating splits, a certain tso must be fetched first
-        Long tso = null;
-        if (ossTableScan.isColumnarIndex()) {
-            ITransaction trans = executionContext.getTransaction();
-            if (trans instanceof IColumnarTransaction) {
-                Long flashBackQueryTso = ossTableScan.getFlashbackQueryTso(executionContext);
-                if (flashBackQueryTso != null) {
-                    tso = flashBackQueryTso;
-                    // flashback query tso may differ among tables,
-                    // so we do not set tso for columnar trans
-                } else {
-                    IColumnarTransaction columnarTrans = (IColumnarTransaction) trans;
-                    if (!columnarTrans.snapshotSeqIsEmpty()) {
-                        tso = columnarTrans.getSnapshotSeq();
-                    } else {
-                        tso = ColumnarManager.getInstance().latestTso();
-                        columnarTrans.setTsoTimestamp(tso);
-                    }
-                }
-            } else {
-                LOGGER.warn("Trying to access columnar index out of IMppReadOnlyTransaction, transaction class is: "
-                    + trans.getTransactionClass().name());
-                Long flashBackQueryTso = ossTableScan.getFlashbackQueryTso(executionContext);
-                if (flashBackQueryTso != null) {
-                    tso = flashBackQueryTso;
-                } else {
-                    tso = ColumnarManager.getInstance().latestTso();
-                }
-            }
-        }
+        Long tso = fetchTsoAndInitTransaction(ossTableScan, executionContext);
 
         List<RelNode> inputs = ExecUtils.getInputs(
             ossTableScan, executionContext, !ExecUtils.isMppMode(executionContext));
@@ -698,24 +718,7 @@ public class SplitManagerImpl implements SplitManager {
         if (input instanceof PhyTableOperation) {
             PhyTableOperation phyTableOperation = (PhyTableOperation) input;
 
-            if (logicalView.isMGetEnabled()) {
-                phyTableOperation.setBytesSql(logicalView.getLookupSqlTemplateCache(() -> {
-                    SqlSelect nativeSqlForMget = (SqlSelect) phyTableOperation.getNativeSqlNode()
-                        .clone(phyTableOperation.getNativeSqlNode().getParserPosition());
-                    SqlNode filter = nativeSqlForMget.getWhere();
-                    SqlNode customFilter;
-                    if (filter != null) {
-                        SqlOperator operator = SqlStdOperatorTable.AND;
-                        customFilter = new SqlBasicCall(operator,
-                            new SqlNode[] {filter, DYNAMIC_CONDITION_PLACEHOLDER},
-                            SqlParserPos.ZERO);
-                    } else {
-                        customFilter = DYNAMIC_CONDITION_PLACEHOLDER;
-                    }
-                    nativeSqlForMget.setWhere(customFilter);
-                    return RelUtils.toNativeBytesSql(nativeSqlForMget);
-                }));
-            }
+            LookupSql lookupSql = generateLookupSql(logicalView, phyTableOperation);
 
             IGroupExecutor groupExecutor = topology.get(phyTableOperation.getDbIndex());
             TGroupDataSource ds = (TGroupDataSource) groupExecutor.getDataSource();
@@ -726,8 +729,6 @@ public class SplitManagerImpl implements SplitManager {
 
             PhyTableScanBuilder phyOperationBuilder =
                 (PhyTableScanBuilder) phyTableOperation.getPhyOperationBuilder();
-            String orderBy = phyOperationBuilder.buildPhysicalOrderByClause();
-            BytesSql sqlTemplate = phyTableOperation.getBytesSql();
             final ByteString galaxyDigestBS = phyTableOperation.getGalaxyPrepareDigest();
             final byte[] galaxyDigest = null == galaxyDigestBS ? null : galaxyDigestBS.toByteArray();
 
@@ -737,13 +738,14 @@ public class SplitManagerImpl implements SplitManager {
                 params.add(phyOperationBuilder.buildSplitParams(
                     phyTableOperation.getDbIndex(), tables, useParameterDelegate));
             }
+
             Long intraGroupSortKey = PhyTableOperationUtil.fetchPhyOpIntraGroupConnKey(phyTableOperation, ec);
             return new JdbcSplit(ds.getDbGroupKey(),
                 schemaName,
                 phyTableOperation.getDbIndex(),
                 hint,
-                sqlTemplate,
-                orderBy,
+                lookupSql.bytesSql,
+                lookupSql.orderBy,
                 params,
                 address,
                 phyTableOperation.getTableNames(),
@@ -751,10 +753,28 @@ public class SplitManagerImpl implements SplitManager {
                 phyOperationBuilder.containLimit() || (logicalView.getLockMode() != null
                     && logicalView.getLockMode() != SqlSelect.LockMode.UNDEF),
                 intraGroupSortKey,
-                galaxyDigest, galaxyDigest != null && phyTableOperation.isSupportGalaxyPrepare());
+                galaxyDigest, galaxyDigest != null && phyTableOperation.isSupportGalaxyPrepare(),
+                lookupSql.selectNode,
+                lookupSql.startSql);
         } else {
             throw new UnsupportedOperationException("Unknown input " + input);
         }
+    }
+
+    protected LookupSql generateLookupSql(LogicalView logicalView, PhyTableOperation phyTableOperation) {
+        LookupSql lookupSql = null;
+        if (logicalView.isMGetEnabled()) {
+            lookupSql = logicalView.getLookupSqlTemplateCache(() -> {
+                return innerGenerateLookupSql(logicalView, phyTableOperation);
+            });
+            phyTableOperation.setBytesSql(lookupSql.bytesSql);
+        } else {
+            PhyTableScanBuilder phyOperationBuilder =
+                (PhyTableScanBuilder) phyTableOperation.getPhyOperationBuilder();
+            String orderBy = phyOperationBuilder.buildPhysicalOrderByClause();
+            lookupSql = new LookupSql(phyTableOperation.getBytesSql(), null, orderBy, null);
+        }
+        return lookupSql;
     }
 
     private SplitInfo generateSpecifiedSplitInfo(OSSTableScan ossTableScan,
@@ -776,5 +796,103 @@ public class SplitManagerImpl implements SplitManager {
             ImmutableList.of(splitList),
             shardSet, 1,
             splitCount, false);
+    }
+
+    Long fetchTsoAndInitTransaction(OSSTableScan ossTableScan, ExecutionContext executionContext) {
+        Long tso = null;
+        boolean forceUseLatestTso =
+            executionContext.getParamManager().getBoolean(ConnectionParams.USE_LATEST_COLUMNAR_TSO);
+        if (ossTableScan.isColumnarIndex()) {
+            ITransaction trans = executionContext.getTransaction();
+            if (trans instanceof IColumnarTransaction) {
+                Long flashBackQueryTso = ossTableScan.getFlashbackQueryTso(executionContext);
+                if (flashBackQueryTso != null) {
+                    tso = flashBackQueryTso;
+                    // flashback query tso may differ among tables,
+                    // so we do not set tso for columnar trans
+                } else {
+                    IColumnarTransaction columnarTrans = (IColumnarTransaction) trans;
+                    if (!columnarTrans.snapshotSeqIsEmpty()) {
+                        tso = columnarTrans.getSnapshotSeq();
+                    } else {
+                        if (forceUseLatestTso) {
+                            tso = ColumnarTransactionUtils.getLatestTsoFromGms();
+                        } else {
+                            tso = ColumnarManager.getInstance().latestTso();
+                        }
+                        columnarTrans.setTsoTimestamp(tso);
+                    }
+                }
+            } else {
+                LOGGER.warn("Trying to access columnar index out of IMppReadOnlyTransaction, transaction class is: "
+                    + trans.getTransactionClass().name());
+                Long flashBackQueryTso = ossTableScan.getFlashbackQueryTso(executionContext);
+                if (flashBackQueryTso != null) {
+                    tso = flashBackQueryTso;
+                } else {
+                    if (forceUseLatestTso) {
+                        tso = ColumnarTransactionUtils.getLatestTsoFromGms();
+                    } else {
+                        tso = ColumnarManager.getInstance().latestTso();
+                    }
+                }
+            }
+        }
+        return tso;
+    }
+
+    protected LookupSql innerGenerateLookupSql(LogicalView logicalView, PhyTableOperation phyTableOperation) {
+        if (logicalView.isInToUnionAll()) {
+            SqlSelect nativeSqlForMget = (SqlSelect) ((SqlSelect) phyTableOperation.getNativeSqlNode());
+            SqlNodeList selectList = nativeSqlForMget.getSelectList();
+            boolean existAs = false;
+            if (selectList != null) {
+                for (SqlNode selectNode : selectList) {
+                    if (selectNode.getKind() == SqlKind.AS) {
+                        existAs = true;
+                        break;
+                    }
+                }
+            }
+            PhyTableScanBuilder phyOperationBuilder =
+                (PhyTableScanBuilder) phyTableOperation.getPhyOperationBuilder();
+            String orderBy = phyOperationBuilder.buildPhysicalOrderByClause();
+            if (existAs) {
+                BytesSql bytesSql = RelUtils.toNativeBytesSql(nativeSqlForMget);
+                return new LookupSql(bytesSql, bytesSql, orderBy, null);
+            } else {
+                nativeSqlForMget = (SqlSelect) ((SqlSelect) nativeSqlForMget.clone(
+                    phyTableOperation.getNativeSqlNode().getParserPosition()));
+                nativeSqlForMget.setComputedFetch(
+                    ((SqlSelect) phyTableOperation.getNativeSqlNode()).getComputedFetch());
+                final List<SqlNode> startSelectItems = new ArrayList<>();
+                startSelectItems.add(SqlIdentifier.star(SqlParserPos.ZERO));
+                nativeSqlForMget.setSelectList(new SqlNodeList(startSelectItems, SqlParserPos.ZERO));
+                BytesSql startSql = RelUtils.toNativeBytesSql(nativeSqlForMget);
+                return new LookupSql(phyTableOperation.getBytesSql(), startSql, orderBy,
+                    selectList.toString());
+            }
+        } else {
+            SqlSelect nativeSqlForMget = (SqlSelect) ((SqlSelect) phyTableOperation.getNativeSqlNode())
+                .clone(phyTableOperation.getNativeSqlNode().getParserPosition());
+            nativeSqlForMget.setComputedFetch(
+                ((SqlSelect) phyTableOperation.getNativeSqlNode()).getComputedFetch());
+            SqlNode filter = nativeSqlForMget.getWhere();
+            SqlNode customFilter;
+            if (filter != null) {
+                SqlOperator operator = SqlStdOperatorTable.AND;
+                customFilter = new SqlBasicCall(operator,
+                    new SqlNode[] {filter, DYNAMIC_CONDITION_PLACEHOLDER},
+                    SqlParserPos.ZERO);
+            } else {
+                customFilter = DYNAMIC_CONDITION_PLACEHOLDER;
+            }
+            nativeSqlForMget.setWhere(customFilter);
+            BytesSql bytesSql = RelUtils.toNativeBytesSql(nativeSqlForMget);
+            PhyTableScanBuilder phyOperationBuilder =
+                (PhyTableScanBuilder) phyTableOperation.getPhyOperationBuilder();
+            String orderBy = phyOperationBuilder.buildPhysicalOrderByClause();
+            return new LookupSql(bytesSql, null, orderBy, null);
+        }
     }
 }

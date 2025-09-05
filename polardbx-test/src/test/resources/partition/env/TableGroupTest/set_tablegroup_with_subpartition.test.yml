@@ -1,0 +1,48 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup t_a_t_s_tg1;
+
+drop table if exists lc_k_tp1;
+drop table if exists lc_k_tp2;
+
+create table if not exists lc_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in ((7,7),(8,8))
+);
+
+create table if not exists lc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+cc datetime NOT NULL,
+dd varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (cc,dd) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+
+insert into lc_k_tp2 values (5,5,'2024-05-10',1,2);
+insert into lc_k_tp2 values (7,7,'2024-05-10',1,2);
+
+alter table lc_k_tp1 set tablegroup = t_a_t_s_tg1;
+
+show create table lc_k_tp1;
+
+show create table lc_k_tp2;
+
+alter table lc_k_tp2 set tablegroup = t_a_t_s_tg1 force;
+
+show create table lc_k_tp2;
+
+select * from lc_k_tp2 order by a;

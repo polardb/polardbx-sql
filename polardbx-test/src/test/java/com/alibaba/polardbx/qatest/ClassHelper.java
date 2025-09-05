@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest;
 
 import com.alibaba.polardbx.common.utils.ClassFinder;
+import com.alibaba.polardbx.qatest.ddl.auto.columnar.ColumnarSetConfigTest;
 import com.alibaba.polardbx.qatest.ddl.auto.columnar.CreateCciTest;
 import com.google.common.collect.ImmutableList;
 
@@ -68,6 +69,8 @@ public class ClassHelper {
                         .collect(Collectors.toList()))
                         .addAll(getColumnarDqlCase())
                         .add(CreateCciTest.class)
+                        .addAll(getColumnarDdlCase()).add(CreateCciTest.class)
+                        .add(ColumnarSetConfigTest.class)
                         .build();
                 }
             }
@@ -75,21 +78,25 @@ public class ClassHelper {
         return columnarTestCases;
     }
 
-    private static List<Class> getColumnarDqlCase() {
-        String columnarPackageName = "com.alibaba.polardbx.qatest.columnar.dql";
-        ClassFinder.ClassFilter filter = new ClassFinder.ClassFilter() {
-            @Override
-            public boolean filter(Class klass) {
-                int mod = klass.getModifiers();
-                return !Modifier.isAbstract(mod)
-                    && !Modifier.isInterface(mod);
-            }
+    private static ClassFinder.ClassFilter CLASS_FILTER = new ClassFinder.ClassFilter() {
+        @Override
+        public boolean filter(Class klass) {
+            int mod = klass.getModifiers();
+            return !Modifier.isAbstract(mod)
+                && !Modifier.isInterface(mod);
+        }
 
-            @Override
-            public boolean preFilter(String classFulName) {
-                return classFulName.endsWith("Test");
-            }
-        };
-        return ClassFinder.findClassesInPackage(columnarPackageName, filter);
+        @Override
+        public boolean preFilter(String classFulName) {
+            return classFulName.endsWith("Test");
+        }
+    };
+
+    private static List<Class> getColumnarDqlCase() {
+        return ClassFinder.findClassesInPackage("com.alibaba.polardbx.qatest.columnar.dql", CLASS_FILTER);
+    }
+
+    private static List<Class> getColumnarDdlCase() {
+        return ClassFinder.findClassesInPackage("com.alibaba.polardbx.qatest.columnar.ddl", CLASS_FILTER);
     }
 }

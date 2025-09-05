@@ -1,0 +1,90 @@
+- sql: |
+    SELECT id, user_id, broker_id, s_id, biz_id FROM test1 WHERE user_id = 61322500 AND broker_id = 0 AND type IN(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287) AND partition_time >= '2024-06-28 19:14:02.387' ORDER BY id DESC LIMIT 0, 100;
+
+  plan: |
+    mergesort(sort="id desc", offset=0, fetch=100)
+      logicalview(tables="test1[p47p202406,p47p202407,p47p202408,p47p202409,p47p202410,p47p202411]", shardcount=6, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id` from `test1` as `test1` where ((`user_id` = 61322500) and (`broker_id` = 0) and (`type` in(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287)) and (`partition_time` >= '2024-06-28 19:14:02.387')) order by `id` desc limit 100")
+
+- sql: |
+    SELECT id, user_id, broker_id, s_id, biz_id FROM test1 WHERE user_id = 61322500 AND broker_id = 0 AND type expand in (288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287) AND partition_time >= '2024-06-28 19:14:02.387' ORDER BY id DESC LIMIT 0, 100;
+
+  plan: |
+    project(id="id", user_id="user_id", broker_id="broker_id", s_id="s_id", biz_id="biz_id")
+      materializedsemijoin(condition="type = type", type="semi")
+        mergesort(sort="id desc", offset=0, fetch=100)
+          logicalview(tables="test1[p47p202406,p47p202407,p47p202408,p47p202409,p47p202410,p47p202411]", shardcount=6, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id`, `type` from `test1` as `test1` force index(`indx2`) where ((`type` in(?)) and (`user_id` = 61322500) and (`broker_id` = 0) and (`partition_time` >= '2024-06-28 19:14:02.387')) order by `id` desc limit 100")
+        dynamicvalues(tuples=[{ cartesian(list(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287)) }])
+
+- sql: |
+    /*+TDDL:IN_TO_UNION_STRICT_MODE=1*/SELECT id, user_id, broker_id, s_id, biz_id FROM test1 WHERE user_id = 61322500 AND broker_id = 0 AND type expand in (288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287) AND id >= 123 ORDER BY partition_time DESC LIMIT 0, 100;
+
+  plan: |
+    project(id="id", user_id="user_id", broker_id="broker_id", s_id="s_id", biz_id="biz_id")
+      materializedsemijoin(condition="type = type", type="semi")
+        mergesort(sort="partition_time desc", offset=0, fetch=100)
+          logicalview(tables="test1[p47p202309,p47p202310,p47p202311,...p47p202411]", shardcount=15, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id`, `type`, `partition_time` from `test1` as `test1` force index(`indx2`) where ((`type` in(?)) and (`user_id` = 61322500) and (`broker_id` = 0) and (`id` >= 123)) order by `partition_time` desc limit 100")
+        dynamicvalues(tuples=[{ cartesian(list(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287)) }])
+
+- sql: |
+    /*+TDDL:IN_TO_UNION_STRICT_MODE=0*/SELECT id, user_id, broker_id, s_id, biz_id FROM test1 WHERE user_id = 61322500 AND broker_id = 0 AND type expand in (288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287) AND id >= 123 ORDER BY partition_time DESC LIMIT 0, 100;
+
+  plan: |
+    project(id="id", user_id="user_id", broker_id="broker_id", s_id="s_id", biz_id="biz_id")
+      mergesort(sort="partition_time desc", offset=0, fetch=100)
+        logicalview(tables="test1[p47p202309,p47p202310,p47p202311,...p47p202411]", shardcount=15, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id`, `partition_time` from `test1` as `test1` where ((`user_id` = 61322500) and (`broker_id` = 0) and (`type` in(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287)) and (`id` >= 123)) order by `partition_time` desc limit 100")
+
+- sql: |
+    SELECT id, user_id, broker_id, s_id, biz_id FROM test1 WHERE user_id = 61322500 AND broker_id in (1,2,3) AND type expand in (288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287) AND id >= 123 ORDER BY id DESC LIMIT 0, 100;
+
+  plan: |
+    mergesort(sort="id desc", offset=0, fetch=100)
+      logicalview(tables="test1[p47p202309,p47p202310,p47p202311,...p47p202411]", shardcount=15, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id` from `test1` as `test1` where ((`user_id` = 61322500) and (`broker_id` in(1, 2, 3)) and (`type` in(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287)) and (`id` >= 123)) order by `id` desc limit 100")
+
+- sql: |
+    SELECT id, user_id, broker_id, s_id, biz_id FROM test1 WHERE user_id = 61322500 AND broker_id expand in (1,2,3) AND type expand in (288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287) AND id >= 123 ORDER BY id DESC LIMIT 0, 100;
+
+  plan: |
+    project(id="id", user_id="user_id", broker_id="broker_id", s_id="s_id", biz_id="biz_id")
+      materializedsemijoin(condition="broker_id = broker_id and type = type", type="semi")
+        mergesort(sort="id desc", offset=0, fetch=100)
+          logicalview(tables="test1[p47p202309,p47p202310,p47p202311,...p47p202411]", shardcount=15, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id`, `type` from `test1` as `test1` force index(`indx2`) where ((((`broker_id`, `type`)) in(?)) and (`user_id` = 61322500) and (`id` >= 123)) order by `id` desc limit 100")
+        dynamicvalues(tuples=[{ cartesian(list(1, 2, 3), list(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287)) }])
+
+- sql: |
+    SELECT * FROM test2 WHERE shipmentId = 61322500 AND warehouseCode expand in (1,2,3)  ORDER BY id DESC LIMIT 0, 100;
+
+  plan: |
+    materializedsemijoin(condition="warehousecode = warehousecode", type="semi")
+      mergesort(sort="id desc", offset=0, fetch=100)
+        logicalview(tables="test2[p1,p2,p3]", shardcount=3, sql="select `id`, `shipmentid`, `warehousecode`, `shipmentcode` from `test2` as `test2` force index(`indx1`) where ((`warehousecode` in(?)) and (`shipmentid` = 61322500)) order by `id` desc limit 100")
+      dynamicvalues(tuples=[{ cartesian(list(1, 2, 3)) }])
+
+- sql: |
+    SELECT * FROM test3 WHERE shipmentId = 61322500 AND warehouseCode expand in (1,2,3)  ORDER BY id DESC LIMIT 0, 100;
+
+  plan: |
+    logicalview(tables="optest_p00000_group.test3", sql="select `test3`.`id`, `test3`.`shipmentid`, `test3`.`warehousecode`, `test3`.`shipmentcode` from `test3` as `test3` where ((`test3`.`shipmentid` = 61322500) and (`test3`.`warehousecode` in (1, 2, 3))) order by `id` desc limit 100 offset 0")
+
+- sql: |
+    /*+TDDL:IN_TO_UNION_STRICT_MODE=2 index(test1,indx2)*/SELECT id, user_id, broker_id, s_id, biz_id FROM test1 WHERE user_id = 61322500 AND broker_id in (1,2,3) AND type expand in (288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287) AND id >= 123 ORDER BY id DESC LIMIT 0, 100;
+
+  plan: |
+    project(id="id", user_id="user_id", broker_id="broker_id", s_id="s_id", biz_id="biz_id")
+      materializedsemijoin(condition="type = type", type="semi")
+        mergesort(sort="id desc", offset=0, fetch=100)
+          logicalview(tables="test1[p47p202309,p47p202310,p47p202311,...p47p202411]", shardcount=15, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id`, `type` from `test1` as `test1` force index(indx2) where ((`type` in(?)) and (`user_id` = 61322500) and (`broker_id` in(1, 2, 3)) and (`id` >= 123)) order by `id` desc limit 100")
+        dynamicvalues(tuples=[{ cartesian(list(288, 257, 290, 292, 11, 283, 12, 284, 285, 286, 287)) }])
+
+- sql: |
+    /*+TDDL:IN_TO_UNION_STRICT_MODE=2 index(test1,indx2)*/SELECT id, user_id, broker_id, s_id, biz_id FROM test1 where `user_id` in (1,2,3)  order by `client_oid` desc limit 100;
+
+  plan: |
+    project(id="id", user_id="user_id", broker_id="broker_id", s_id="s_id", biz_id="biz_id")
+      mergesort(sort="client_oid desc", offset=0, fetch=100)
+        logicalview(tables="test1[p4p202309,p4p202310,p4p202311,...p55p202411]", shardcount=45, sql="select `id`, `user_id`, `broker_id`, `s_id`, `biz_id`, `client_oid` from `test1` as `test1` force index(indx2) where (`user_id` in(1, 2, 3)) order by `client_oid` desc limit 100")
+
+- sql: |
+    SELECT id, expand FROM test5 where expand ='' and `id` expand in (1,2);
+
+  plan: |
+    logicalview(tables="optest_p00000_group.test5", sql="select `test5`.`id`, `test5`.`expand` from `test5` as `test5` where ((`test5`.`expand` = '') and (`test5`.`id` in (1, 2)))")

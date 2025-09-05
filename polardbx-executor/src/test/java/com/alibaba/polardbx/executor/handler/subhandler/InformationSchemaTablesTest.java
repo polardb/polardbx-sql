@@ -218,7 +218,7 @@ public class InformationSchemaTablesTest {
                 String sql = invocation.getArgument(0);
                 System.out.println(sql);
                 Assert.assertTrue(sql.contains("('" + db2db1.toLowerCase() + "', '" + tb2p1.toLowerCase() + "')"));
-                Assert.assertTrue(sql.contains("('" + db2db1.toLowerCase() + "', '" + gsi2p1.toLowerCase() + "'))"));
+                Assert.assertTrue(sql.contains("('" + db2db1.toLowerCase() + "', '" + gsi2p1.toLowerCase() + "')"));
                 return rs3;
             });
 

@@ -82,4 +82,7 @@ public interface ITConnection extends AutoCloseable {
         return null;
     }
 
+    default void setTrxId(long id) {
+    }
+
 }

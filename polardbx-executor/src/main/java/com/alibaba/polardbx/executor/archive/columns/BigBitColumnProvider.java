@@ -31,6 +31,7 @@ import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.orc.TypeDescription;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.util.Optional;
 
@@ -128,8 +129,8 @@ class BigBitColumnProvider implements ColumnProvider<Long> {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
-        long longVal = ColumnProvider.bigBitLongFromByte(bytes, bytes.length);
+        ByteBuffer bytes = row.getBytes(columnId);
+        long longVal = ColumnProvider.bigBitLongFromByte(bytes);
         blockBuilder.writeBigInteger(BigInteger.valueOf(longVal));
     }
 }

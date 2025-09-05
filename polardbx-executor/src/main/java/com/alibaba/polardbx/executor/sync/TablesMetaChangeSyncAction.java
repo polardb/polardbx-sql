@@ -21,13 +21,17 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import lombok.Data;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * For PolarDB-X only.
  */
+@Data
 public class TablesMetaChangeSyncAction implements ISyncAction {
     protected final static Logger logger = LoggerFactory.getLogger(TablesMetaChangeSyncAction.class);
 
@@ -36,62 +40,37 @@ public class TablesMetaChangeSyncAction implements ISyncAction {
 
     private Long connId;
     private Boolean forceSyncFailed;
+    private Boolean forceNoPreemptive;
 
     public TablesMetaChangeSyncAction() {
 
     }
 
-    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Boolean forceSyncFailed) {
+    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Boolean forceSyncFailed, boolean forceNoPreemptive) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
-        this.connId = -1L;
         this.forceSyncFailed = forceSyncFailed;
+        this.forceNoPreemptive = forceNoPreemptive;
     }
 
     @JSONCreator
-    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Long connId, Boolean forceSyncFailed) {
+    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Long connId, Boolean forceSyncFailed, boolean forceNoPreemptive) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
         this.connId = connId;
         this.forceSyncFailed = forceSyncFailed;
+        this.forceNoPreemptive = forceNoPreemptive;
     }
 
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        oldSchemaManager.toNewVersionInTrx(logicalTables, connId, true, forceSyncFailed);
+        if (forceNoPreemptive) {
+            oldSchemaManager.toNewVersionInTrx(logicalTables, false, PreemptiveTime.newDefaultPreemptiveTime(), connId,
+                    true, logicalTables.size() > 1, forceSyncFailed);
+        } else {
+            oldSchemaManager.toNewVersionInTrx(logicalTables, connId, true, forceSyncFailed);
+        }
         return null;
-    }
-
-    public String getSchemaName() {
-        return schemaName;
-    }
-
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
-    }
-
-    public List<String> getLogicalTables() {
-        return logicalTables;
-    }
-
-    public void setLogicalTables(List<String> logicalTables) {
-        this.logicalTables = logicalTables;
-    }
-
-    public Long getConnId() {
-        return connId;
-    }
-
-    public void setConnId(Long connId) {
-        this.connId = connId;
-    }
-
-    public Boolean getForceSyncFailed() {
-        return forceSyncFailed;
-    }
-
-    public void setForceSyncFailed(Boolean forceSyncFailed) {
-        this.forceSyncFailed = forceSyncFailed;
     }
 }

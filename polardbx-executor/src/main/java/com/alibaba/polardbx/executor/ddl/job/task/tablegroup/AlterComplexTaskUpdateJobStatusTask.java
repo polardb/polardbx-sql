@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -25,12 +26,12 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.sql.Connection;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * change table status
@@ -120,9 +121,11 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         // sync to restore the status of table meta
+        PreemptiveTime preemptiveTime =
+            PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+                ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
         SyncManagerHelper.sync(
-            new TablesMetaChangePreemptiveSyncAction(schemaName, relatedLogicalTables, 1500L, 1500L,
-                TimeUnit.MICROSECONDS), SyncScope.ALL);
+            new TablesMetaChangePreemptiveSyncAction(schemaName, relatedLogicalTables, preemptiveTime), SyncScope.ALL);
     }
 
     @Override

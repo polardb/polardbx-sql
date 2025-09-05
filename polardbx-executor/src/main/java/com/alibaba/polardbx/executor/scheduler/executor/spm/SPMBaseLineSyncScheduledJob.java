@@ -39,7 +39,6 @@ import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import org.apache.commons.lang.StringUtils;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -244,6 +243,9 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
                                   Map<String, BaselineInfo> tempMap) {
         for (Map.Entry<String, BaselineInfo> e : tempMap.entrySet()) {
             String sql = e.getKey();
+            if (e.getValue() != null && e.getValue().isDirty()) {
+                continue;
+            }
             if (!currentMap.containsKey(sql)) {
                 BaselineInfo baselineInfo = e.getValue();
                 boolean fixed = false;
@@ -252,7 +254,7 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
                         fixed = true;
                     }
                 }
-                if (fixed || baselineInfo.isRebuildAtLoad()) {
+                if (fixed || baselineInfo.isRebuildAtLoad() || baselineInfo.isHotEvolution()) {
                     currentMap.put(sql, baselineInfo);
                 } else {
                     final int maxBaselineSize = InstConfUtil.getInt(ConnectionParams.SPM_MAX_BASELINE_SIZE);

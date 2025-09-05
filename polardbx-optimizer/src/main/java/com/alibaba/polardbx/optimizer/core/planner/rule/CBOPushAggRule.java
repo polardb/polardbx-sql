@@ -107,7 +107,7 @@ public class CBOPushAggRule extends RelOptRule {
         }
     }
 
-    private RelNode tryPushAgg(LogicalAggregate logicalAggregate, LogicalView logicalView) {
+    static RelNode tryPushAgg(LogicalAggregate logicalAggregate, LogicalView logicalView) {
         assert logicalAggregate != null && logicalView != null;
         if (logicalAggregate.getAggOptimizationContext().isAggPushed()) {
             return null;
@@ -129,12 +129,11 @@ public class CBOPushAggRule extends RelOptRule {
 
         Set<Integer> shardIndex = new HashSet<>();
         if (fullMatchSharding(logicalAggregate, logicalView, shardColumns, shardIndex)) {
-            // fullMatchSharding should not match AccessPathRule
-            // so we convert LogicalView to DrdsConvention (AccessPathRule only match Convention.None!)
-            LogicalView newLogicalView = logicalView.copy(logicalView.getTraitSet().replace(DrdsConvention.INSTANCE));
+            LogicalView newLogicalView = logicalView.copy(logicalView.getTraitSet());
             LogicalAggregate newLogicalAggregate = logicalAggregate.copy(
                 newLogicalView.getPushedRelNode(), logicalAggregate.getGroupSet(), logicalAggregate.getAggCallList());
             newLogicalView.push(newLogicalAggregate);
+            newLogicalView.setOnePhaseAgg(true);
             return newLogicalView;
         }
 

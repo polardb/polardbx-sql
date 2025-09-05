@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.util.BitSets;
 
 import java.lang.reflect.Field;
 import java.util.BitSet;
+import java.util.Set;
 
 /**
  * @author chenmo.cm
@@ -60,22 +62,20 @@ public final class ExecutionPlanProperties {
 
     public static final int MODIFY_FOREIGN_KEY = 15;
 
-    public static final BitSet MDL_REQUIRED = BitSets
+    public static final Set<Integer> MDL_REQUIRED = ImmutableSet
         .of(MODIFY_TABLE, MODIFY_GSI_TABLE, MODIFY_BROADCAST_TABLE, MODIFY_SHARDING_COLUMN, MODIFY_CROSS_DB,
             MODIFY_SCALE_OUT_GROUP, REPLICATE_TABLE);
 
-    public static final BitSet MDL_REQUIRED_POLARDBX = BitSets
+    public static final Set<Integer> MDL_REQUIRED_POLARDBX = ImmutableSet
         .of(QUERY, DML);
 
-    public static final BitSet XA_REQUIRED = BitSets
+    public static final Set<Integer> XA_REQUIRED = ImmutableSet
         .of(MODIFY_BROADCAST_TABLE, MODIFY_GSI_TABLE, MODIFY_SHARDING_COLUMN, MODIFY_CROSS_DB, MODIFY_SCALE_OUT_GROUP,
             REPLICATE_TABLE);
 
-    public static final BitSet DDL_STATEMENT = BitSets
-        .of(DDL);
+    public static final Set<Integer> DDL_STATEMENT = ImmutableSet.of(DDL);
 
-    public static final BitSet DML_STATEMENT = BitSets
-        .of(DML);
+    public static final Set<Integer> DML_STATEMENT = ImmutableSet.of(DML);
 
     private static Integer cachedMaxPropertyValue = null;
 

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.net;
 
 import com.alibaba.polardbx.Capabilities;
+import com.alibaba.polardbx.Commands;
 import com.alibaba.polardbx.Versions;
 import com.alibaba.polardbx.common.audit.AuditAction;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
@@ -27,7 +28,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.logger.MDC;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -56,6 +56,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.util.Set;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author xianmao.hexm
@@ -105,7 +106,7 @@ public abstract class FrontendConnection extends AbstractConnection {
     private byte[] bigPackData;
     private int bigPackLength;
 
-    protected Future executingFuture;
+    protected final AtomicReference<Future<?>> executingFuture = new AtomicReference<>();
     protected volatile boolean isBinlogDumpConn = false;
     protected com.alibaba.polardbx.common.exception.code.ErrorCode futureCancelErrorCode;
 
@@ -631,6 +632,10 @@ public abstract class FrontendConnection extends AbstractConnection {
         }
     }
 
+    protected void showCloseInfo(Throwable t) {
+        logger.warn("Connection force closed.", t);
+    }
+
     @Override
     public void handleData(byte[] data) {
 
@@ -698,35 +703,49 @@ public abstract class FrontendConnection extends AbstractConnection {
             }
 
             // schema maybe null
-            final Future previousFuture = this.executingFuture;
+            final Future<?> previousFuture = this.executingFuture.get();
             // Ensure futureCancelErrorCode is reset
             this.futureCancelErrorCode = null;
-            this.executingFuture = processor.getHandler().submit(this.schema, null, processor.getIndex(), () -> {
-                // 如果当前connection中上一个请求是binlog dump请求，则不要等待以及处理请求，因为binlog dump请求无意外情况不会结束
-                // 如果等待，会造成线程泄漏
-                if (previousFuture != null) {
-                    if (isBinlogDumpConn) {
-                        logger.warn("command type:" + finalData[4]
-                            + ", previous future is binlog dump, will not handle this request!");
-                        return;
-                    } else {
-                        try {
-                            previousFuture.get();
-                        } catch (Throwable ex) {
-                            logger.warn("error during waiting for previous command", ex);
+            final Future<?> task = processor.getHandler().submit(this.schema, null, processor.getIndex(), () -> {
+                // move all waits into try block, and return error when any exception occurs
+                boolean closeConnection = false;
+                try {
+                    // 如果当前connection中上一个请求是binlog dump请求，则不要等待以及处理请求，因为binlog dump请求无意外情况不会结束
+                    // 如果等待，会造成线程泄漏
+                    if (previousFuture != null) {
+                        if (isBinlogDumpConn) {
+                            logger.warn("command type:" + finalData[4]
+                                + ", previous future is binlog dump, will not handle this request!");
+                            return;
+                        } else {
+                            try {
+                                previousFuture.get();
+                            } catch (Throwable ex) {
+                                logger.warn("error during waiting for previous command", ex);
+                            }
                         }
                     }
-                }
-                if (rescheduled) {
-                    handleError(ErrorCode.ERR_HANDLE_DATA, new TddlNestableRuntimeException(
-                        "The query is cancelled because the previous query is being rescheduling on this connection."));
-                }
-                try {
+
+                    if (rescheduled) {
+                        closeConnection = true;
+                        if (data.length >= 5 && data[4] == Commands.COM_QUIT) {
+                            throw new TddlNestableRuntimeException("Connection closed.");
+                        } else {
+                            throw new TddlNestableRuntimeException(
+                                "The query is cancelled because the previous query is being rescheduling on this connection.");
+                        }
+                    }
                     handler.handle(finalData);
                 } catch (Throwable e) {
-                    handleError(ErrorCode.ERR_HANDLE_DATA, e);
+                    if (closeConnection) {
+                        close();
+                        showCloseInfo(e);
+                    } else {
+                        handleError(ErrorCode.ERR_HANDLE_DATA, e);
+                    }
                 }
             });
+            this.executingFuture.compareAndSet(previousFuture, task);
         }
     }
 

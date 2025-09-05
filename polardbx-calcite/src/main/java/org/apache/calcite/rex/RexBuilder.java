@@ -1475,6 +1475,14 @@ public class RexBuilder {
       } else {
         return literal;
       }
+    case YEAR:
+      // use integer.
+      if (value instanceof Number) {
+        literal = makeIntLiteral(((Number) value).intValue());
+        return literal;
+      } else {
+        throw Util.unexpected(type.getSqlTypeName());
+      }
     case TINYINT:
     case TINYINT_UNSIGNED:
     case SMALLINT:

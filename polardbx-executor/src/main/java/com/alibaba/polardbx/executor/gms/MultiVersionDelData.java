@@ -20,6 +20,7 @@ import org.roaringbitmap.RoaringBitmap;
 
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -30,6 +31,13 @@ public class MultiVersionDelData implements Purgeable {
     // tso - cache
     private final SortedMap<Long, RoaringBitmap> allBitmaps = new ConcurrentSkipListMap<>();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    private final AtomicLong memoryUsed;
+
+    public MultiVersionDelData(AtomicLong memoryUsed) {
+        this.memoryUsed = memoryUsed;
+        this.memoryUsed.addAndGet(mergedBitMap.getLongSizeInBytes());
+    }
 
     public void putNewTsoBitMap(long tso, RoaringBitmap bitmap) {
         // this tso already exists, skip
@@ -46,7 +54,9 @@ public class MultiVersionDelData implements Purgeable {
             }
 
             allBitmaps.put(tso, bitmap);
+            long prevMemoryUsed = mergedBitMap.getLongSizeInBytes();
             mergedBitMap.or(bitmap);
+            memoryUsed.addAndGet(mergedBitMap.getLongSizeInBytes() - prevMemoryUsed);
         } finally {
             writeLock.unlock();
         }
@@ -88,5 +98,9 @@ public class MultiVersionDelData implements Purgeable {
         } finally {
             writeLock.unlock();
         }
+    }
+
+    public long getCurrentMemoryUsed() {
+        return mergedBitMap.getLongSizeInBytes();
     }
 }

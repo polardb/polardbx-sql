@@ -112,22 +112,22 @@ public abstract class BaseConnectionHolder implements IConnectionHolder {
         Lock lock = this.lock;
         lock.lock();
         try {
-            for (IConnection connection : getAllConnection()) {
+            this.getAllConnection().forEach(connection -> {
                 IConnection realConneciton = connection.getRealConnection();
                 if (realConneciton instanceof TGroupDirectConnection) {
                     String group = ((TGroupDirectConnection) realConneciton).getGroupDataSource().getDbGroupKey();
-                    long id = -1L;
+                    long id;
                     try {
                         id = realConneciton.getId();
                     } catch (Throwable t) {
                         // When we get id from XConnection, an exception may be thrown
                         // if the connection is closed, and we move to the next transaction.
-                        break;
+                        return;
                     }
 
                     consumer.accept(group, id);
                 }
-            }
+            });
         } finally {
             lock.unlock();
         }

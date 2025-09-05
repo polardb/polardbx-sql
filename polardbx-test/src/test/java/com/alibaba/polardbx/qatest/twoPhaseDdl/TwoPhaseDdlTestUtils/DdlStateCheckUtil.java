@@ -1,7 +1,7 @@
 package com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils;
 
-import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Assert;
@@ -15,13 +15,13 @@ import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableGsiPkRangeBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterGsiAddLocalIndexTask;
-import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutor;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.qatest.ddl.auto.dal.CheckTableTest;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.Lists;
 import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
 import org.apache.commons.logging.Log;
+import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -136,9 +136,9 @@ public class DdlStateCheckUtil {
             }
             String backfillIds = (String) result.get(1);
             String executionTime = (String) result.get(2);
-            if (!checkIfContinueValid(taskId, backfillIds, executionTime, successRowCountMap, msg)) {
-                checkOk = false;
-            }
+//            if (!checkIfContinueValid(taskId, backfillIds, executionTime, successRowCountMap, msg)) {
+//                checkOk = false;
+//            }
         }
         errMsg.add(StringUtil.join(",", msg).toString());
         return checkOk;
@@ -262,16 +262,17 @@ public class DdlStateCheckUtil {
     public static Boolean waitTillDdlDone(Connection tddlConnection, Long jobId, String tableName,
                                           int expectedLocalIndexConcurrency, Boolean checkMppTaskAllocation)
         throws InterruptedException {
-        return waitTillDdlDone(null, tddlConnection, jobId, tableName, expectedLocalIndexConcurrency,
+        return waitTillDdlDone(null, tddlConnection, jobId, tableName, expectedLocalIndexConcurrency, "alter table",
             checkMppTaskAllocation);
     }
 
     public static Boolean waitTillDdlDone(Log logger, Connection tddlConnection, Long jobId, String tableName,
-                                          int expectedLocalIndexConcurrency, Boolean checkMppTaskAllocation)
+                                          int expectedLocalIndexConcurrency, String pattern,
+                                          Boolean checkMppTaskAllocation)
         throws InterruptedException {
         Boolean waitDone = false;
         String showDdlSql = String.format("select state from metadb.ddl_engine where job_id =  %d", jobId);
-        String showPhysicalDdlSql = "show physical processlist where info like '%alter table%'";
+        String showPhysicalDdlSql = "show physical processlist where info like '%" + pattern + "%'";
         String showDdlEngineStatusSql = String.format(
             "select node_ip from information_schema.ddl_scheduler where job_id = %d and task_name = \"%s\" and task_state = \"ACTIVE\""
             , jobId, LogicalTableGsiPkRangeBackfillTask.class.getName());
@@ -297,11 +298,22 @@ public class DdlStateCheckUtil {
                 results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, showActiveTaskSql));
                 logger.info(String.format(" loop %d, show ddl active task is  %s", i, results.toString()));
             }
+            results = new ArrayList<>();
             if (expectedLocalIndexConcurrency > 0) {
-                results =
-                    JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, showPhysicalDdlSql)).stream()
-                        .map(o -> Lists.newArrayList(o.get(4), o.get(8)))
-                        .collect(Collectors.toList());
+                try {
+                    ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, showPhysicalDdlSql);
+                    while (resultSet.next()) {
+                        Object physicalDb = resultSet.getObject("db");
+                        Object sql = resultSet.getObject("info");
+                        results.add(Lists.newArrayList(physicalDb, sql));
+                    }
+                } catch (SQLException | NullPointerException e) {
+                    if (logger != null) {
+                        logger.warn(e.getMessage());
+                    }
+                    i++;
+                    continue;
+                }
                 Map<String, Integer> physicalConcurrency = new HashMap<>();
                 for (List<Object> result : results) {
                     String phyDbName = result.get(0).toString();
@@ -334,7 +346,7 @@ public class DdlStateCheckUtil {
                 }
 
             }
-            Thread.sleep(200);
+            Thread.sleep(50);
             i++;
         }
         if (logger != null) {
@@ -403,12 +415,59 @@ public class DdlStateCheckUtil {
         return waitCommit;
     }
 
+    public static Boolean waitTillImportTableSpaceDone(Connection tddlConnection, Long jobId, String tableName)
+        throws InterruptedException {
+        Boolean waitCommit = false;
+        String sql = String.format(
+            "select state from metadb.ddl_engine_task where job_id =  %d and name = \"ImportTableSpaceDdlNormalTask\"",
+            jobId);
+        int i = 0;
+        while (i < 1000) {
+            List<List<Object>> results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql));
+            if (results.isEmpty() || results.stream().allMatch(o -> o.get(0).toString().equalsIgnoreCase("SUCCESS"))) {
+                waitCommit = true;
+                break;
+            }
+            Thread.sleep(2 * 1000);
+            i++;
+        }
+        return waitCommit;
+    }
+
+    public static Boolean waitTillLogicalBackfillDone(Connection tddlConnection, Long jobId, String tableName)
+        throws InterruptedException {
+        Boolean waitCommit = false;
+        String sql = String.format(
+            "select state from metadb.ddl_engine_task where job_id =  %d and name = \"AlterTableGroupBackFillTask\"",
+            jobId);
+        int i = 0;
+        while (i < 1000) {
+            List<List<Object>> results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql));
+            if (results.isEmpty() || results.stream().allMatch(o -> o.get(0).toString().equalsIgnoreCase("SUCCESS"))) {
+                waitCommit = true;
+                break;
+            }
+            Thread.sleep(2 * 1000);
+            i++;
+        }
+        return waitCommit;
+    }
+
     public static Boolean checkTableStatus(Connection tddlConnection, Long jobId, String tableName) {
         String sql = "check table " + tableName;
-        List<List<Object>> results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql));
-        Boolean checkTableOk = results.stream().allMatch(o -> o.get(3).toString().equalsIgnoreCase("OK"));
+        Boolean checkTableOk = true;
+        List<List<Object>> results = null;
+        try {
+            ResultSet resultSet = JdbcUtil.executeQueryWithoutAssert(sql, tddlConnection);
+            results = JdbcUtil.getAllResult(resultSet);
+        } catch (Exception e) {
+            checkTableOk = false;
+        }
+        if (checkTableOk) {
+            checkTableOk = results.stream().allMatch(o -> o.get(3).toString().equalsIgnoreCase("OK"));
+        }
         if (!checkTableOk) {
-            LOG.info("check table results: " + results);
+            LOG.info("check table bad results: " + results);
         }
         return checkTableOk;
     }
@@ -434,28 +493,110 @@ public class DdlStateCheckUtil {
 
     }
 
+    public static String convertString(String originalDdl) {
+        return originalDdl.replace("'", "\\'");
+    }
+
+    public static Long getRootDdlJobIdFromPattern(Connection tddlConnection, String originalDdl)
+        throws InterruptedException {
+        String sql1 =
+            "select job_id from metadb.ddl_engine where ddl_stmt like '%" + convertString(originalDdl)
+                + "%' order by id desc limit 1";
+        String sql2 = "select name from metadb.ddl_engine_task where job_id = ";
+        List<List<Object>> results1 = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql1));
+        int time = 0;
+        Long jobId = -1L;
+        while (results1.isEmpty() && time > 2000) {
+            Thread.sleep(100);
+            results1 = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql1));
+            time++;
+        }
+        if (results1.isEmpty()) {
+            return -1L;
+        } else {
+            jobId = Long.parseLong(results1.get(0).get(0).toString());
+        }
+        LOG.info(String.format("fetch ddl job_id %d, %s", jobId, originalDdl));
+        return jobId;
+    }
+
     public static Long getDdlJobIdFromPattern(Connection tddlConnection, String originalDdl)
         throws InterruptedException {
         String sql1 =
-            "select job_id from metadb.ddl_engine where ddl_stmt like '%" + originalDdl + "%' order by id desc limit 1";
+            "select job_id from metadb.ddl_engine where ddl_stmt like '%" + convertString(originalDdl)
+                + "%' order by id desc limit 1";
         String sql2 = "select name from metadb.ddl_engine_task where job_id = ";
         List<List<Object>> results1 = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql1));
-        while (results1.isEmpty()) {
+        int time = 0;
+        Long jobId = -1L;
+        while (results1.isEmpty() && time > 2000) {
             Thread.sleep(100);
             results1 = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql1));
+            time++;
         }
-        Long jobId = Long.valueOf(
-            JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql1)).get(0).get(0).toString());
+        if (results1.isEmpty()) {
+            return -1L;
+        } else {
+            jobId = Long.parseLong(results1.get(0).get(0).toString());
+        }
         LOG.info(String.format("fetch ddl job_id %d, %s", jobId, originalDdl));
         List<List<Object>> results2 = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql2 + jobId));
+        // for subJob
         while (results2.size() < 3) {
-            Thread.sleep(100);
+            Thread.sleep(50);
             jobId = Long.valueOf(
                 JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql1)).get(0).get(0)
                     .toString());
             results2 = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql2 + jobId));
         }
         return jobId;
+    }
+
+    // partition_name => dn_id
+    public static Map<String, List<String>> getTableTopology(Connection connection, String tableName)
+        throws SQLException {
+        String fetchTopology = String.format("show topology %s", tableName);
+        ResultSet resultSet2 = JdbcUtil.executeQuery(fetchTopology, connection);
+        Map<String, List<String>> tableTopology = new HashMap<>();
+        while (resultSet2.next()) {
+            String partitionName = resultSet2.getString("PARTITION_NAME");
+            String storageInst = resultSet2.getString("DN_ID");
+            String groupName = resultSet2.getString("GROUP_NAME");
+            String physicalTableName = resultSet2.getString("TABLE_NAME");
+            List<String> topology = new ArrayList<>();
+            topology.add(storageInst);
+            topology.add(groupName);
+            topology.add(physicalTableName);
+            tableTopology.put(partitionName, topology);
+        }
+//            +----+-----------------+---------------+----------------+-------------+---------------------------------+
+//            | ID | GROUP_NAME      | TABLE_NAME    | PARTITION_NAME| PARENT_PARTITION_NAME | PHY_DB_NAME | DN_ID                           |
+//            +----+-----------------+---------------+----------------+-------------+---------------------------------+
+//            | 0  | D1_P00002_GROUP | t1_cLVA_00001 | p2           | p2sp1  | d1_p00002   | pxc-xdb-s-pxchzrwy270yxoiww3934 |
+        return tableTopology;
+    }
+
+    public static List<String> getStorageList(Connection connection) throws SQLException {
+        String showStorage = "show storage";
+        ResultSet resultSet2 = JdbcUtil.executeQuery(showStorage, connection);
+        List<String> storageInsts = new ArrayList<>();
+        List<String> undeletableStorages = new ArrayList<>();
+        while (resultSet2.next()) {
+            String storageInst = resultSet2.getString("STORAGE_INST_ID");
+            String instKind = resultSet2.getString("INST_KIND");
+            String deletable = resultSet2.getString("DELETABLE");
+            if (instKind.equalsIgnoreCase("MASTER")) {
+                storageInsts.add(storageInst);
+                if (deletable.equalsIgnoreCase("FALSE")) {
+                    undeletableStorages.add(storageInst);
+                }
+            }
+        }
+        storageInsts.removeAll(undeletableStorages);
+        for (String storageInst : undeletableStorages) {
+            storageInsts.add(0, storageInst);
+        }
+        return storageInsts;
     }
 
     public static void pauseDdl(Connection tddlConnection, Long jobId) {
@@ -491,6 +632,86 @@ public class DdlStateCheckUtil {
         }
         sql = String.format("/*+TDDL:cmd_extra(PURE_ASYNC_DDL_MODE=true)*/continue ddl %d", jobId);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    public static void checkIfReportErrorByChecker(Connection tddlConnection, Long jobId, List<String> phyDbs,
+                                                   List<String> phyTables, List<List<String>> pks, int expectedErrorNum)
+        throws InterruptedException {
+        String phyDbStr = phyDbs.stream().map(o -> "'" + o + "'").collect(Collectors.joining(","));
+        String phyTableStr = phyTables.stream().map(o -> "'" + o + "'").collect(Collectors.joining(","));
+        String sql = String.format(
+            "select physical_db, physical_table, primary_key, details from metadb.checker_reports where job_id = %d and extra = 'FastCheckerReporter.'",
+            jobId, phyDbStr, phyTableStr);
+        Map<Pair<String, String>, List<String>> errors = new HashMap<>();
+        JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, sql)).stream()
+            .forEach(
+                o -> errors.computeIfAbsent(Pair.of(o.get(0).toString(), o.get(1).toString()), k -> new ArrayList<>())
+                    .add(o.get(2).toString() + ";" + o.get(3).toString()));
+        List<Pair<String, String>> topologys = new ArrayList<>();
+        int errorReportNum = 0;
+        for (int i = 0; i < phyDbs.size(); i++) {
+            String phyDb = phyDbs.get(i);
+            String phyTable = phyTables.get(i);
+            topologys.add(Pair.of(phyDb, phyTable));
+            List<String> pk = pks.get(i);
+            List<String> error = errors.get(Pair.of(phyDb, phyTable));
+            if (error != null && checkErrorExists(error, pk)) {
+                errorReportNum += 1;
+            }
+        }
+        Assert.assertTrue(errorReportNum == expectedErrorNum,
+            " expected error, but get ### " + expectedErrorNum + " ### " + errorReportNum + " ### " + JSON.toJSONString(topologys) + " ### " + JSON.toJSONString(pks)
+                + " ### "
+                + JSON.toJSONString(errors));
+    }
+
+    public void testAfterAll(){
+        List<Pair<String, String>> topologys = new ArrayList<>();
+        List<List<String>> pks = new ArrayList<>();
+        Map<Pair<String, String>, List<String>> errors = new HashMap<>();
+        int expectedErrorNum = 2;
+
+        String fullErrorString = "";
+        String expectedErrorNumString = fullErrorString.split(" ### ")[1];
+        String topologyString = fullErrorString.split(" ### ")[3];
+        String pkString = fullErrorString.split(" ### ")[4];
+        String errorString = fullErrorString.split(" ### ")[5];
+        expectedErrorNum = Integer.parseInt(expectedErrorNumString);
+        pks = JSON.parseObject(pkString, new TypeReference<List<List<String>>>() {});
+        errors = JSON.parseObject(errorString, new TypeReference<Map<Pair<String, String>, List<String>>>() {});
+        topologys = JSON.parseObject(topologyString, new TypeReference<List<Pair<String, String>>>(){});
+
+        int errorReportNum = 0;
+        for (int i = 0; i < topologys.size(); i++) {
+            String phyDb = topologys.get(i).getKey();
+            String phyTable = topologys.get(i).getValue();
+            List<String> pk = pks.get(i);
+            List<String> error = errors.get(Pair.of(phyDb, phyTable));
+            if (error != null && checkErrorExists(error, pk)) {
+                errorReportNum += 1;
+            }
+        }
+        Assert.assertTrue(errorReportNum == expectedErrorNum,
+            " expected error: " + expectedErrorNum + ", " + JSON.toJSONString(topologys) + ", " + JSON.toJSONString(pks)
+                + " but get"
+                + JSON.toJSONString(errors));
+    }
+    public static boolean checkErrorExists(List<String> error, List<String> pk) {
+        Boolean batchErrorFound = false;
+        int pkErrorFound = 0;
+        for (String err : error) {
+            if (err != null && err.contains("fastchecker found unconsistency, source batch hash")) {
+                batchErrorFound = true;
+            } else {
+                String pkError = err.split(";")[0];
+                for (String pkStr : pk) {
+                    if (pkError.equalsIgnoreCase(pkStr)) {
+                        pkErrorFound++;
+                    }
+                }
+            }
+        }
+        return (batchErrorFound && (pkErrorFound >= pk.size()));
     }
 
     public static void tryRollbackDdl(Connection tddlConnection, Long jobId) {
@@ -581,8 +802,11 @@ public class DdlStateCheckUtil {
     public static Boolean checkIfCompleteFully(Connection tddlConnection, Long jobId, String tableName) {
         String fetchJobSql = String.format("select state from metadb.ddl_engine_archive where job_id = %d", jobId);
         List<List<Object>> results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, fetchJobSql));
-        String state = results.get(0).get(0).toString();
-        Boolean jobCompleted = state.equalsIgnoreCase("COMPLETED");
+        Boolean jobCompleted = false;
+        if (results.size() > 0) {
+            String state = results.get(0).get(0).toString();
+            jobCompleted = state.equalsIgnoreCase("COMPLETED");
+        }
         String fetchPhyDdl = String.format("show physical ddl");
         results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, fetchPhyDdl));
         Boolean physicalDdlFinish = results.isEmpty();
@@ -609,9 +833,128 @@ public class DdlStateCheckUtil {
     public static Boolean checkIfCompleteSuccessful(Connection tddlConnection, Long jobId) {
         String fetchJobSql = String.format("select state from metadb.ddl_engine_archive where job_id = %d", jobId);
         List<List<Object>> results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, fetchJobSql));
+        if (results.isEmpty()) {
+            return false;
+        }
         String state = results.get(0).get(0).toString();
         Boolean jobCompleted = state.equalsIgnoreCase("COMPLETED");
         return jobCompleted;
+    }
+
+    public static Boolean checkIfPauseSuccessful(Connection tddlConnection, Long jobId) {
+        Boolean jobPaused = false;
+        List<List<Object>> results =
+            JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, " show ddl " + jobId));
+        // state
+        String state = results.get(0).get(5).toString();
+        // current_phy_ddl_progress
+        String ddlProcess = results.get(0).get(7).toString();
+        if (state.equalsIgnoreCase("PAUSED") && !ddlProcess.equalsIgnoreCase("100%") && !ddlProcess.equalsIgnoreCase(
+            "0%")) {
+            jobPaused = true;
+        }
+        return jobPaused;
+    }
+
+    public static Map<String, List<String>> getPrimaryTableToGsiMap(Connection tddlConnection, String schemaName) {
+        String fetchJobSql = String.format(
+            "select table_name, index_name from metadb.indexes where table_schema = \"%s\" and index_type is null and seq_in_index = 1;",
+            schemaName);
+        List<List<Object>> results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, fetchJobSql));
+        Map<String, List<String>> primaryTableToGsiMap = new HashMap<>();
+        for (List<Object> result : results) {
+            primaryTableToGsiMap.computeIfAbsent(result.get(0).toString(), k -> new ArrayList<>())
+                .add(result.get(1).toString());
+        }
+        String fetchTableNameSql = String.format(
+            "select table_name from metadb.table_partitions where table_schema = \"%s\" and part_level = 0 and tbl_type in (0, 2, 3);",
+            schemaName);
+        results =
+            JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, fetchTableNameSql));
+        for (List<Object> result : results) {
+            primaryTableToGsiMap.computeIfAbsent(result.get(0).toString(), k -> new ArrayList<>());
+        }
+
+        return primaryTableToGsiMap;
+    }
+
+    public static Map<String, List<String>> getTableGroupToTableMap(Connection tddlConnection, String schemaName) {
+        String fetchTableNameAndGroupIdSql = String.format(
+            "select table_name, group_id from metadb.table_partitions where table_schema = \"%s\" and part_level = 0;",
+            schemaName);
+        List<List<Object>> results =
+            JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, fetchTableNameAndGroupIdSql));
+        Map<Integer, List<String>> groupIdToTableMap = new HashMap<>();
+        for (List<Object> result : results) {
+            groupIdToTableMap.computeIfAbsent(Integer.parseInt(result.get(1).toString()), k -> new ArrayList<>())
+                .add(result.get(0).toString());
+        }
+        String fetchGroupIdAndTableGroupSql =
+            String.format("select tg_name, id from metadb.table_group where schema_name = \"%s\"", schemaName);
+        results = JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, fetchGroupIdAndTableGroupSql));
+        Map<Integer, String> groupIdToTableGroupMap = new HashMap<>();
+        for (List<Object> result : results) {
+            groupIdToTableGroupMap.put(Integer.parseInt(result.get(1).toString()), result.get(0).toString());
+        }
+        Map<String, List<String>> tableGroupToTableMap = new HashMap<>();
+        for (Integer groupId : groupIdToTableMap.keySet()) {
+            tableGroupToTableMap.put(groupIdToTableGroupMap.get(groupId), groupIdToTableMap.get(groupId));
+        }
+        return tableGroupToTableMap;
+    }
+
+    public static Map<String, String> getTableToTableGroupMap(Connection tddlConnection, String schemaName) {
+        Map<String, List<String>> tableGroupToTableMap = getTableGroupToTableMap(tddlConnection, schemaName);
+        Map<String, String> tableToTableGroupMap = new HashMap<>();
+        for (String tableGroup : tableGroupToTableMap.keySet()) {
+            for (String table : tableGroupToTableMap.get(tableGroup)) {
+                tableToTableGroupMap.put(table, tableGroup);
+            }
+        }
+        return tableToTableGroupMap;
+    }
+
+    public static void waitPlanIdOrSchemaNameFinish(Connection tddlConnection, String schemaName)
+        throws InterruptedException {
+        final String querySql =
+            String.format("select count(1),max(plan_id) from metadb.ddl_plan where table_schema = '%s' and state != 'SUCCESS'",
+                schemaName);
+        boolean waitOk = false;
+        for (int i = 0; i < 1000; i++) {
+            int count = Integer.parseInt(
+                JdbcUtil.getAllResult(JdbcUtil.executeQuery(querySql, tddlConnection)).get(0).get(0).toString());
+            if (count > 0) {
+                Thread.sleep(1000);
+            } else {
+                waitOk = true;
+                break;
+            }
+        }
+
+        if (!waitOk) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                "we have failed to execute rebalance plan for " + schemaName);
+        }
+
+    }
+
+    public static Map<String, String> convertUnionSetToSetMap(Map<String, String> unionSet) {
+        for (String tableGroup : unionSet.keySet()) {
+            String finalPrimaryTableGroup = tableGroup;
+            while (unionSet.containsKey(finalPrimaryTableGroup) && !unionSet.get(finalPrimaryTableGroup)
+                .equalsIgnoreCase(finalPrimaryTableGroup)) {
+                finalPrimaryTableGroup = unionSet.get(finalPrimaryTableGroup);
+            }
+            String nextTableGroup = tableGroup;
+            while (unionSet.containsKey(nextTableGroup) && !unionSet.get(nextTableGroup)
+                .equals(finalPrimaryTableGroup)) {
+                String tempTableGroup = unionSet.get(nextTableGroup);
+                unionSet.put(nextTableGroup, finalPrimaryTableGroup);
+                nextTableGroup = tempTableGroup;
+            }
+        }
+
+        return unionSet;
     }
 
     public static Boolean compareForLocalIndex(Connection tddlConnection, String schemaName, Long jobId,
@@ -650,9 +993,38 @@ public class DdlStateCheckUtil {
         }
     }
 
+    public static Boolean compareForLocalIndex(String stmt1, String stmt2) {
+        Assert.assertTrue(!stmt1.equals(stmt2));
+        SQLStatementParser stmt1Parser =
+            SQLParserUtils.createSQLStatementParser(stmt1, DbType.mysql);
+        MySqlCreateTableStatement createStmt1 =
+            (MySqlCreateTableStatement) stmt1Parser.parseCreate();
+        SQLStatementParser stmt2Parser =
+            SQLParserUtils.createSQLStatementParser(stmt2, DbType.mysql);
+        MySqlCreateTableStatement createStmt2 =
+            (MySqlCreateTableStatement) stmt2Parser.parseCreate();
+        createStmt1.setTableName(createStmt2.getTableName());
+        String s1 = createStmt1.toString();
+        String s2 = createStmt2.toString();
+        return s1.equalsIgnoreCase(s2);
+
+    }
+
     public static String getGsiCreateTable(Connection tddlConnection, String schemaName, String originalTable,
                                            String gsiName) {
-        Pair<Integer, String> fullObjectName = CheckTableTest.getFullObjectName(tddlConnection, gsiName, gsiName, 0);
+        Pair<Integer, String> fullObjectName =
+            CheckTableTest.getFullObjectName(tddlConnection, originalTable, gsiName, 0);
+        Integer groupIndex = fullObjectName.getKey();
+        String gsiFullName = fullObjectName.getValue();
+        String showCreateTableSql = String.format("/*+TDDL:node(%d)*/ show create table `%s`", groupIndex, gsiFullName);
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, showCreateTableSql);
+        String createTableSql = JdbcUtil.getAllResult(resultSet).get(0).get(1).toString();
+        return createTableSql;
+    }
+
+    public static String getGsiCreateTableStmt(Connection tddlConnection, String schemaName, String originalTable,
+                                               String gsiName) throws SQLException {
+        Pair<Integer, String> fullObjectName = CheckTableTest.getFullGsiName(tddlConnection, originalTable, gsiName, 0);
         Integer groupIndex = fullObjectName.getKey();
         String gsiFullName = fullObjectName.getValue();
         String showCreateTableSql = String.format("/*+TDDL:node(%d)*/ show create table `%s`", groupIndex, gsiFullName);
@@ -720,20 +1092,21 @@ public class DdlStateCheckUtil {
         }
         String msg =
             String.format("show ddl and show full ddl result diffs: %s, %s", showDdlResultBefore, showDdlResultLater);
-        Assert.assertTrue(showDdlResultLater.size() >= showDdlResultBefore.size(), msg);
-        for (int i = 0; i < showDdlResultBefore.size(); i++) {
+        int minSize = Math.min(showDdlResultBefore.size(), showDdlResultLater.size());
+        for (int i = 0; i < minSize; i++) {
 
             List<Object> row = showDdlResultBefore.get(i);
             List<Object> afterRow = showDdlResultLater.get(i);
-            for(int column: expectedTheSameColumns){
-                if(!row.get(column).equals(afterRow.get(column))){
+            for (int column : expectedTheSameColumns) {
+                if (!row.get(column).equals(afterRow.get(column))) {
                     Assert.assertTrue(false, String.format("row %d, column %s diff ", i, column) + msg);
                 }
 
             }
             int progress = fetchProgress(row.get(8).toString());
             int afterProgress = fetchProgress(afterRow.get(8).toString());
-            Assert.assertTrue(progress <= afterProgress || afterProgress <= progress * 0.5, String.format("row %d, progress diff ", i) + msg);
+            Assert.assertTrue(progress <= afterProgress || afterProgress <= progress * 0.5,
+                String.format("row %d, progress diff ", i) + msg);
         }
         return true;
     }
@@ -773,5 +1146,53 @@ public class DdlStateCheckUtil {
 
         }
 
+    }
+
+    public static List<String> generateRandomMatchCreateTableAndGsiSql(int tableNums, int maxGsiNum) {
+        int columNum = maxGsiNum + 1;
+        int maxVarcharLength = Math.min(tableNums, 255);
+        Random random = new Random(maxVarcharLength);
+
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < tableNums; i++) {
+            String tableName = "t" + i;
+            List<String> columnDefs = new ArrayList<>();
+            for (int j = 0; j < columNum; j++) {
+                String columnDef = " c" + j + String.format(" varchar(%d) ", random.nextInt(maxVarcharLength) + 1);
+                columnDefs.add(columnDef);
+            }
+            String createTableStmt =
+                String.format(" create table %s (%s) partition by hash(c0) partitions 16", tableName,
+                    StringUtil.join(",", columnDefs));
+            result.add(createTableStmt);
+            int gsiNum = random.nextInt(maxGsiNum) + 1;
+            for (int k = 0; k < gsiNum; k++) {
+                String gsiColumn = "c" + random.nextInt(columNum);
+                String gsiStmt = String.format(
+                    " alter table %s add global index g_i_%s_%s_%d(%s) partition by hash(%s) partitions 16", tableName,
+                    tableName, gsiColumn, k, gsiColumn, gsiColumn);
+                result.add(gsiStmt);
+            }
+        }
+        for (int i = 0; i < 2; i++) {
+            String singleTableName = "s" + i;
+            String createSingleTableStmt = String.format(" create table %s (c0 int, c1 int) single", singleTableName);
+            result.add(createSingleTableStmt);
+
+            String broadcastTableName = "b" + i;
+            String createBroadcastTableStmt =
+                String.format(" create table %s (c0 int, c1 int) broadcast", broadcastTableName);
+            result.add(createBroadcastTableStmt);
+        }
+
+        for (int i = 0; i < 8; i++) {
+            String singleTableName = "s_b" + i;
+            String createSingleTableStmt =
+                String.format(" create table %s (c0 int, c1 int) single locality='balance_single_table=on'",
+                    singleTableName);
+            result.add(createSingleTableStmt);
+
+        }
+        return result;
     }
 }

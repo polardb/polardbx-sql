@@ -103,6 +103,10 @@ public final class LookupPredicate {
         return columns.get(i).targetIndex;
     }
 
+    public DataType getTargetType(int i) {
+        return columns.get(i).dataType;
+    }
+
     public DataType[] getDataTypes() {
         return columns.stream().map(c -> c.dataType).toArray(DataType[]::new);
     }

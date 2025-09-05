@@ -25,11 +25,15 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
+import com.alibaba.polardbx.net.AbstractConnection;
+import com.alibaba.polardbx.net.FrontendConnection;
+import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
+import com.alibaba.polardbx.net.handler.NIOHandler;
 import com.alibaba.polardbx.net.packet.ErrorPacket;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.server.util.PacketUtil;
@@ -41,14 +45,16 @@ import org.junit.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 
 import java.io.EOFException;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.channels.ClosedChannelException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -63,6 +69,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -302,6 +309,86 @@ public class ServerConnectionTest {
             }
         } finally {
             ConfigDataMode.setMode(mode);
+        }
+    }
+
+    @Test
+    public void testHandleDataThrow() throws Exception {
+        Field field = FrontendConnection.class.getDeclaredField("executingFuture");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, new AtomicReference<>(CompletableFuture.completedFuture(true)));
+
+        final NIOProcessor processor = mock(NIOProcessor.class);
+        final ServerThreadPool mockedPool = spy(new ServerThreadPool("test", 1, 1000, 1));
+        when(processor.getHandler()).thenReturn(mockedPool);
+        field = AbstractConnection.class.getDeclaredField("processor");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, processor);
+
+        final NIOHandler handler = mock(NIOHandler.class);
+        field = FrontendConnection.class.getDeclaredField("handler");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, handler);
+
+        field = FrontendConnection.class.getDeclaredField("rescheduled");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, true);
+
+        field = FrontendConnection.class.getDeclaredField("packageLimit");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, 16777215);
+
+        field = AbstractConnection.class.getDeclaredField("isClosed");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, new AtomicBoolean(true));
+
+        final byte[] data0 = new byte[] {1, 0, 0, 0, 1};
+        long cnt = mockedPool.getCompletedTaskCount();
+        serverConnection.handleData(data0);
+        while (mockedPool.getCompletedTaskCount() < cnt + 1) {
+            Thread.sleep(1);
+        }
+
+        field = FrontendConnection.class.getDeclaredField("isBinlogDumpConn");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, true);
+
+        cnt = mockedPool.getCompletedTaskCount();
+        serverConnection.handleData(data0);
+        while (mockedPool.getCompletedTaskCount() < cnt + 1) {
+            Thread.sleep(1);
+        }
+
+        field.set(serverConnection, false);
+
+        final byte[] data1 = new byte[] {1, 0, 0, 0, 2};
+        cnt = mockedPool.getCompletedTaskCount();
+        serverConnection.handleData(data1);
+        while (mockedPool.getCompletedTaskCount() < cnt + 1) {
+            Thread.sleep(1);
+        }
+
+        field = FrontendConnection.class.getDeclaredField("rescheduled");
+        field.setAccessible(true); // Make the private field accessible
+        field.set(serverConnection, false);
+
+        cnt = mockedPool.getCompletedTaskCount();
+        serverConnection.handleData(data0);
+        while (mockedPool.getCompletedTaskCount() < cnt + 1) {
+            Thread.sleep(1);
+        }
+
+        field = FrontendConnection.class.getDeclaredField("executingFuture");
+        field.setAccessible(true); // Make the private field accessible
+        final Future<?> future = spy(CompletableFuture.completedFuture(true));
+        field.set(serverConnection, new AtomicReference<>(future));
+
+        when(future.get()).thenThrow(new RuntimeException("test"));
+
+        cnt = mockedPool.getCompletedTaskCount();
+        serverConnection.handleData(data0);
+        while (mockedPool.getCompletedTaskCount() < cnt + 1) {
+            Thread.sleep(1);
         }
     }
 }

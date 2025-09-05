@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
 import org.junit.Assert;
 import org.junit.Test;
@@ -25,10 +26,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class BooleanBlockTest extends BaseBlockTest {
+
     @Test
     public void testSizeInBytes() {
         BooleanBlock block = new BooleanBlock(new BooleanType(), 1024);
-        Assert.assertEquals(2048, block.getElementUsedBytes());
+        MemoryCountable.checkDeviation(block, .05d, true);
+        Assert.assertEquals(2136, block.getElementUsedBytes());
     }
 
     @Test
@@ -55,7 +58,9 @@ public class BooleanBlockTest extends BaseBlockTest {
             }
         }
 
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         Block block = blockBuilder.build();
+        MemoryCountable.checkDeviation(block, .05d, true);
 
         assertEquals(values.length, block.getPositionCount());
         for (int i = 0; i < values.length; i++) {
@@ -81,5 +86,7 @@ public class BooleanBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+        MemoryCountable.checkDeviation(anotherBuilder, .05d, true);
+        MemoryCountable.checkDeviation(anotherBuilder.build(), .05d, true);
     }
 }

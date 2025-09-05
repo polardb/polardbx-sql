@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
@@ -27,6 +28,7 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -39,7 +41,6 @@ import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author Shi Yuxuan
@@ -138,11 +139,13 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         // sync to restore the status of table meta
+        PreemptiveTime preemptiveTime = PreemptiveTime.getPreemptiveTimeFromExecutionContext(executionContext,
+            ConnectionParams.PREEMPTIVE_MDL_INITWAIT, ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
         SyncManagerHelper.sync(
-            new TablesMetaChangePreemptiveSyncAction(schemaName, tables, 1500L, 1500L,
-                TimeUnit.MICROSECONDS), SyncScope.ALL);
+            new TablesMetaChangePreemptiveSyncAction(schemaName, tables, preemptiveTime), SyncScope.ALL);
     }
 
+    @Override
     protected void updateTableVersion(Connection metaDbConnection) {
         try {
             for (String table : tables) {
@@ -153,6 +156,7 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
         }
     }
 
+    @Override
     public String getLogicalTableName() {
         return null;
     }
@@ -165,6 +169,7 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
         this.tableArchive = tableArchive;
     }
 
+    @Override
     protected String remark() {
         return "|tableNames: " + Joiner.on(", ").join(tables);
     }

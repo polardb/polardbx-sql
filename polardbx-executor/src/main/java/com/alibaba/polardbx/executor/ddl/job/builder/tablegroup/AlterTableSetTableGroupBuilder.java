@@ -321,7 +321,7 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
         List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
 
-        tableTopology = new HashMap<>();
+        tableTopology = new TreeMap<>();
 
         for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
             PartitionSpec partitionSpec = AlterTableGroupUtils.findPartitionSpec(partitionInfo, partitionGroupRecord);
@@ -335,14 +335,23 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
                 String targetGroupName = targetGroupKey;
                 String sourceGroupName = partitionSpec.getLocation().getGroupKey();
                 String phyTable = partitionSpec.getLocation().getPhyTableName();
-                sourceTableTopology.computeIfAbsent(sourceGroupName, k -> new HashSet<>())
+                if(!sourceTableTopology.containsKey(sourceGroupName)) {
+                    sourceTableTopology.put(sourceGroupName, new HashSet<>());
+                }
+                sourceTableTopology.get(sourceGroupName)
                     .add(partitionSpec.getLocation().getPhyTableName());
-                targetTableTopology.computeIfAbsent(targetGroupName, k -> new HashSet<>())
+                if(!targetTableTopology.containsKey(targetGroupName)) {
+                    targetTableTopology.put(targetGroupName, new HashSet<>());
+                }
+                targetTableTopology.get(targetGroupName)
                     .add(partitionSpec.getLocation().getPhyTableName());
 
                 List<String> phyTables = new ArrayList<>();
                 phyTables.add(phyTable);
-                tableTopology.computeIfAbsent(targetGroupName, k -> new ArrayList<>()).add(phyTables);
+                if(!tableTopology.containsKey(targetGroupName)) {
+                    tableTopology.put(targetGroupName, new ArrayList<>());
+                }
+                tableTopology.get(targetGroupName).add(phyTables);
                 newPartitionRecords.add(partitionGroupRecord);
             }
         }

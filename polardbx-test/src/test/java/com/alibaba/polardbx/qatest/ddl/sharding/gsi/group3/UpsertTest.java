@@ -630,7 +630,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
         // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
         executeOnceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
@@ -695,7 +695,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
         // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
         executeOnceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
@@ -1444,7 +1444,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
@@ -1454,7 +1456,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // primary (partition pruning: 1) + gsi(partition pruning: 1) + update(primary + gsi: 2)
         Assert.assertThat(trace.size(), Matchers.is(1 + 1 + 2));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -1513,7 +1517,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
@@ -1522,7 +1528,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         Assert.assertThat(trace.size(), Matchers.is(topology.size() + 1 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -1580,7 +1588,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
@@ -1589,7 +1599,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         Assert.assertThat(trace.size(), Matchers.is(1 + 1 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -1645,7 +1657,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
@@ -1654,7 +1668,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         Assert.assertThat(trace.size(), Matchers.is(3));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -1722,12 +1738,14 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
 
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
-        final List<Pair<String, String>> gsiTopology = JdbcUtil.getTopology(tddlConnection, gsiName);
+//        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
+//        final List<Pair<String, String>> gsiTopology = JdbcUtil.getTopology(tddlConnection, gsiName);
         // primary (partition pruning: 1) + gsi(1 + 1) + update(primary + gsi: 2)
         Assert.assertThat(trace.size(), Matchers.is(3 + 1 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -1790,15 +1808,19 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+//        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         Assert.assertThat(trace.size(), Matchers.is(1 + 1 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -1869,7 +1891,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // primary (partition pruning: 3)  +  gsi(partition pruning: 1 + 1)
         Assert.assertThat(trace.size(), Matchers.is(3 + 1 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -1931,7 +1955,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
@@ -1939,7 +1965,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         Assert.assertThat(trace.size(), Matchers.is(3));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -2000,7 +2028,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         final List<List<String>> trace = getTrace(tddlConnection);
@@ -2010,7 +2040,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // primary (partition pruning: 3)  +  cgsi(partition pruning: 1)
         Assert.assertThat(trace.size(), Matchers.is(3 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -2281,7 +2313,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
@@ -2290,7 +2324,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // gsi(partition pruning: 1 + primary partition pruning: 4) + upsert(primary + gsi: 5)
         checkTraceRowCount(Matchers.is(1 + 4 + (1 + 2) * 2 - 1));
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
@@ -2359,7 +2395,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
@@ -2369,7 +2407,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         Assert.assertThat(trace.size(), Matchers.is(topology.size() + (1 + 2) * 2 - 1));
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
@@ -2581,7 +2621,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        final String checkSql = "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName;
+        final String checkSql = "select c1,c2,c3,c4,c5,c6,c7 from " + tableName;
         selectContentSameAssert(checkSql, checkSql + " ignore index(" + gsiName + ")", null, mysqlConnection,
             tddlConnection);
 
@@ -2665,7 +2705,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        final String checkSql = "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName;
+        final String checkSql =
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName);
         selectContentSameAssert(checkSql, checkSql + " ignore index(" + gsiName + ")", null, mysqlConnection,
             tddlConnection);
 
@@ -2878,7 +2919,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         // write only
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsertSql, "trace " + hint + upsertSql, null, true);
@@ -2892,7 +2935,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         org.junit.Assert.assertThat(trace2.size(), Matchers.is(1 + 2 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -2959,7 +3004,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
@@ -2967,7 +3014,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // gsi(partition pruning: 1 + primary partition pruning: 4) + update(primary + gsi: 5)
         checkTraceRowCount(Matchers.is(3 + 1 + 2 + 5));
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
@@ -3036,7 +3085,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         checkGsi(tddlConnection, gsiName);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
@@ -3046,7 +3097,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         Assert.assertThat(trace.size(), Matchers.is(topology.size() + (2 + 1) * 2 - 1));
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
@@ -3119,7 +3172,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // primary (all primary gsi table) + gsi(partition pruning: 1 + primary partition pruning: 1) + update(primary + gsi: 2)
         Assert.assertThat(trace.size(), Matchers.is(primaryTopology.size() + 1 + 1 + 2));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -3191,7 +3246,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         Assert.assertThat(trace.size(), Matchers.is(topology.size() + 2));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -3268,7 +3325,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // primary (all primary phy table) + gsi(partition pruning: 3 + primary partition pruning: 1) + update(primary + gsi: 8)
         Assert.assertThat(trace.size(), Matchers.is(primaryTopology.size() + 3 + 1 + 8));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -3344,7 +3403,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         Assert.assertThat(trace.size(), Matchers.is(topology.size() + 4 * 2));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -3386,7 +3447,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeTwiceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
             insert,
-            "select * from " + tableName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
             Matchers.is(topology.size() + 3));
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
@@ -3395,7 +3456,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeTwiceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
             insert,
-            "select * from " + tableName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
             Matchers.lessThanOrEqualTo(3 + 3));
     }
 
@@ -3486,7 +3547,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             + "(1, 2, 4, 'f', '2020-06-16 06:49:32')" // u_c1_c2 冲突，update
             + "on duplicate key update c2 = c2 + 1, c5 = values(c5)";
 
-        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
         // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
         executeOnceThenCheckDataAndTraceResult(
             "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
@@ -3873,21 +3934,24 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         final String insert = "/*+TDDL:CMD_EXTRA(DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE)*/insert into " + tableName
             + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (2, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
             + "on duplicate key update c5 = 'z'";
+
+        final String checkSql =
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName);
         // one
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         // two
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         // three
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         // fore
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, gsiName);
     }
@@ -4931,11 +4995,13 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         String insert = String.format("insert into %s(a) values (1) on duplicate key update a=a+1", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(buildSqlCheckData(ImmutableList.of("a", "b"), tableName), null, mysqlConnection,
+            tddlConnection);
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(buildSqlCheckData(ImmutableList.of("a"), tableName), null, mysqlConnection,
+            tddlConnection);
     }
 
     @Test

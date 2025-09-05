@@ -22,7 +22,9 @@ import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.Pair;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,6 +39,7 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
      */
     final String schemaName;
     final String logicalTableName;
+    final Map<String, Pair<String, String>> ptbGroupMap;
     final Map<String, Set<String>> sourcePhyTables;
     final Map<String, Set<String>> targetPhyTables;
     final boolean broadcast;
@@ -47,6 +50,7 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
                                    RelTraitSet traitSet,
                                    String schemaName,
                                    String logicalTableName,
+                                   Map<String, Pair<String, String>> ptbGroupMap,
                                    Map<String, Set<String>> sourcePhyTables,
                                    Map<String, Set<String>> targetPhyTables,
                                    boolean broadcast,
@@ -55,6 +59,7 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
         super(cluster, traitSet);
         this.logicalTableName = logicalTableName;
         this.schemaName = schemaName;
+        this.ptbGroupMap = ptbGroupMap;
         this.sourcePhyTables = sourcePhyTables;
         this.targetPhyTables = targetPhyTables;
         this.broadcast = broadcast;
@@ -64,6 +69,7 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
 
     public static AlterTableGroupBackfill createAlterTableGroupBackfill(String schemaName,
                                                                         String logicalTableName, ExecutionContext ec,
+                                                                        Map<String, Pair<String, String>> ptbGroupMap,
                                                                         Map<String, Set<String>> sourcePhyTables,
                                                                         Map<String, Set<String>> targetPhyTables,
                                                                         boolean broadcast,
@@ -71,7 +77,8 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
                                                                         boolean useChangeSet) {
         final RelOptCluster cluster = SqlConverter.getInstance(schemaName, ec).createRelOptCluster(null);
         RelTraitSet traitSet = RelTraitSet.createEmpty();
-        return new AlterTableGroupBackfill(cluster, traitSet, schemaName, logicalTableName, sourcePhyTables,
+        return new AlterTableGroupBackfill(cluster, traitSet, schemaName, logicalTableName, ptbGroupMap,
+            sourcePhyTables,
             targetPhyTables, broadcast, movePartitions, useChangeSet);
     }
 
@@ -102,5 +109,9 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
 
     public boolean isUseChangeSet() {
         return useChangeSet;
+    }
+
+    public Map<String, Pair<String, String>> getPtbGroupMap() {
+        return ptbGroupMap;
     }
 }

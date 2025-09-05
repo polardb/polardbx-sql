@@ -32,11 +32,13 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -45,6 +47,7 @@ import com.alibaba.polardbx.gms.metadb.seq.SequenceOptAccessor;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceOptRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -63,7 +66,9 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.metadata.InfoSchemaCommon;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyQueryCursor;
 import com.alibaba.polardbx.rule.TableRule;
@@ -346,13 +351,6 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
 
             // Merge with logical tables from current rule.
             tableNames = infoSchemaContext.getOptimizerContext().getRuleManager().mergeTableRule(defaultDbTables);
-
-            /**
-             * This should be removed because in old part db , there are not any partition tables
-             */
-            Set<String> partitionTables =
-                infoSchemaContext.getOptimizerContext().getPartitionInfoManager().getPartitionTables();
-            tableNames.addAll(partitionTables);
         } else {
             tableNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
             tableNames.addAll(infoSchemaContext.getOptimizerContext().getPartitionInfoManager().getPartitionTables());
@@ -437,9 +435,21 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
                 if (tablesAutoPartInfo.get(table) != null) {
                     autoPart = tablesAutoPartInfo.get(table) ? "YES" : "NO";
                 }
-                result.add(new Object[] {enableLowerCase ? StringUtils.lowerCase(table) : table, type, autoPart});
+                if (DbInfoManager.getInstance().isNewPartitionDb(targetDb)) {
+                    if (type == InfoSchemaCommon.DEFAULT_TABLE_TYPE) {
+                        PartitionInfo partitionInfo = infoSchemaContext.getOptimizerContext().getPartitionInfoManager().getPartitionInfo(table);
+                        TableGroupInfoManager tgInfoManager = infoSchemaContext.getOptimizerContext().getTableGroupInfoManager();
+                        TableGroupConfig tableGroupConfig = partitionInfo != null ? tgInfoManager.getTableGroupConfigById(partitionInfo.getTableGroupId()) : null;
+                        result.add(new Object[]{enableLowerCase ? StringUtils.lowerCase(table) : table, type, autoPart, tableGroupConfig != null ?
+                                tableGroupConfig.getTableGroupRecord().tg_name : "-"});
+                    } else {
+                        result.add(new Object[]{enableLowerCase ? StringUtils.lowerCase(table) : table, type, autoPart, "-"});
+                    }
+                } else {
+                    result.add(new Object[]{enableLowerCase ? StringUtils.lowerCase(table) : table, type, autoPart, "-"});
+                }
             } else {
-                result.add(new Object[] {enableLowerCase ? StringUtils.lowerCase(table) : table});
+                result.add(new Object[]{enableLowerCase ? StringUtils.lowerCase(table) : table});
             }
         }
 
@@ -997,41 +1007,48 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
                 .getDataSource(groupAndFilter.getKey());
 
             try (Connection conn = groupDataSource.getConnection()) {
-                String collectSql = getCollectSql(groupAndFilter.getValue(),
-                    groupsByInstance,
-                    infoSchemaContext.getExecutionContext());
+                try {
+                    String collectSql = getCollectSql(groupAndFilter.getValue(),
+                            groupsByInstance,
+                            infoSchemaContext.getExecutionContext());
+                    StatisticUtils.avoidInformationSchemaCache(conn);
 
-                try (PreparedStatement ps = conn.prepareStatement(collectSql); ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        shouldCheckView = false;
-                        engine = rs.getString("Engine");
-                        version = rs.getLong("Version");
-                        rowFormat = rs.getString("Row_format");
+                    try (PreparedStatement ps = conn.prepareStatement(collectSql); ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            shouldCheckView = false;
+                            engine = rs.getString("Engine");
+                            version = rs.getLong("Version");
+                            rowFormat = rs.getString("Row_format");
 
-                        BigDecimal newRows = getDecimalValue(rs, "Rows");
-                        rows = rows.add(newRows);
-                        totalLength = totalLength.add(newRows.multiply(getDecimalValue(rs, "Avg_row_length")));
+                            BigDecimal newRows = getDecimalValue(rs, "Rows");
+                            rows = rows.add(newRows);
+                            totalLength = totalLength.add(newRows.multiply(getDecimalValue(rs, "Avg_row_length")));
 
-                        dataLength = dataLength.add(getDecimalValue(rs, "Data_length"));
+                            dataLength = dataLength.add(getDecimalValue(rs, "Data_length"));
 
-                        BigDecimal newMaxDataLength = getDecimalValue(rs, "Max_data_length");
-                        maxDataLength =
-                            maxDataLength.compareTo(newMaxDataLength) < 0 ? newMaxDataLength : maxDataLength;
+                            BigDecimal newMaxDataLength = getDecimalValue(rs, "Max_data_length");
+                            maxDataLength =
+                                    maxDataLength.compareTo(newMaxDataLength) < 0 ? newMaxDataLength : maxDataLength;
 
-                        indexLength = indexLength.add(getDecimalValue(rs, "Index_length"));
-                        dataFree = getDecimalValue(rs, "Data_free");
+                            indexLength = indexLength.add(getDecimalValue(rs, "Index_length"));
+                            dataFree = getDecimalValue(rs, "Data_free");
 
-                        if (autoIncrement < 0) {
-                            autoIncrement = rs.getLong("Auto_increment");
+                            if (autoIncrement < 0) {
+                                autoIncrement = rs.getLong("Auto_increment");
+                            }
+
+                            createTime = rs.getString("Create_time");
+                            updateTime = rs.getString("Update_time");
+                            checkTime = rs.getString("Check_time");
+                            collation = rs.getString("Collation");
+                            checksum = rs.getString("Checksum");
+                            createOptions = rs.getString("Create_options");
+                            comment = rs.getString("Comment");
                         }
-
-                        createTime = rs.getString("Create_time");
-                        updateTime = rs.getString("Update_time");
-                        checkTime = rs.getString("Check_time");
-                        collation = rs.getString("Collation");
-                        checksum = rs.getString("Checksum");
-                        createOptions = rs.getString("Create_options");
-                        comment = rs.getString("Comment");
+                    }
+                } finally {
+                    if (conn != null && !conn.isClosed()) {
+                        StatisticUtils.resetInformationSchemaCache(conn);
                     }
                 }
             } catch (SQLException e) {
@@ -1250,3 +1267,4 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
         return autoIncrement;
     }
 }
+

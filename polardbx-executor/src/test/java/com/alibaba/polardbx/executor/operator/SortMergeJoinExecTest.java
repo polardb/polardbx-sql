@@ -16,26 +16,26 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.StringBlock;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.expression.calc.AbstractExpression;
+import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.expression.calc.InputRefExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.junit.Test;
 
-import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.chunk.IntegerBlock;
-import com.alibaba.polardbx.executor.chunk.StringBlock;
-import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 
 public class SortMergeJoinExecTest extends BaseExecTest {
     static EquiJoinKey mockEquiJoinKey(int outerIndex, int innerIndex, DataType unifiedType) {
@@ -749,5 +749,61 @@ public class SortMergeJoinExecTest extends BaseExecTest {
             mockSortMergeJoinExec(outerInput, innerInput, JoinRelType.LEFT, true, joinKeys, null, null, context);
 
         assertExecError(exec, "more than 1 row");
+    }
+
+    @Test
+    public void testInnerJoinMultiRows() {
+        MockExec.MockExecBuilder outerInputBuilder = MockExec.builder(DataTypes.IntegerType);
+        outerInputBuilder.withChunk(new Chunk(IntegerBlock.of(0, 0, 0, 0)));
+        MockExec outerInput = outerInputBuilder.build();
+
+        MockExec.MockExecBuilder innerInputBuilder = MockExec.builder(DataTypes.IntegerType);
+
+        innerInputBuilder.withChunk(new Chunk(IntegerBlock.of(0)));
+        MockExec innerInput = innerInputBuilder.build();
+
+        List<EquiJoinKey> joinKeys = Arrays.asList(
+            mockEquiJoinKey(0, 0, DataTypes.IntegerType));
+
+        context.getExtraCmds().put(ConnectionProperties.CHUNK_SIZE, 2);
+
+        SortMergeJoinExec exec =
+            mockSortMergeJoinExec(outerInput, innerInput, JoinRelType.INNER, false, joinKeys, null, null, context);
+
+        assertExecResults(exec, new Chunk(
+            IntegerBlock.of(0, 0),
+            IntegerBlock.of(0, 0)
+        ), new Chunk(
+            IntegerBlock.of(0, 0),
+            IntegerBlock.of(0, 0)
+        ));
+    }
+
+    @Test
+    public void testOuterJoinMultiRows() {
+        MockExec.MockExecBuilder outerInputBuilder = MockExec.builder(DataTypes.IntegerType);
+        outerInputBuilder.withChunk(new Chunk(IntegerBlock.of(0, 0, 0, 0)));
+        MockExec outerInput = outerInputBuilder.build();
+
+        MockExec.MockExecBuilder innerInputBuilder = MockExec.builder(DataTypes.IntegerType);
+
+        innerInputBuilder.withChunk(new Chunk(IntegerBlock.of(1)));
+        MockExec innerInput = innerInputBuilder.build();
+
+        List<EquiJoinKey> joinKeys = Arrays.asList(
+            mockEquiJoinKey(0, 0, DataTypes.IntegerType));
+
+        context.getExtraCmds().put(ConnectionProperties.CHUNK_SIZE, 2);
+
+        SortMergeJoinExec exec =
+            mockSortMergeJoinExec(outerInput, innerInput, JoinRelType.LEFT, false, joinKeys, null, null, context);
+
+        assertExecResults(exec, new Chunk(
+            IntegerBlock.of(0, 0),
+            IntegerBlock.of(null, null)
+        ), new Chunk(
+            IntegerBlock.of(0, 0),
+            IntegerBlock.of(null, null)
+        ));
     }
 }

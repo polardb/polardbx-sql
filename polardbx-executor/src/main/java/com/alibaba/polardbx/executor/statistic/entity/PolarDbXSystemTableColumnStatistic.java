@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.module.LogLevel;
 import com.alibaba.polardbx.gms.module.LogPattern;
@@ -30,7 +32,6 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.clearspring.analytics.stream.frequency.CountMinSketch;
 import com.google.common.collect.Lists;
 import org.apache.commons.codec.binary.Base64;
@@ -267,13 +268,15 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
             rs = ps.executeQuery();
             while (rs.next()) {
                 try {
+                    String histogram = rs.getString("HISTOGRAM");
+                    String topN = rs.getString("TOPN");
                     SystemTableColumnStatistic.Row row = new SystemTableColumnStatistic.Row(
                         rs.getString("SCHEMA_NAME"),
                         rs.getString("TABLE_NAME"),
                         rs.getString("COLUMN_NAME"),
                         rs.getLong("CARDINALITY"),
-                        Histogram.deserializeFromJson(rs.getString("HISTOGRAM")),
-                        TopN.deserializeFromJson(rs.getString("TOPN")),
+                        histogram == null ? null : Histogram.deserializeFromJson(histogram),
+                        topN == null ? null : TopN.deserializeFromJson(topN),
                         rs.getLong("NULL_COUNT"),
                         rs.getFloat("SAMPLE_RATE"),
                         rs.getLong("UNIX_TIME"),
@@ -295,7 +298,10 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     }
 
     @Override
-    public void batchReplace(final List<SystemTableColumnStatistic.Row> rowList) {
+    public void batchReplace(final List<SystemTableColumnStatistic.Row> rowList) throws SQLException {
+        if (FailPoint.isKeyEnable(FailPointKey.FP_INJECT_IGNORE_PERSIST_COLUMN_STATISTIC)) {
+            throw new SQLException("ignore persist column statistic");
+        }
         if (!innerBatchReplace(rowList)) {
             createTableIfNotExist();
             innerBatchReplace(rowList);
@@ -306,7 +312,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
      * @param rowList the row list that need to replace
      * @return return false when COLUMN_STATISTICS doesn't exist, otherwise return true
      */
-    private boolean innerBatchReplace(final List<SystemTableColumnStatistic.Row> rowList) {
+    private boolean innerBatchReplace(final List<SystemTableColumnStatistic.Row> rowList) throws SQLException {
         if (!canWrite()) {
             return false;
         }
@@ -366,14 +372,10 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         } catch (SQLException e) {
             if (e.getErrorCode() == 1146) {
                 logger.error("batch replace " + TABLE_NAME + " error, we will try again", e);
-                return false;
             } else {
                 logger.error("batch replace " + TABLE_NAME + " error, sql = " + sql, e);
-                return true;
             }
-        } catch (Exception e) {
-            logger.error("batch replace " + TABLE_NAME + " error, sql = " + sql, e);
-            return true;
+            throw e;
         } finally {
             JdbcUtils.close(pps);
             JdbcUtils.close(conn);

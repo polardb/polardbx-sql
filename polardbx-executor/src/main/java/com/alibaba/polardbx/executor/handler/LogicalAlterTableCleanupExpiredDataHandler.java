@@ -27,6 +27,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.taobao.tddl.common.privilege.PrivilegePoint;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableCleanupExpiredData;
+import org.apache.calcite.sql.SqlNode;
 
 public class LogicalAlterTableCleanupExpiredDataHandler extends LogicalCommonDdlHandler {
 
@@ -50,6 +51,7 @@ public class LogicalAlterTableCleanupExpiredDataHandler extends LogicalCommonDdl
 
         CleanupExpiredDataJobFactory jobFactory =
             new CleanupExpiredDataJobFactory(schemaName, primaryTableName, logicalDdlPlan.relDdl,
+                cleanupExpiredData,
                 executionContext);
         return jobFactory.create();
 

@@ -48,6 +48,7 @@ testCases:
       - "use polardbx;"
       - "use polardbx;"
     checkTriggers:
+      - "select count(1) from information_schema.ddl_plan where ddl_type = 'rebalance' and table_schema = 'test_alter_locality_empty' and state != 'success';###0"
       - "select sleep(1)###0"
     checkActions:
       localityValueCheck:
@@ -96,6 +97,7 @@ testCases:
       - "use polardbx;"
     checkTriggers:
       - "select sleep(1)###0"
+      - "select count(1) from information_schema.ddl_plan where ddl_type = 'rebalance' and table_schema = 'test_alter_locality_empty' and state != 'success';###0"
     checkActions:
       localityValueCheck:
         - t1 table $dn1

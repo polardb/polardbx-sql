@@ -63,6 +63,9 @@ public class DdlResponseCollectSyncAction implements IGmsSyncAction {
         resultCursor.addColumn("DDL_TYPE", DataTypes.StringType);
         resultCursor.addColumn("RESULT_TYPE", DataTypes.StringType);
         resultCursor.addColumn("RESULT_CONTENT", DataTypes.StringType);
+        resultCursor.addColumn("DDL_STMT", DataTypes.StringType);
+        resultCursor.addColumn("START_TIME", DataTypes.StringType);
+        resultCursor.addColumn("END_TIME", DataTypes.StringType);
         resultCursor.initMeta();
         return resultCursor;
     }
@@ -75,6 +78,9 @@ public class DdlResponseCollectSyncAction implements IGmsSyncAction {
             response.getDdlType(),
             response.getResponseType().name(),
             response.getResponseContent(),
+            response.getDdlStmt(),
+            response.getStartTime(),
+            response.getEndTime()
         };
     }
 

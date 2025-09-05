@@ -2,7 +2,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.ddl;
 
 import com.alibaba.polardbx.druid.sql.repository.SchemaRepository;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.qatest.ReplicaIgnore;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.ddl.auto.partition.PartitionTestBase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
@@ -18,7 +18,7 @@ import java.sql.Statement;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-@ReplicaIgnore(
+@CdcIgnore(
     ignoreReason = "目前创建外键的时候会同步创建一个同名的索引，导致了Duplicate Key，导致下游复制中断，暂时忽略")
 public class ForeignKeyDdlTest extends PartitionTestBase {
     @Override
@@ -64,6 +64,18 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
         + "    b int not null,\n"
         + "    c int not null,\n"
         + "    d int not null,\n"
+        + "    foreign key (`b`) REFERENCES `user1` (`b`)\n"
+        + ") %s";
+
+    private static final String CREATE_DEVICE_WITH_KEY = "create table device_with_key\n"
+        + "(   a int auto_increment primary key,\n"
+        + "    b int not null,\n"
+        + "    c int not null,\n"
+        + "    d int not null,\n"
+        + "    `TITLE` text NOT NULL COMMENT '标题',"
+        + "    index (b),\n"
+        + "    index (c,d),\n"
+        + "    FULLTEXT KEY (TITLE) WITH PARSER ngram,\n"
         + "    foreign key (`b`) REFERENCES `user1` (`b`)\n"
         + ") %s";
 
@@ -311,6 +323,10 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
 
         for (String partitionDef1 : PART_DEFS) {
+            if (partitionDef1.contains("SINGLE") || partitionDef1.contains("BROADCAST")) {
+                continue;
+            }
+
             dropTableIfExists("device");
             dropTableIfExists("user1");
 
@@ -323,6 +339,12 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
 
                 JdbcUtil.executeUpdateFailed(tddlConnection, "DROP TABLE user1", "");
                 JdbcUtil.executeUpdateFailed(tddlConnection, "TRUNCATE TABLE user1", "");
+
+                // truncate table with gsi
+                JdbcUtil.executeUpdateSuccess(tddlConnection,
+                    "alter table user1 add global index `gsi_b` (`b`) partition by hash(`b`)");
+                JdbcUtil.executeUpdateFailed(tddlConnection, "TRUNCATE TABLE user1", "");
+                JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table user1 drop index gsi_b");
             }
         }
     }
@@ -764,6 +786,29 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
             JdbcUtil.executeUpdateSuccess(tddlConnection,
                 String.format(
                     "alter table `device_same` add constraint `device_ibfk_2` foreign key (`b`) REFERENCES `user1` (`c`)",
+                    partitionDef2));
+        }
+    }
+
+    @Test
+    public void testCreateFkWithEmptyNameIndex() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
+        dropTableIfExists("device_with_key");
+        dropTableIfExists("user1");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_USER1, "partition by hash(a)"));
+
+        for (String partitionDef2 : PART_DEFS) {
+
+            System.out.println(partitionDef2);
+            dropTableIfExists("device_with_key");
+            // create table with fk
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_DEVICE_WITH_KEY, partitionDef2));
+            // create table and create fk
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format(
+                    "alter table `device_with_key` add constraint `device_ibfk_2` foreign key (`b`) REFERENCES `user1` (`c`)",
                     partitionDef2));
         }
     }

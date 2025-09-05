@@ -215,3 +215,5 @@ customer.c_nationkey.nullCount:
   0
 customer.c_phone.nullCount:
   0
+t_decimal:
+  1000000

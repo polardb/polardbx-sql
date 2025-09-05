@@ -32,6 +32,7 @@ import org.apache.calcite.rex.RexNode;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class DefaultLazyEvaluatorBuilder implements LazyEvaluatorBuilder<Chunk, BitSet> {
@@ -56,6 +57,9 @@ public class DefaultLazyEvaluatorBuilder implements LazyEvaluatorBuilder<Chunk, 
      */
     double ratio;
 
+    Map<Integer, Map<String, List>> rewriterParams;
+    String currentPhyTable;
+
     public DefaultLazyEvaluatorBuilder setRexNode(RexNode rexNode) {
         this.rexNode = rexNode;
         return this;
@@ -79,6 +83,12 @@ public class DefaultLazyEvaluatorBuilder implements LazyEvaluatorBuilder<Chunk, 
         return this;
     }
 
+    public DefaultLazyEvaluatorBuilder rewriteIn(Map<Integer, Map<String, List>> rewriterParams, String currentPhyTable) {
+        this.rewriterParams = rewriterParams;
+        this.currentPhyTable = currentPhyTable;
+        return this;
+    }
+
     @Override
     public LazyEvaluator<Chunk, BitSet> build() {
         RexNode root = VectorizedExpressionBuilder.rewriteRoot(rexNode, true);
@@ -88,6 +98,11 @@ public class DefaultLazyEvaluatorBuilder implements LazyEvaluatorBuilder<Chunk, 
 
         Rex2VectorizedExpressionVisitor converter =
             new Rex2VectorizedExpressionVisitor(context, inputTypes.size());
+
+        if (rewriterParams != null && currentPhyTable != null) {
+            converter.rewriteIn(rewriterParams, currentPhyTable);
+        }
+
         VectorizedExpression condition = root.accept(converter);
 
         // Data types of intermediate results or final results.

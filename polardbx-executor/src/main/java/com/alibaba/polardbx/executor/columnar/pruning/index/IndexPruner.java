@@ -29,6 +29,7 @@ import com.google.common.collect.Lists;
 import io.airlift.slice.Slice;
 import org.apache.orc.OrcProto;
 import org.jetbrains.annotations.NotNull;
+import org.openjdk.jol.info.ClassLayout;
 import org.roaringbitmap.RoaringBitmap;
 
 import javax.annotation.Nonnull;
@@ -44,6 +45,8 @@ import java.util.TreeMap;
  * @author fangwu
  */
 public class IndexPruner {
+
+    private static final long INSTANCE_SIZE = ClassLayout.parseClass(IndexPruner.class).instanceSize();
 
     // target file meta
     private String orcFile;
@@ -61,6 +64,7 @@ public class IndexPruner {
      * The i-th strip contains stripeRgNum[i] row groups.
      */
     private List<Integer> stripeRgNum;
+    private long estimatedSizeInBytes;
 
     private IndexPruner(long rgNum) {
         this.rgNum = rgNum;
@@ -199,6 +203,7 @@ public class IndexPruner {
             indexPruner.zoneMapIndex = zoneMapIndexBuilder.build();
             indexPruner.bloomFilterIndex = bloomFilterIndex;
             indexPruner.stripeRgNum = stripeRgNum;
+            indexPruner.updateSizeInfo();
             return indexPruner;
         }
 
@@ -303,4 +308,27 @@ public class IndexPruner {
         }
     }
 
+    public long getSizeInBytes() {
+        return estimatedSizeInBytes;
+    }
+
+    private void updateSizeInfo() {
+        long size = INSTANCE_SIZE;
+        if (sortKeyIndex != null) {
+            size += sortKeyIndex.getSizeInBytes();
+        }
+        if (bitMapRowGroupIndex != null) {
+            size += bitMapRowGroupIndex.getSizeInBytes();
+        }
+        if (zoneMapIndex != null) {
+            size += zoneMapIndex.getSizeInBytes();
+        }
+        if (bloomFilterIndex != null) {
+            size += bloomFilterIndex.getSizeInBytes();
+        }
+        if (stripeRgNum != null) {
+            size += (long) stripeRgNum.size() * Integer.BYTES;
+        }
+        this.estimatedSizeInBytes = size;
+    }
 }

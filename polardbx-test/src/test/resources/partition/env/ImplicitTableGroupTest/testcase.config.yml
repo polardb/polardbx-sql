@@ -1,3 +1,5 @@
 alter_table_modify_column
 create_table_with_implicit_tg
 alter_table_remove_partitioning
+alter_table_change_partitioning_count
+alter_table_split

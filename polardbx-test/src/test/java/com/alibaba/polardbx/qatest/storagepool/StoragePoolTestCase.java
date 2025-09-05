@@ -1,7 +1,6 @@
 package com.alibaba.polardbx.qatest.storagepool;
 
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestBase;
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestCaseTask;
+import com.alibaba.polardbx.qatest.ddl.datamigration.locality.LocalityTestBase;
 import com.alibaba.polardbx.qatest.storagepool.LegacyStoragePoolTestCase.StoragePoolTestCaseTask;
 import com.alibaba.polardbx.qatest.storagepool.importDatabase.AlterPartitionTest;
 import com.alibaba.polardbx.qatest.storagepool.importDatabase.CommonDdlTest;

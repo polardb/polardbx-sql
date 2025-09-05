@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
@@ -47,7 +48,10 @@ public class SyncLsnTask extends BaseGmsTask {
     @Override
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         //make sure the table schema in the follower node is the same as source leader node
-        PhysicalBackfillUtils.waitLsn(schemaName, sourceGroupAndStorageIdMap, false, executionContext);
+        boolean fromLeader = executionContext.getParamManager().getBoolean(ConnectionParams.PHYSICAL_BACKFILL_CLONE_DATA_FROM_LEADER);
+        if(!fromLeader) {
+            PhysicalBackfillUtils.waitLsn(schemaName, sourceGroupAndStorageIdMap, false, executionContext);
+        }
         //make sure the create table/discard tablespace has been executed in follower/learner node
         PhysicalBackfillUtils.waitLsn(schemaName, targetGroupAndStorageIdMap, false, executionContext);
     }

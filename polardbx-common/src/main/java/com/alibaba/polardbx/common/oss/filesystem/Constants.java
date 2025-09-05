@@ -77,6 +77,14 @@ public final class Constants {
     public static final String SOCKET_TIMEOUT_KEY = "fs.oss.connection.timeout";
     public static final int SOCKET_TIMEOUT_DEFAULT = 200000;
 
+    // The timeout in millisecond for retrieving an available connection from the connection manager.
+    public static final String CONNECTION_REQUEST_TIMEOUT_KEY = "fs.oss.connection.request.timeout";
+    public static final int CONNECTION_REQUEST_TIMEOUT_DEFAULT = 10000;
+
+    // The timeout value in millisecond.
+    public static final String REQUEST_TIMEOUT_KEY = "fs.oss.request.timeout";
+    public static final int REQUEST_TIMEOUT_DEFAULT = 300000;
+
     // the policy of fetching oss data.
     public static final String OSS_FETCH_POLICY = "fs.oss.io.fetch.policy";
 

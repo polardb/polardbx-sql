@@ -24,8 +24,11 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTtlInfoTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RepartitionChangeForeignKeyMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RepartitionChangeMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.RepartitionSingleChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcRepartitionMarkTask;
@@ -37,6 +40,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
+import com.alibaba.polardbx.executor.ddl.job.validator.TtlValidator;
+import com.alibaba.polardbx.executor.ddl.job.validator.ddl.RepartitionValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -46,8 +51,11 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -57,9 +65,18 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
+import com.alibaba.polardbx.optimizer.ttl.BuildTtlInfoParams;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlMetaValidationUtil;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
@@ -74,6 +91,7 @@ import static com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility.Protected;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLE;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLEGROUP;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLE_SET_TABLEGROUP;
+import static com.alibaba.polardbx.executor.gsi.GsiUtils.getAvaliableNodeNum;
 
 /**
  * @author guxu wumu
@@ -86,10 +104,11 @@ public class RepartitionJobFactory extends DdlJobFactory {
     private final boolean isSingle;
     private final boolean isBroadcast;
     private final PhysicalPlanData physicalPlanData;
+    private final PhysicalPlanData physicalPlanDataForLocalIndex;
     private final List<String> dropIndexes;
     private final Map<String, List<String>> backfillIndexs;
     private final String primaryTableDefinition;
-    private final List<String> changeShardColumnsOnly;
+    private final List<String> expandShardColumnsOnly;
     private final CreateGlobalIndexPreparedData globalIndexPreparedData;
     private final Pair<String, String> addLocalIndexSql;
     private final Pair<String, String> dropLocalIndexSql;
@@ -107,9 +126,12 @@ public class RepartitionJobFactory extends DdlJobFactory {
     private final Boolean modifyLocality;
     private final Boolean repartitionGsi;
 
+    private final Boolean singleTableToPartitions1;
+
     public RepartitionJobFactory(CreateGlobalIndexPreparedData globalIndexPreparedData,
                                  RepartitionPrepareData repartitionPrepareData,
                                  PhysicalPlanData physicalPlanData,
+                                 PhysicalPlanData physicalPlanDataForLocalIndex,
                                  ExecutionContext executionContext,
                                  RelOptCluster cluster) {
         this.schemaName = globalIndexPreparedData.getSchemaName();
@@ -121,7 +143,8 @@ public class RepartitionJobFactory extends DdlJobFactory {
         this.backfillIndexs = repartitionPrepareData.getBackFilledIndexes();
         this.dropIndexes = repartitionPrepareData.getDroppedIndexes();
         this.primaryTableDefinition = repartitionPrepareData.getPrimaryTableDefinition();
-        this.changeShardColumnsOnly = repartitionPrepareData.getChangeShardColumnsOnly();
+        this.expandShardColumnsOnly = repartitionPrepareData.getExpandShardColumnsOnly();
+        this.singleTableToPartitions1 = repartitionPrepareData.getSingleTableToPartitions1();
         this.addLocalIndexSql = repartitionPrepareData.getAddLocalIndexSql();
         this.dropLocalIndexSql = repartitionPrepareData.getDropLocalIndexSql();
         this.modifyForeignKeys = repartitionPrepareData.getModifyForeignKeys();
@@ -133,6 +156,7 @@ public class RepartitionJobFactory extends DdlJobFactory {
         this.addCciSql = repartitionPrepareData.getAddCciSql();
         this.dropCciSql = repartitionPrepareData.getDropCciSql();
         this.physicalPlanData = physicalPlanData;
+        this.physicalPlanDataForLocalIndex = physicalPlanDataForLocalIndex;
         this.executionContext = executionContext;
         this.cluster = cluster;
     }
@@ -143,6 +167,8 @@ public class RepartitionJobFactory extends DdlJobFactory {
         GsiValidator.validateAllowDdlOnTable(schemaName, primaryTableName, executionContext);
         GsiValidator.validateGsiSupport(schemaName, executionContext);
         GsiValidator.validateCreateOnGsi(schemaName, indexTableName, executionContext);
+        TtlValidator.validateIfAllowPerformRepartition(schemaName, primaryTableName,
+            globalIndexPreparedData.getIndexPartitionInfo(), executionContext);
     }
 
     @Override
@@ -160,7 +186,20 @@ public class RepartitionJobFactory extends DdlJobFactory {
 
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
         boolean autoPartition = tableMeta.isAutoPartition();
+        int cpuAcquired = executionContext.getParamManager().getInt(ConnectionParams.GSI_PK_RANGE_CPU_ACQUIRE);
+        boolean adjustableParallelism =
+            executionContext.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_BY_PARTITION)
+                || executionContext.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_BY_PK_RANGE);
+        int maxNodeNum = getAvaliableNodeNum(schemaName, primaryTableName, executionContext);
+        // if you use pk range, then control the concurrency by cpuAcquired.
+        int gsiMaxParallelism = 1;
+        if (executionContext.getParamManager().getInt(ConnectionParams.GSI_JOB_MAX_PARALLELISM) >= 1) {
+            gsiMaxParallelism = executionContext.getParamManager().getInt(ConnectionParams.GSI_JOB_MAX_PARALLELISM);
+        } else if (adjustableParallelism) {
+            gsiMaxParallelism = Math.floorDiv(100, cpuAcquired) * maxNodeNum;
+        }
 
+        long targetTgId = -1l;
         if (physicalPlanData.getTableGroupConfig() != null) {
             TableGroupRecord tableGroupRecord = physicalPlanData.getTableGroupConfig().getTableGroupRecord();
             if (tableGroupRecord != null && (tableGroupRecord.id == null
@@ -172,6 +211,12 @@ public class RepartitionJobFactory extends DdlJobFactory {
                     .getTableGroupConfigByName(TableGroupNameUtil.SINGLE_DEFAULT_TG_NAME_TEMPLATE);
                 if (tableGroupConfig != null) {
                     tableGroupRecord.setTg_type(TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG);
+                }
+            } else if (tableGroupRecord == null) {
+                List<PartitionGroupRecord> partitionGroupRecords =
+                    physicalPlanData.getTableGroupConfig().getPartitionGroupRecords();
+                if (GeneralUtil.isNotEmpty(partitionGroupRecords)) {
+                    targetTgId = partitionGroupRecords.get(0).getTg_id();
                 }
             }
         }
@@ -191,11 +236,13 @@ public class RepartitionJobFactory extends DdlJobFactory {
 
         globalIndexPreparedData.setRepartition(true);
         CreateGsiJobFactory createGsiJobFactory =
-            CreateGsiJobFactory.create(globalIndexPreparedData, physicalPlanData, null, executionContext);
+            CreateGsiJobFactory.create(globalIndexPreparedData, physicalPlanData, physicalPlanDataForLocalIndex,
+                executionContext);
         createGsiJobFactory.stayAtBackFill = true;
         ExecutableDdlJob createGsiJob = createGsiJobFactory.create();
         if (globalIndexPreparedData.getRelatedTableGroupInfo().values().stream().anyMatch(o -> o.booleanValue())
             || globalIndexPreparedData.isNeedToGetTableGroupLock()) {
+            createGsiJob.setMaxParallelism(gsiMaxParallelism);
             return createGsiJob;
         }
 
@@ -241,6 +288,14 @@ public class RepartitionJobFactory extends DdlJobFactory {
         repartitionJob.addTask(validateTask);
         repartitionJob.addTaskRelationship(validateTableVersionTask, validateTask);
 
+        AlterTtlInfoTask alterTtlInfoTaskForRepart =
+            buildModifiedTtlInfoForRepartitionIfNeed(schemaName, primaryTableName, globalIndexPreparedData,
+                executionContext);
+        if (alterTtlInfoTaskForRepart != null) {
+            repartitionJob.addTask(alterTtlInfoTaskForRepart);
+            repartitionJob.addTaskRelationship(validateTask, alterTtlInfoTaskForRepart);
+        }
+
         // 1.gsi add column
         if (!autoPartition) {
             for (ExecutableDdlJob4AlterTable gsiAddColumnJob : gsiAddColumnJobs) {
@@ -248,6 +303,20 @@ public class RepartitionJobFactory extends DdlJobFactory {
                 repartitionJob.addTaskRelationship(validateTask, gsiAddColumnJob.getTableValidateTask());
             }
         } else {
+            if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                for (ExecutableDdlJob dropJob : dropGlobalIndexJobs) {
+                    for (DdlTask ddlTask : dropJob.getAllTasks()) {
+                        if(ddlTask instanceof DropTableRemoveMetaTask) {
+                            DropTableRemoveMetaTask dropTableRemoveMetaTask = (DropTableRemoveMetaTask)ddlTask;
+                            String tableName = dropTableRemoveMetaTask.getLogicalTableName();
+                            TableMeta gsiTableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
+                            if(gsiTableMeta.getPartitionInfo().getTableGroupId() == targetTgId) {
+                                dropTableRemoveMetaTask.setDropEmptyTableGroup(false);
+                            }
+                        }
+                    }
+                }
+            }
             // 默认主键拆分表，需要删除所有的gsi，无需为 gsi add column
             dropGlobalIndexJobs.forEach(repartitionJob::appendJob2);
         }
@@ -256,8 +325,7 @@ public class RepartitionJobFactory extends DdlJobFactory {
 
         // only optimize for key partition
         // do not change topology, only change table meta
-        if (!skipCheck && changeShardColumnsOnly != null && !changeShardColumnsOnly.isEmpty()
-            && (modifyLocality == null || !modifyLocality)) {
+        if (expandShardColumnsOnlyWithoutModifyLocality(executionContext, expandShardColumnsOnly, modifyLocality)) {
             // add local index subJob
             SubJobTask addIndexSubJobTask = null;
             if (addLocalIndexSql != null && addLocalIndexSql.getKey() != null && addLocalIndexSql.getValue() != null) {
@@ -278,7 +346,7 @@ public class RepartitionJobFactory extends DdlJobFactory {
 
             // change meta
             RepartitionChangeMetaTask repartitionChangeMetaTask = new RepartitionChangeMetaTask(
-                schemaName, primaryTableName, changeShardColumnsOnly);
+                schemaName, primaryTableName, expandShardColumnsOnly);
             TableSyncTask tableSyncTask = new TableSyncTask(schemaName, primaryTableName);
 
             // add tasks
@@ -294,6 +362,43 @@ public class RepartitionJobFactory extends DdlJobFactory {
             if (dropIndexSubJobTask != null) {
                 repartitionJob.addTaskRelationship(cdcDdlMarkTask, dropIndexSubJobTask);
             }
+
+            repartitionJob.setMaxParallelism(gsiMaxParallelism);
+            return repartitionJob;
+        } else if (singleTableToPartitions1) {
+            String tableGroupName = FactoryUtils.getTableGroupNameByTableName(schemaName, primaryTableName);
+            final TableGroupInfoManager tableGroupInfoManager =
+                OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+            final TableGroupConfig tgCofig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
+            final TableGroupDetailConfig currentTableGroupConfig =
+                TableGroupUtils.getTableGroupDetailInfoByGroupId(null, tgCofig.getTableGroupRecord().id);
+            final List<PartitionGroupRecord> currentPartitionGroupRecords =
+                currentTableGroupConfig.getPartitionGroupRecords();
+
+            // rewrite table group config
+            TableGroupDetailConfig newTableGroupDetailConfig = physicalPlanData.getTableGroupConfig();
+            List<PartitionGroupRecord> partitionGroupRecords = newTableGroupDetailConfig.getPartitionGroupRecords();
+
+            for (int i = 0; i < currentPartitionGroupRecords.size(); ++i) {
+                PartitionGroupRecord newPartitionGroupRecord = partitionGroupRecords.get(i);
+                PartitionGroupRecord currentPartitionGroupRecord = currentPartitionGroupRecords.get(i);
+                newPartitionGroupRecord.setLocality(currentPartitionGroupRecord.getLocality());
+                newPartitionGroupRecord.setPhy_db(currentPartitionGroupRecord.getPhy_db());
+            }
+
+            RepartitionSingleChangeMetaTask changeMetaTask =
+                new RepartitionSingleChangeMetaTask(schemaName, primaryTableName, tgCofig.getTableGroupRecord().id,
+                    newTableGroupDetailConfig);
+            TableSyncTask tableSyncTask = new TableSyncTask(schemaName, primaryTableName);
+
+            repartitionJob.appendTask(changeMetaTask);
+            repartitionJob.addTaskRelationship(changeMetaTask, tableSyncTask);
+            repartitionJob.addTaskRelationship(tableSyncTask, cdcDdlMarkTask);
+
+            if (syncTableGroup != null) {
+                repartitionJob.appendTask(syncTableGroup);
+            }
+            repartitionJob.labelAsHead(validateTableVersionTask);
 
             return repartitionJob;
         }
@@ -424,7 +529,16 @@ public class RepartitionJobFactory extends DdlJobFactory {
             repartitionJob.appendTask(syncTableGroup);
         }
         repartitionJob.labelAsHead(validateTableVersionTask);
+        repartitionJob.setMaxParallelism(gsiMaxParallelism);
         return repartitionJob;
+    }
+
+    public static boolean expandShardColumnsOnlyWithoutModifyLocality(ExecutionContext executionContext,
+                                                                      List<String> changeShardColumnsOnly,
+                                                                      Boolean modifyLocality) {
+        Boolean skipCheck = executionContext.getParamManager().getBoolean(ConnectionParams.REPARTITION_SKIP_CHECK);
+        return !skipCheck && (changeShardColumnsOnly != null && !changeShardColumnsOnly.isEmpty()
+            && (modifyLocality == null || !modifyLocality));
     }
 
     @Override
@@ -558,5 +672,98 @@ public class RepartitionJobFactory extends DdlJobFactory {
         } else {
             return ddlContext;
         }
+    }
+
+    public AlterTtlInfoTask buildModifiedTtlInfoForRepartitionIfNeed(String tableSchema,
+                                                                     String tableName,
+                                                                     CreateGlobalIndexPreparedData createGlobalIndexPreparedData,
+                                                                     ExecutionContext ec) {
+        if (!DbInfoManager.getInstance().isNewPartitionDb(tableSchema)) {
+            return null;
+        }
+        TableMeta primaryTableMeta = ec.getSchemaManager(tableSchema).getTable(tableName);
+        TtlDefinitionInfo currTtlInfo = primaryTableMeta.getTtlDefinitionInfo();
+        boolean hasTtlInfo = currTtlInfo != null;
+        if (!hasTtlInfo) {
+            return null;
+        }
+
+        if (currTtlInfo.performArchiveByRow()) {
+            return null;
+        }
+
+        PartitionInfo newPartInfo = createGlobalIndexPreparedData.getIndexPartitionInfo();
+        boolean isPartitionRuleUnchanged = RepartitionValidator.checkPartitionInfoUnchanged(
+            createGlobalIndexPreparedData.getSchemaName(),
+            createGlobalIndexPreparedData.getPrimaryTableName(),
+            newPartInfo
+        );
+        if (isPartitionRuleUnchanged) {
+            return null;
+        }
+
+        boolean needModifyTtlInfo = checkIfNeedCovertToRowTypeTtl(currTtlInfo, newPartInfo);
+        if (!needModifyTtlInfo) {
+            return null;
+        }
+
+        TtlDefinitionInfo newTtlInfo = null;
+        BuildTtlInfoParams modifyTtlInfoParams = new BuildTtlInfoParams();
+        modifyTtlInfoParams.setTableSchema(schemaName);
+        modifyTtlInfoParams.setTableName(primaryTableName);
+        modifyTtlInfoParams.setTtlEnable("OFF");
+        modifyTtlInfoParams.setTtlCleanup("OFF");
+        modifyTtlInfoParams.setArchiveKind("ROW");
+        modifyTtlInfoParams.setTtlTableMeta(primaryTableMeta);
+        modifyTtlInfoParams.setEc(executionContext);
+        newTtlInfo = TtlDefinitionInfo.buildModifiedTtlInfo(
+            currTtlInfo,
+            modifyTtlInfoParams
+        );
+        TtlMetaValidationUtil.validateTtlInfoChange(currTtlInfo, newTtlInfo, executionContext);
+
+        AlterTtlInfoTask alterTtlInfoTask = new AlterTtlInfoTask(currTtlInfo, newTtlInfo);
+        return alterTtlInfoTask;
+    }
+
+    private static boolean checkIfNeedCovertToRowTypeTtl(TtlDefinitionInfo currTtlInfo, PartitionInfo newPartInfo) {
+        boolean arcBySubPart = currTtlInfo.performArchiveBySubPartition();
+        PartitionByDefinition partByInNewPartInfo = newPartInfo.getPartitionBy();
+        if (partByInNewPartInfo != null) {
+            boolean useSubPart = partByInNewPartInfo.getSubPartitionBy() != null;
+            if (arcBySubPart) {
+                if (!useSubPart) {
+                    return true;
+                }
+                partByInNewPartInfo = partByInNewPartInfo.getSubPartitionBy();
+            }
+            PartitionStrategy tarPartByStrategy = partByInNewPartInfo.getStrategy();
+            List<String> newPartColList = partByInNewPartInfo.getPartitionColumnNameList();
+            if (newPartColList.size() != 1) {
+                return true;
+            } else {
+                String currTtlCol = currTtlInfo.getTtlInfoRecord().getTtlCol();
+                String newPartCol = newPartColList.get(0);
+                if (!newPartCol.equalsIgnoreCase(currTtlCol)) {
+                    return true;
+                }
+            }
+
+            if (!tarPartByStrategy.isRange()) {
+                return true;
+            } else {
+                PartitionIntFunction partFuncOnTarNewPartBy = partByInNewPartInfo.getPartIntFunc();
+                if (partFuncOnTarNewPartBy != null) {
+                    SqlOperator funcOp = partFuncOnTarNewPartBy.getSqlOperator();
+                    String funcName = funcOp.getName();
+                    if (!PartitionFunctionBuilder.isTimeBasedFamilyPartitionFunctionForPartitionTypeTtl(funcName)) {
+                        return true;
+                    }
+                }
+            }
+        } else {
+            return true;
+        }
+        return false;
     }
 }

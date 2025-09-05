@@ -41,6 +41,7 @@ public class CciSchemaEvolutionTask extends BaseDdlTask {
     private final Long versionId;
     private final ColumnarTableStatus afterStatus;
     private final Map<String, String> options;
+    private final UpdateColumnarConfigTask updateColumnarConfigTask;
 
     private ColumnarTableMappingRecord tableMappingRecord;
 
@@ -55,10 +56,14 @@ public class CciSchemaEvolutionTask extends BaseDdlTask {
         this.afterStatus = afterStatus;
         this.options = options;
         this.tableMappingRecord = tableMappingRecord;
+        this.updateColumnarConfigTask =
+            new UpdateColumnarConfigTask(schemaName, primaryTableName, columnarTableName, options);
     }
 
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        updateColumnarConfigTask.duringRollbackTransaction(metaDbConnection, executionContext);
+
         switch (afterStatus) {
         case CREATING:
         case CHECKING:
@@ -85,10 +90,14 @@ public class CciSchemaEvolutionTask extends BaseDdlTask {
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+
+        updateColumnarConfigTask.duringTransaction(metaDbConnection, executionContext);
     }
 
     @Override
     protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        updateColumnarConfigTask.duringRollbackTransaction(metaDbConnection, executionContext);
+
         switch (afterStatus) {
         case CREATING:
         case CHECKING:

@@ -36,6 +36,7 @@ import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_T
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.DEADLOCK_DETECTION_INTERVAL;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_DEADLOCK_DETECTION;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_SYNC_POINT;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_TRANSACTION_RECOVER_TASK;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_TRANSACTION_STATISTICS;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_TRX_IDLE_TIMEOUT_TASK;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_TRANS_BEFORE;
@@ -44,6 +45,7 @@ import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.SYNC_POINT_TASK_INTERVAL;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.TRANSACTION_STATISTICS_TASK_INTERVAL;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.TRX_IDLE_TIMEOUT_TASK_INTERVAL;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.XA_RECOVER_INTERVAL;
 
 /**
  * @author wuzhe
@@ -162,6 +164,28 @@ public class ParamValidationUtils {
         }
 
         throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, "Unknown sync point task parameter " + parameter);
+    }
+
+    public static void validateXaRecoverParam(String parameter, String value) {
+        if (XA_RECOVER_INTERVAL.equals(parameter)) {
+            final long longVal = Long.parseLong(value);
+            if (longVal < 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should >= 1(s)");
+            }
+            return;
+        }
+
+        if (ENABLE_TRANSACTION_RECOVER_TASK.equals(parameter)) {
+            final Boolean boolVal = GeneralUtil.convertStringToBoolean(value);
+            if (boolVal == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should be TRUE/FALSE");
+            }
+            return;
+        }
+
+        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, "Unknown xa recover task parameter " + parameter);
     }
 
     public static boolean isIdentical(Map<String, String> newParam, Map<String, String> oldParam,

@@ -492,22 +492,26 @@ public class PartClauseInfoPreProcessor {
         }
         eqExprClauseInfo.setDynamicConstOnly(true);
 
-        SubQueryInPartClauseInfo sbInPartClauseInfo = new SubQueryInPartClauseInfo();
-        sbInPartClauseInfo.setSubQueryDynamicParam(subQueryDynamicParam);
-
-        sbInPartClauseInfo.setOp(TddlOperatorTable.IN);
-        sbInPartClauseInfo.setOpKind(SqlKind.IN);
-        sbInPartClauseInfo.setInput(input);
+        List<RexDynamicParam> partColDynamicParamsOfPartClause = new ArrayList<>();
+        List<PartClauseItem> eqExprClauseItemsOfPartClause = new ArrayList<>();
         PredConstExprReferenceInfo exprReferenceInfo = stepContext.buildPredConstExprReferenceInfo(subQuery);
-        sbInPartClauseInfo.setConstExprId(exprReferenceInfo.getConstExprId());
-        sbInPartClauseInfo.setConstExpr(exprReferenceInfo.getConstExpr());
-        sbInPartClauseInfo.setOriginalPredicate(partPred);
-        sbInPartClauseInfo.setNull(false);
-        sbInPartClauseInfo.setPartKeyLevel(stepContext.getPartLevel());
-        sbInPartClauseInfo.setStrategy(strategy);
-        sbInPartClauseInfo.setPartKeyIndex(partKeyIdx);
-        sbInPartClauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
-        sbInPartClauseInfo.setDynamicConstOnly(true);
+
+//        SubQueryInPartClauseInfo sbInPartClauseInfo = new SubQueryInPartClauseInfo();
+//        sbInPartClauseInfo.setSubQueryDynamicParam(subQueryDynamicParam);
+//        sbInPartClauseInfo.setOp(TddlOperatorTable.IN);
+//        sbInPartClauseInfo.setOpKind(SqlKind.IN);
+//        sbInPartClauseInfo.setInput(input);
+//        PredConstExprReferenceInfo exprReferenceInfo = stepContext.buildPredConstExprReferenceInfo(subQuery);
+//        sbInPartClauseInfo.setConstExprId(exprReferenceInfo.getConstExprId());
+//        sbInPartClauseInfo.setConstExpr(exprReferenceInfo.getConstExpr());
+//        sbInPartClauseInfo.setOriginalPredicate(partPred);
+//        sbInPartClauseInfo.setPlanRelRowType(relRowType);
+//        sbInPartClauseInfo.setNull(false);
+//        sbInPartClauseInfo.setPartKeyLevel(stepContext.getPartLevel());
+//        sbInPartClauseInfo.setStrategy(strategy);
+//        sbInPartClauseInfo.setPartKeyIndex(partKeyIdx);
+//        sbInPartClauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
+//        sbInPartClauseInfo.setDynamicConstOnly(true);
 
         PartClauseItem eqExprClauseInfoItem = PartClauseItem
             .buildPartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, eqExprClauseInfo,
@@ -519,15 +523,38 @@ public class PartClauseInfoPreProcessor {
                 rewriteDnfPartClauseInfoItemIfNeed(partByDef, relRowType, eqExprOfInPred, stepContext,
                     eqExprClauseInfoItem, null);
             if (newPartClauseItem.getType() == PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT) {
-                sbInPartClauseInfo.getEqExprClauseItems().addAll(newPartClauseItem.getItemList());
+                eqExprClauseItemsOfPartClause.addAll(newPartClauseItem.getItemList());
             } else {
-                sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+                eqExprClauseItemsOfPartClause.add(eqExprClauseInfoItem);
             }
-            sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+            eqExprClauseItemsOfPartClause.add(eqExprClauseInfoItem);
         } else {
-            sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+            eqExprClauseItemsOfPartClause.add(eqExprClauseInfoItem);
         }
-        sbInPartClauseInfo.getPartColDynamicParams().add(eqValDynamicParam);
+        partColDynamicParamsOfPartClause.add(eqValDynamicParam);
+
+        BuildPartClauseInfoParams buildSubPartInClauseInfoParams = new BuildPartClauseInfoParams();
+        buildSubPartInClauseInfoParams.setBuildForSubQueryInPartClauseInfo(true);
+        buildSubPartInClauseInfoParams.setOp(TddlOperatorTable.IN);
+        buildSubPartInClauseInfoParams.setOpKind(SqlKind.IN);
+        buildSubPartInClauseInfoParams.setInput(input);
+        buildSubPartInClauseInfoParams.setConstExprId(exprReferenceInfo.getConstExprId());
+        buildSubPartInClauseInfoParams.setConstExpr(exprReferenceInfo.getConstExpr());
+        buildSubPartInClauseInfoParams.setOriginalPredicate(partPred);
+        buildSubPartInClauseInfoParams.setPlanRelRowType(relRowType);
+        buildSubPartInClauseInfoParams.setNull(false);
+        buildSubPartInClauseInfoParams.setPartKeyLevel(stepContext.getPartLevel());
+        buildSubPartInClauseInfoParams.setStrategy(strategy);
+        buildSubPartInClauseInfoParams.setPartKeyIndex(partKeyIdx);
+        buildSubPartInClauseInfoParams.setPartKeyDataType(cmFldInfo.getField().getRelType());
+        buildSubPartInClauseInfoParams.setDynamicConstOnly(true);
+
+        buildSubPartInClauseInfoParams.setSubQueryDynamicParam(subQueryDynamicParam);
+        buildSubPartInClauseInfoParams.setPartColDynamicParams(partColDynamicParamsOfPartClause);
+        buildSubPartInClauseInfoParams.setEqExprClauseItems(eqExprClauseItemsOfPartClause);
+
+        PartClauseInfo sbInPartClauseInfo =
+            PartClauseInfoPreProcessor.buildPartClauseInfoByParams(buildSubPartInClauseInfoParams);
 
         PartClauseItem inSubQueryItem = PartClauseItem
             .buildPartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, sbInPartClauseInfo,
@@ -643,6 +670,42 @@ public class PartClauseInfoPreProcessor {
         return clauseItem;
     }
 
+    public static List<PartClauseInfo> buildPartClauseInfoListByUsingAnyValueExpr(PartitionByDefinition partByDef,
+                                                                                  RelDataType relRowType,
+                                                                                  Integer firstPartKeyIdx,
+                                                                                  Integer lastPartKeyIdx) {
+        List<PartClauseInfo> partClauseInfoList = new ArrayList<>();
+        int[] buildPartKeyIdx2RexInputIdxArr =
+            buildPartKeyIdx2RexInputIdxMappingByPartByAndRelRowType(partByDef, relRowType);
+        int partColSize = partByDef.getPartitionColumnNameList().size();
+        for (int i = 0; i < partColSize; i++) {
+            if (i < firstPartKeyIdx || i > lastPartKeyIdx) {
+                continue;
+            }
+            int rexInputRefIndex = buildPartKeyIdx2RexInputIdxArr[i];
+            if (rexInputRefIndex == -1) {
+                /**
+                 * No found part col from the relRowType
+                 */
+                continue;
+            }
+            RexInputRef partColInput = RexInputRef.of(rexInputRefIndex, relRowType);
+            RexNode nullExpr = PartitionPrunerUtils.getRexBuilder().makeNullLiteral(relRowType);
+            List<RexNode> opList = new ArrayList<>();
+            opList.add(partColInput);
+            opList.add(nullExpr);
+            SqlOperator isNullOp = RexUtil.op(SqlKind.IS_NULL);
+            RexNode newPartColPred = PartitionPrunerUtils.getRexBuilder().makeCall(isNullOp, opList);
+            PartClauseInfo clauseInfo =
+                matchPartPredToPartKey(partByDef, relRowType, newPartColPred, partColInput, null, true,
+                    TddlOperatorTable.EQUALS,
+                    null);
+            clauseInfo.setAnyValueEqCond(true);
+            partClauseInfoList.add(clauseInfo);
+        }
+        return partClauseInfoList;
+    }
+
     /**
      * Try to match part predicate to part key and check if the part predicate contains part key
      */
@@ -717,7 +780,8 @@ public class PartClauseInfoPreProcessor {
             }
         }
 
-        PartClauseInfo clauseInfo = new PartClauseInfo();
+        BuildPartClauseInfoParams buildPartClauseInfoParams = new BuildPartClauseInfoParams();
+
         RexInputRef columnRef = (RexInputRef) input;
         RelDataType relDataType = relRowType;
 
@@ -728,6 +792,7 @@ public class PartClauseInfoPreProcessor {
         List<ColumnMeta> partKeyFldList = partByDef.getPartitionFieldList();
 
         PartitionStrategy strategy = partByDef.getStrategy();
+        PartKeyLevel partKeyLevel = partByDef.getPartLevel();
 
         int partKeyIdx = -1;
         ColumnMeta cmFldInfo = null;
@@ -742,10 +807,12 @@ public class PartClauseInfoPreProcessor {
         }
         if (findInPartNameList) {
 
-            clauseInfo.setPartKeyLevel(stepContext.getPartLevel());
-            clauseInfo.setOp(op);
-            clauseInfo.setOpKind(predOpKind);
-            clauseInfo.setInput(input);
+//            PartClauseInfo clauseInfo = new PartClauseInfo();
+//            clauseInfo.setPartKeyLevel(stepContext.getPartLevel());
+//            clauseInfo.setOp(op);
+//            clauseInfo.setOpKind(predOpKind);
+//            clauseInfo.setInput(input);
+//            clauseInfo.setPlanRelRowType(relDataType);
 
             Integer constExprId = null;
             if (stepContext != null && !isNull) {
@@ -758,16 +825,29 @@ public class PartClauseInfoPreProcessor {
                 constExprId = constExprInfo.getConstExprId();
                 constExpr = constExprInfo.getConstExpr();
             }
-            clauseInfo.setConstExpr(constExpr);
-            clauseInfo.setConstExprId(constExprId);
+//            clauseInfo.setConstExpr(constExpr);
+//            clauseInfo.setConstExprId(constExprId);
+//            clauseInfo.setDynamicConstOnly(constExpr instanceof RexDynamicParam);
+//            clauseInfo.setOriginalPredicate(originalPred);
+//            clauseInfo.setNull(isNull);
+//            clauseInfo.setPartKeyIndex(partKeyIdx);
+//            clauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
+//            clauseInfo.setStrategy(strategy);
 
-            clauseInfo.setDynamicConstOnly(constExpr instanceof RexDynamicParam);
-            clauseInfo.setOriginalPredicate(originalPred);
-            clauseInfo.setNull(isNull);
-            clauseInfo.setPartKeyIndex(partKeyIdx);
-            clauseInfo.setPartKeyDataType(cmFldInfo.getField().getRelType());
-            clauseInfo.setStrategy(strategy);
-
+            buildPartClauseInfoParams.setPartKeyLevel(partKeyLevel);
+            buildPartClauseInfoParams.setOp(op);
+            buildPartClauseInfoParams.setOpKind(predOpKind);
+            buildPartClauseInfoParams.setInput(input);
+            buildPartClauseInfoParams.setPlanRelRowType(relRowType);
+            buildPartClauseInfoParams.setConstExpr(constExpr);
+            buildPartClauseInfoParams.setConstExprId(constExprId);
+            buildPartClauseInfoParams.setDynamicConstOnly(constExpr instanceof RexDynamicParam);
+            buildPartClauseInfoParams.setOriginalPredicate(originalPred);
+            buildPartClauseInfoParams.setNull(isNull);
+            buildPartClauseInfoParams.setPartKeyIndex(partKeyIdx);
+            buildPartClauseInfoParams.setPartKeyDataType(cmFldInfo.getField().getRelType());
+            buildPartClauseInfoParams.setStrategy(strategy);
+            PartClauseInfo clauseInfo = buildPartClauseInfoByParams(buildPartClauseInfoParams);
             return clauseInfo;
         }
         return null;
@@ -791,7 +871,7 @@ public class PartClauseInfoPreProcessor {
         PartClauseItem targetPartItem,
         PartClauseItem targetPartItemParent) {
 
-        PartKeyLevel partKeyLevel = stepContext.getPartLevel();
+        PartKeyLevel partKeyLevel = partByDef.getPartLevel();
         PartitionByDefinition targetPartByDef = partByDef;
         if (partKeyLevel == PartKeyLevel.SUBPARTITION_KEY) {
             targetPartByDef = partByDef.getSubPartitionBy();
@@ -1030,24 +1110,31 @@ public class PartClauseInfoPreProcessor {
             return targetPartItem;
         }
 
-        List<String> partCols = targetPartByDef.getPartitionColumnNameList();
-        Map<String, Integer> partCol2PartKeyIdxMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        int[] partColEqConditionStats = new int[partCols.size()];
+//        List<String> partCols = targetPartByDef.getPartitionColumnNameList();
+//        Map<String, Integer> partCol2PartKeyIdxMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+//        int[] partColEqConditionStats = new int[partCols.size()];
+//        for (int i = 0; i < partColEqConditionStats.length; i++) {
+//            partColEqConditionStats[i] = 0;
+//            partCol2PartKeyIdxMapping.put(partCols.get(i), i);
+//        }
+//
+//        int[] partKeyIdx2RexInputIdxMapping = new int[partCols.size()];
+//        List<RelDataTypeField> relFlds = relRowType.getFieldList();
+//        for (int i = 0; i < relFlds.size(); i++) {
+//            RelDataTypeField fld = relFlds.get(i);
+//            String fldName = fld.getName();
+//            Integer partKeyIdx = partCol2PartKeyIdxMapping.get(fldName);
+//            if (partKeyIdx != null) {
+//                partKeyIdx2RexInputIdxMapping[partKeyIdx] = i;
+//            }
+//        }
+
+        int[] partColEqConditionStats = new int[targetPartByDef.getPartitionColumnNameList().size()];
         for (int i = 0; i < partColEqConditionStats.length; i++) {
             partColEqConditionStats[i] = 0;
-            partCol2PartKeyIdxMapping.put(partCols.get(i), i);
         }
-
-        int[] partKeyIdx2RexInputIdxMapping = new int[partCols.size()];
-        List<RelDataTypeField> relFlds = relRowType.getFieldList();
-        for (int i = 0; i < relFlds.size(); i++) {
-            RelDataTypeField fld = relFlds.get(i);
-            String fldName = fld.getName();
-            Integer partKeyIdx = partCol2PartKeyIdxMapping.get(fldName);
-            if (partKeyIdx != null) {
-                partKeyIdx2RexInputIdxMapping[partKeyIdx] = i;
-            }
-        }
+        int[] partKeyIdx2RexInputIdxMapping =
+            buildPartKeyIdx2RexInputIdxMappingByPartByAndRelRowType(targetPartByDef, relRowType);
 
         List<PartClauseItem> itemList = new ArrayList<>();
         if (singleEqOpItemWithoutParent) {
@@ -1143,5 +1230,64 @@ public class PartClauseInfoPreProcessor {
 
         return targetPartItem;
 
+    }
+
+    protected static int[] buildPartKeyIdx2RexInputIdxMappingByPartByAndRelRowType(
+        PartitionByDefinition targetPartByDef,
+        RelDataType targetPlanRelRowType) {
+        List<String> partCols = targetPartByDef.getPartitionColumnNameList();
+        Map<String, Integer> partCol2PartKeyIdxMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        for (int i = 0; i < partCols.size(); i++) {
+            partCol2PartKeyIdxMapping.put(partCols.get(i), i);
+        }
+
+        int[] partKeyIdx2RexInputIdxMapping = new int[partCols.size()];
+        for (int i = 0; i < partKeyIdx2RexInputIdxMapping.length; i++) {
+            /**
+             * init RexInputIdx to -1,
+             * so if RexInputIdx = -1,
+             * that means no found target partCol from the targetPlanRelRowType by partBy
+             */
+            partKeyIdx2RexInputIdxMapping[i] = -1;
+        }
+        List<RelDataTypeField> relFlds = targetPlanRelRowType.getFieldList();
+        for (int i = 0; i < relFlds.size(); i++) {
+            RelDataTypeField fld = relFlds.get(i);
+            String fldName = fld.getName();
+            Integer partKeyIdx = partCol2PartKeyIdxMapping.get(fldName);
+            if (partKeyIdx != null) {
+                partKeyIdx2RexInputIdxMapping[partKeyIdx] = i;
+            }
+        }
+        return partKeyIdx2RexInputIdxMapping;
+    }
+
+    public static PartClauseInfo buildPartClauseInfoByParams(BuildPartClauseInfoParams params) {
+        boolean isBuildForSubQueryInPartClauseInfo = params.isBuildForSubQueryInPartClauseInfo();
+        PartClauseInfo newPartClauseInfo = new PartClauseInfo();
+        if (isBuildForSubQueryInPartClauseInfo) {
+            newPartClauseInfo = new SubQueryInPartClauseInfo();
+            SubQueryInPartClauseInfo newSubQueryInPartClauseInfo = (SubQueryInPartClauseInfo) newPartClauseInfo;
+            newSubQueryInPartClauseInfo.setSubQueryInExpr(true);
+            newSubQueryInPartClauseInfo.setPartColDynamicParams(params.getPartColDynamicParams());
+            newSubQueryInPartClauseInfo.setSubQueryDynamicParam(params.getSubQueryDynamicParam());
+            newSubQueryInPartClauseInfo.getEqExprClauseItems().addAll(params.getEqExprClauseItems());
+        }
+        newPartClauseInfo.setId(params.getId());
+        newPartClauseInfo.setOp(params.getOp());
+        newPartClauseInfo.setOpKind(params.getOpKind());
+        newPartClauseInfo.setPlanRelRowType(params.getPlanRelRowType());
+        newPartClauseInfo.setInput(params.getInput());
+        newPartClauseInfo.setConstExpr(params.getConstExpr());
+        newPartClauseInfo.setOriginalPredicate(params.getOriginalPredicate());
+        newPartClauseInfo.setNull(params.isNull());
+        newPartClauseInfo.setIndexInTuple(params.getIndexInTuple());
+        newPartClauseInfo.setPartKeyLevel(params.getPartKeyLevel());
+        newPartClauseInfo.setStrategy(params.getStrategy());
+        newPartClauseInfo.setPartKeyIndex(params.getPartKeyIndex());
+        newPartClauseInfo.setPartKeyDataType(params.getPartKeyDataType());
+        newPartClauseInfo.setDynamicConstOnly(params.isDynamicConstOnly());
+        newPartClauseInfo.setAnyValueEqCond(params.isAnyValueEqCond());
+        return newPartClauseInfo;
     }
 }

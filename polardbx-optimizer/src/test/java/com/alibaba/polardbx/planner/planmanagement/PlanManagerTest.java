@@ -3,19 +3,33 @@ package com.alibaba.polardbx.planner.planmanagement;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
-import com.alibaba.polardbx.gms.metadb.table.BaselineInfoAccessor;
 import com.alibaba.polardbx.gms.module.LogLevel;
-import com.alibaba.polardbx.gms.module.LogPattern;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.util.SyncUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.rel.GatherReferencedGsiNameRelVisitor;
+import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.google.common.collect.Maps;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
+import com.alibaba.polardbx.optimizer.view.SystemTableView;
+import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.google.common.collect.Sets;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptCostImpl;
+import org.apache.calcite.plan.RelOptSchema;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexTableInputRef;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -27,27 +41,30 @@ import java.sql.Connection;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.alibaba.polardbx.gms.module.LogPattern.UNEXPECTED;
-import static javax.naming.ldap.Control.CRITICAL;
+import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.PLAN_SOURCE.SPM_FIX;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -111,16 +128,21 @@ public class PlanManagerTest {
 
         Assert.assertTrue(planManager.resources().contains(schema1 + " baseline size:" + 1));
         Assert.assertTrue(planManager.resources().contains(schema2 + " baseline size:" + 1));
-        planManager.invalidateTable(schema1, "X1");
-        planManager.invalidateTable(schema2, "wrong_table");
-        planManager.invalidateTable(schema3, "x3");
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = mockStatic(OptimizerContext.class)) {
+            optimizerContextMockedStatic.when(() -> OptimizerContext.getContext(anyString()))
+                .thenReturn(mock(OptimizerContext.class));
+            planManager.invalidateTable(schema1, "X1");
+            planManager.invalidateTable(schema2, "wrong_table");
+            planManager.invalidateTable(schema3, "x3");
 
-        Assert.assertTrue(!planManager.resources().contains(schema1 + " baseline size:"));
-        Assert.assertTrue(planManager.resources().contains(schema2 + " baseline size:" + 1));
-        Assert.assertTrue(planManager.resources().contains(schema3 + " baseline size:" + 1));
+            Assert.assertTrue(!planManager.resources().contains(schema1 + " baseline size:"));
+            Assert.assertTrue(planManager.resources().contains(schema2 + " baseline size:" + 1));
+            Assert.assertTrue(planManager.resources().contains(schema3 + " baseline size:" + 1));
 
-        planManager.invalidateTable(schema3, "X3", true);
-        Assert.assertTrue(!planManager.resources().contains(schema3 + " baseline size:" + 1));
+            planManager.invalidateTable(schema3, "X3", true);
+            Assert.assertTrue(!planManager.resources().contains(schema3 + " baseline size:" + 1));
+        }
+
     }
 
     /**
@@ -328,6 +350,218 @@ public class PlanManagerTest {
         // Act & Assert
         PlanManager.deleteBaselinePlan(schema, mismatchedBaselineId, planInfoId, baselineMap);
         verify(info, never()).removeAcceptedPlan(anyInt());
+    }
+
+    /**
+     * RebuildAtLoadPlan 测试用例1: 正常情况下重建计划并返回结果
+     */
+    @Test
+    public void testHandleRebuildAtLoadPlanNormalCase() {
+        // 准备
+        Planner planner = mock(Planner.class);
+        BaselineInfo baselineInfo = mock(BaselineInfo.class);
+        SqlParameterized sqlParameterized = mock(SqlParameterized.class);
+        String hint = "hint";
+        String sql = "SELECT * FROM table";
+        RelNode retPlan = mock(RelNode.class);
+        when(retPlan.accept(any(GatherReferencedGsiNameRelVisitor.class))).thenReturn(retPlan);
+        when(sqlParameterized.getSql()).thenReturn(sql);
+        when(baselineInfo.getHint()).thenReturn(hint);
+        when(baselineInfo.computeRebuiltAtLoadPlanIfNotExists(any())).thenCallRealMethod();
+        when(baselineInfo.getRebuildAtLoadPlan()).thenCallRealMethod();
+        ExecutionPlan p = new ExecutionPlan(null, retPlan, null);
+        when(planner.plan(anyString(), any())).thenReturn(p);
+        ExecutionContext ec = new ExecutionContext();
+        try (MockedStatic<Planner> mockedStaticPlanner = mockStatic(Planner.class);
+            MockedStatic<PlanManagerUtil> mockedStaticPlanManagerUtil = mockStatic(PlanManagerUtil.class);
+        ) {
+            mockedStaticPlanManagerUtil.when(() -> PlanManagerUtil.getPlanOrigin(any())).thenReturn("AP");
+            mockedStaticPlanManagerUtil.when(() -> PlanManagerUtil.relNodeToJson(any())).thenReturn("plan json");
+            mockedStaticPlanner.when(Planner::getInstance).thenReturn(planner);
+            RelOptCluster cluster = mock(RelOptCluster.class);
+            when(retPlan.getCluster()).thenReturn(cluster);
+            RelMetadataQuery mq = mock(RelMetadataQuery.class);
+            when(cluster.getMetadataQuery()).thenReturn(mq);
+            when(mq.getCumulativeCost(any())).thenReturn(new RelOptCostImpl(100D));
+
+            PlanManager.Result result =
+                planManager.handleRebuildAtLoadPlan(baselineInfo, retPlan, sqlParameterized, ec, 0);
+
+            // 验证
+            assertNotNull(result);
+            assertEquals(SPM_FIX, result.source);
+            assertSame(retPlan, result.plan);
+            verify(baselineInfo, times(0)).resetRebuildAtLoadPlanIfMismatched(anyInt());
+        }
+    }
+
+    /**
+     * RebuildAtLoadPlan 测试用例2: 当表版本不匹配时重新计算计划
+     */
+    @Test
+    public void testHandleRebuildAtLoadPlanMismatchedTableVersion() {
+        // 准备
+        Planner planner = mock(Planner.class);
+        BaselineInfo baselineInfo = mock(BaselineInfo.class);
+        SqlParameterized sqlParameterized = mock(SqlParameterized.class);
+        String hint = "hint";
+        String sql = "SELECT * FROM table";
+        RelNode retPlan = mock(RelNode.class);
+        when(retPlan.accept(any(GatherReferencedGsiNameRelVisitor.class))).thenReturn(retPlan);
+        when(sqlParameterized.getSql()).thenReturn(sql);
+        when(baselineInfo.getHint()).thenReturn(hint);
+        when(baselineInfo.computeRebuiltAtLoadPlanIfNotExists(any())).thenCallRealMethod();
+        when(baselineInfo.getRebuildAtLoadPlan()).thenCallRealMethod();
+        ExecutionPlan p = new ExecutionPlan(null, retPlan, null);
+        when(planner.plan(anyString(), any())).thenReturn(p);
+        ExecutionContext ec = new ExecutionContext();
+        try (MockedStatic<Planner> mockedStaticPlanner = mockStatic(Planner.class);
+            MockedStatic<PlanManagerUtil> mockedStaticPlanManagerUtil = mockStatic(PlanManagerUtil.class);
+        ) {
+            mockedStaticPlanManagerUtil.when(() -> PlanManagerUtil.getPlanOrigin(any())).thenReturn("AP");
+            mockedStaticPlanManagerUtil.when(() -> PlanManagerUtil.relNodeToJson(any())).thenReturn("plan json");
+            mockedStaticPlanner.when(Planner::getInstance).thenReturn(planner);
+            RelOptCluster cluster = mock(RelOptCluster.class);
+            when(retPlan.getCluster()).thenReturn(cluster);
+            RelMetadataQuery mq = mock(RelMetadataQuery.class);
+            when(cluster.getMetadataQuery()).thenReturn(mq);
+            when(mq.getCumulativeCost(any())).thenReturn(new RelOptCostImpl(100D));
+
+            PlanManager.Result result =
+                planManager.handleRebuildAtLoadPlan(baselineInfo, retPlan, sqlParameterized, ec, 100);
+
+            // 验证
+            assertNotNull(result);
+            assertEquals(SPM_FIX, result.source);
+            assertSame(retPlan, result.plan);
+            verify(baselineInfo, times(1)).resetRebuildAtLoadPlanIfMismatched(anyInt());
+        }
+    }
+
+    /**
+     * 正常情况下的处理，视图定义存在且引用了指定表。
+     */
+    @Test
+    public void testHandleViewNormalCaseViewExistsAndReferenced() {
+        // 准备
+        String currentSchema = "current_schema";
+        String currentTable = "current_table";
+        BaselineInfo baselineInfo = mock(BaselineInfo.class);
+        when(baselineInfo.getParameterSql()).thenReturn("parameter_sql");
+        String comparisonSchema = "comparison_schema";
+        String comparisonTable = "comparison_table";
+
+        Map<String, Set<String>> removalCandidates = new HashMap<>();
+        SystemTableView.Row viewRow = mock(SystemTableView.Row.class);
+
+        try (MockedStatic<Planner> plannerMockedStatic = mockStatic(Planner.class);
+            MockedStatic<RelMetadataQuery> relMetadataQueryMockedStatic = mockStatic(RelMetadataQuery.class)) {
+            doReturn("SELECT * FROM current_table").when(viewRow).getViewDefinition();
+            RexTableInputRef.RelTableRef relTableRef = mock(RexTableInputRef.RelTableRef.class);
+            when(relTableRef.getQualifiedName()).thenReturn(Arrays.asList(currentSchema, currentTable));
+            OptimizerContext optimizerContext = mock(OptimizerContext.class);
+            OptimizerContext optimizerContext1 = mock(OptimizerContext.class);
+            ViewManager viewMock = mock(ViewManager.class);
+            when(viewMock.select(comparisonTable)).thenReturn(viewRow);
+            when(optimizerContext.getViewManager()).thenReturn(viewMock);
+            when(optimizerContext.getSchemaName()).thenReturn(comparisonSchema);
+            when(optimizerContext1.getSchemaName()).thenReturn(currentSchema);
+            when(optimizerContext1.getLatestSchemaManager()).thenReturn(mock(SchemaManager.class));
+            OptimizerContext.loadContext(optimizerContext);
+            OptimizerContext.loadContext(optimizerContext1);
+
+            Planner mockPlanner = mock(Planner.class);
+            plannerMockedStatic.when(Planner::getInstance).thenReturn(mockPlanner);
+
+            ExecutionPlan mockExecutionPlan = mock(ExecutionPlan.class);
+            when(mockPlanner.plan(eq("SELECT * FROM current_table"), any())).thenReturn(mockExecutionPlan);
+
+            Set<Pair<String, String>> tableSet = Sets.newHashSet();
+            tableSet.add(Pair.of(currentSchema, currentTable));
+            when(mockExecutionPlan.getTableSet()).thenReturn(tableSet);
+
+            // 执行
+            PlanManager.handleView(currentSchema, currentTable, baselineInfo, comparisonSchema, comparisonTable,
+                removalCandidates);
+
+            // 验证
+            assertTrue(removalCandidates.containsKey(currentSchema));
+            assertEquals(1, removalCandidates.get(currentSchema).size());
+            assertTrue(removalCandidates.get(currentSchema).contains("parameter_sql"));
+
+            removalCandidates.clear();
+            tableSet.clear();
+            tableSet.add(Pair.of(null, comparisonTable));
+
+            // 执行
+            PlanManager.handleView(comparisonSchema, comparisonTable, baselineInfo, comparisonSchema, comparisonTable,
+                removalCandidates);
+
+            // 验证
+            assertTrue(removalCandidates.containsKey(comparisonSchema));
+            assertEquals(1, removalCandidates.get(comparisonSchema).size());
+            assertTrue(removalCandidates.get(comparisonSchema).contains("parameter_sql"));
+        }
+
+    }
+
+    @Test
+    public void testTryUpdatePlan() {
+        RelNode oldPlan = mock(RelNode.class);
+        RelNode newPlan = mock(RelNode.class);
+        SqlParameterized sqlParameterized = mock(SqlParameterized.class);
+        RelOptCluster cluster = mock(RelOptCluster.class);
+        RelOptSchema relOptSchema = mock(RelOptSchema.class);
+
+        Planner planner = mock(Planner.class);
+        ExecutionPlan executionPlan = mock(ExecutionPlan.class);
+
+        when(planner.plan(anyString(), any())).thenReturn(executionPlan);
+        when(executionPlan.getPlan()).thenReturn(newPlan);
+
+        PlanManager.PLAN_SOURCE source;
+        ExecutionContext ec = new ExecutionContext();
+        try (MockedStatic<Planner> plannerMockedStatic = mockStatic(Planner.class);
+            MockedStatic<PlanManagerUtil> planManagerUtilMockedStatic = mockStatic(PlanManagerUtil.class);) {
+            planManagerUtilMockedStatic.when(() -> PlanManagerUtil.relNodeToJson(any())).thenReturn("");
+            plannerMockedStatic.when(Planner::getInstance).thenReturn(planner);
+
+            PlanInfo planInfo = new PlanInfo(oldPlan, 1, 1D, "", "", 1);
+
+            // test SPM_FIX_PLAN_UPDATE_FOR_ROW_TYPE
+            RelDataType oldType = mock(RelDataType.class);
+            RelDataType newType = mock(RelDataType.class);
+
+            when(oldPlan.getRowType()).thenReturn(oldType);
+            when(newPlan.getRowType()).thenReturn(newType);
+            // make type string dis match
+            when(oldType.getFullTypeString()).thenReturn("oldType");
+            when(newType.getFullTypeString()).thenReturn("newType");
+
+            source = PlanManager.tryUpdatePlan(planInfo, sqlParameterized, cluster, relOptSchema, 1, ec);
+
+            assert source == PlanManager.PLAN_SOURCE.SPM_FIX_PLAN_UPDATE_FOR_ROW_TYPE;
+            assert planInfo.getPlan(null, null) == newPlan;
+
+            // test SPM_FIX_PLAN_UPDATE_FOR_INVALID
+            when(oldType.getFullTypeString()).thenReturn("sameType");
+            when(newType.getFullTypeString()).thenReturn("sameType");
+            when(oldPlan.isValid(any(), any())).thenReturn(false);
+
+            source = PlanManager.tryUpdatePlan(planInfo, sqlParameterized, cluster, relOptSchema, 1, ec);
+
+            assert source == PlanManager.PLAN_SOURCE.SPM_FIX_PLAN_UPDATE_FOR_INVALID;
+            assert planInfo.getPlan(null, null) == newPlan;
+
+            // test SPM_FIX_DDL_HASHCODE_UPDATE
+            planInfo.resetPlan(oldPlan);
+            when(oldPlan.isValid(any(), any())).thenReturn(true);
+
+            source = PlanManager.tryUpdatePlan(planInfo, sqlParameterized, cluster, relOptSchema, 1, ec);
+
+            assert source == PlanManager.PLAN_SOURCE.SPM_FIX_DDL_HASHCODE_UPDATE;
+            assert planInfo.getPlan(null, null) == newPlan;
+        }
     }
 
     private void buildSchema(String schema, String tableName, boolean hasFixPlan,

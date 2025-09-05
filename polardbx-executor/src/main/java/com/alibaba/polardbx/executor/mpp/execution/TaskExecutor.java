@@ -26,8 +26,6 @@ import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
-import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
-import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.memory.ApMemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -35,8 +33,6 @@ import com.google.common.util.concurrent.SettableFuture;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.SetThreadName;
-import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
-import org.apache.calcite.rel.metadata.RelMetadataQuery;
 
 
 import javax.annotation.PostConstruct;
@@ -44,7 +40,6 @@ import javax.annotation.PreDestroy;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -70,7 +65,6 @@ import static java.util.concurrent.Executors.newFixedThreadPool;
 public class TaskExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(TaskExecutor.class);
-    private static final Logger PIPELINE_LOG = LoggerFactory.getLogger(LocalExecutionPlanner.class);
 
     private static final AtomicLong NEXT_LOW_RUNNER_ID = new AtomicLong();
     private static final AtomicLong NEXT_HIGH_RUNNER_ID = new AtomicLong();
@@ -352,93 +346,48 @@ public class TaskExecutor {
         // each time we run a split, run it for this length before returning to the pool
         public final long splitRunQuanta;
 
+        private DriverContext.DriverRuntimeStatisticsUpdater driverRuntimeStatisticsUpdater;
+
         private PrioritizedSplitRunner(TaskHandle taskHandle, SplitRunner split) {
             this.taskHandle = taskHandle;
             this.splitId = taskHandle.getNextSplitId();
             this.split = split;
             this.workerId = NEXT_WORKER_ID.getAndIncrement();
             this.splitRunQuanta = MppConfig.getInstance().getSplitRunQuanta();
-            this.split.runtimeStatsSupplier(() -> dump());
+            this.driverRuntimeStatisticsUpdater = split.getUpdater();
         }
 
-        private long startNanoTimestamp = 0L;
-        private long finishNanoTimestamp = 0L;
-        private long blockedNanoTimestamp = 0L;
-        private long pendingNanoTimestamp = 0L;
-        private long runningNanoTimestamp = 0L;
-
-        private long openCost = 0L;
-        private long blockedCost = 0L;
-        private long pendingCost = 0L;
-        private long runningCost = 0L;
-
-        private long blockedCount = 0L;
-        private long pendingCount = 0L;
-        private long runningCount = 0L;
-
         public void markStartTimestamp() {
-            startNanoTimestamp = System.nanoTime();
+            driverRuntimeStatisticsUpdater.markStartTimestamp();
         }
 
         public void markFinishTimestamp() {
-            if (finishNanoTimestamp == 0L) {
-                finishNanoTimestamp = System.nanoTime();
-                if (PIPELINE_LOG.isDebugEnabled()) {
-                    String info = MessageFormat.format(
-                        "taskId={0}, splitId={1}, splitInfo={2}",
-                        taskHandle.getTaskId(),
-                        splitId, split.getInfo());
-
-                    PIPELINE_LOG.debug(MessageFormat.format(
-                        "finish split: {0}, runningCost={1}, pendingCost={2}, blockedCost={3}, totalCost={4}, "
-                            + " runningCount={5},"
-                            + " pendingCount={6},"
-                            + " blockedCount={7},"
-                            + "startTs={8}, endTs={9}",
-                        info, runningCost, pendingCost, blockedCost, (finishNanoTimestamp - startNanoTimestamp),
-                        runningCount, pendingCount, blockedCount,
-                        startNanoTimestamp, finishNanoTimestamp));
-                }
-            }
-        }
-
-        public DriverContext.DriverRuntimeStatistics dump() {
-            return new DriverContext.DriverRuntimeStatistics(
-                runningCost, pendingCost, blockedCost, openCost,
-                (System.nanoTime() - startNanoTimestamp),
-                (int) runningCount, (int) pendingCount, (int) blockedCount);
+            driverRuntimeStatisticsUpdater.markFinishTimestamp();
         }
 
         public void startPending() {
-            pendingCount++;
-            pendingNanoTimestamp = System.nanoTime();
+            driverRuntimeStatisticsUpdater.startPending();
         }
 
         public void startBlocked() {
-            blockedCount++;
-            blockedNanoTimestamp = System.nanoTime();
+            driverRuntimeStatisticsUpdater.startBlocked();
         }
 
         public void startRunning() {
-            runningCount++;
-            runningNanoTimestamp = System.nanoTime();
+            driverRuntimeStatisticsUpdater.startRunning();
         }
 
         public void finishPending() {
-            pendingCost += System.nanoTime() - pendingNanoTimestamp;
+            driverRuntimeStatisticsUpdater.finishPending();
         }
 
         public void finishBlocked() {
-            if (blockedCount == 1) {
-                // The first blocked status is recognized as open cost.
-                openCost += System.nanoTime() - blockedNanoTimestamp;
-            } else {
-                blockedCost += System.nanoTime() - blockedNanoTimestamp;
-            }
+            driverRuntimeStatisticsUpdater.finishBlocked();
+            ;
         }
 
         public void finishRunning() {
-            runningCost += System.nanoTime() - runningNanoTimestamp;
+            driverRuntimeStatisticsUpdater.finishRunning();
         }
 
         public long getSplitCost() {

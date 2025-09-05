@@ -67,6 +67,24 @@ public class SchemaRepositoryTest {
         repository.setDefaultSchema(DEFAULT_SCHEMA);
     }
 
+    //see Aone issue ,ID:60853701
+    @Test
+    public void testDropColumnWithSpace() {
+        String sql = "create table if not exists `test_change_column_with_space` (\n"
+            + "        `id` int not null,\n"
+            + "        ` c1` int not null,\n"
+            + "        `c1` int not null,\n"
+            + "        primary key (`id`)\n"
+            + ");";
+        repository.console(sql, FEATURES);
+
+        sql = "alter table `test_change_column_with_space` drop column ` c1`";
+        repository.console(sql, FEATURES);
+        SchemaObject tableMeta = findTable(repository, "test_change_column_with_space");
+        Assert.assertNotNull(tableMeta.findColumn("c1"));
+        Assert.assertNull(tableMeta.findColumn(" c1"));
+    }
+
     //see Aone issue ,ID:39638018
     @Test
     public void testDropTable() {

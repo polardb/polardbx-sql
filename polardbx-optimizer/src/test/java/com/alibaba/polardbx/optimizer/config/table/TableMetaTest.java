@@ -2,6 +2,7 @@ package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.clearspring.analytics.util.Lists;
 import com.google.common.collect.ImmutableList;
@@ -180,7 +181,7 @@ public class TableMetaTest {
                 0,
                 false,
                 false,
-                IndexVisibility.VISIBLE);
+                 IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
         gsiPublished.put("MATCHING_INDEX", gsiMeta1);
 
         GsiMetaManager.GsiIndexMetaBean cciMeta =
@@ -202,7 +203,7 @@ public class TableMetaTest {
                 0,
                 true,
                 true,
-                IndexVisibility.VISIBLE);
+                 IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
         columnarIndexPublished.put("CCI", cciMeta);
 
         GsiMetaManager.GsiIndexMetaBean gsiMeta2 = new GsiMetaManager.GsiIndexMetaBean(
@@ -223,7 +224,7 @@ public class TableMetaTest {
             0,
             false,
             false,
-            IndexVisibility.VISIBLE);
+             IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
         gsiPublished.put("NON_MATCHING_INDEX", gsiMeta2);
 
         GsiMetaManager.GsiIndexMetaBean gsiMeta3 =
@@ -245,7 +246,7 @@ public class TableMetaTest {
                 0,
                 false,
                 false,
-                IndexVisibility.VISIBLE);
+                 IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
         gsiPublished.put("MATCHING INDEX ", gsiMeta3);
 
         TableMeta tableMeta = new TableMeta(

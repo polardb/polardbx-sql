@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -24,6 +26,7 @@ import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.math.BigInteger;
 import java.util.Arrays;
@@ -185,6 +188,15 @@ public class BigIntegerBlock extends AbstractCommonBlock {
     }
 
     @Override
+    public void updateSizeInfo() {
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(data));
+
+        estimatedSize = elementUsedBytes;
+    }
+
+    @Override
     public int checksum(int position) {
         if (isNull(position)) {
             return NULL_TAG;
@@ -193,11 +205,4 @@ public class BigIntegerBlock extends AbstractCommonBlock {
         long longVal = bigInteger.longValue();
         return Long.hashCode(longVal);
     }
-
-    @Override
-    public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data);
-        elementUsedBytes = Byte.BYTES * positionCount + LENGTH * positionCount;
-    }
-
 }

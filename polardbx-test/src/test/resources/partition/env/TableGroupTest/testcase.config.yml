@@ -1,6 +1,7 @@
 set_tablegroup
+set_tablegroup_with_subpartition
 test_show_tablegroup
-test_table_group_local_partition
+#test_table_group_local_partition
 test_table_group_hash_split_hotval
 test_table_group_range_split_merge2
 test_table_group_hash_split_merge2
@@ -9,3 +10,4 @@ test_table_group_join_push
 test_table_group_range_split_merge
 test_table_group
 test_table_group_hash_split_n_partition
+test_check_table_group

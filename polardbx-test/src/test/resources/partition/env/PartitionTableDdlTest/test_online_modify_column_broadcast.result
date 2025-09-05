@@ -1,0 +1,148 @@
+DROP TABLE IF EXISTS b1
+DROP TABLE IF EXISTS b2
+DROP TABLE IF EXISTS b3
+DROP TABLE IF EXISTS b4
+DROP TABLEGROUP IF EXISTS broadcast1
+DROP TABLEGROUP IF EXISTS broadcast2
+CREATE TABLEGROUP broadcast1
+CREATE TABLEGROUP broadcast2
+CREATE TABLE b1 (
+	a int PRIMARY KEY,
+	b int
+) SINGLE
+TABLEGROUP = broadcast1
+CREATE TABLE b2 (
+	a bit(10) PRIMARY KEY,
+	b int
+) SINGLE
+TABLEGROUP = broadcast1
+CREATE TABLE b3 (
+	a int PRIMARY KEY,
+	b int
+) SINGLE
+TABLEGROUP = broadcast2
+CREATE TABLE b4 (
+	a bit(10) PRIMARY KEY,
+	b int
+) SINGLE
+TABLEGROUP = broadcast2
+INSERT INTO b1
+VALUES (1, 1)
+INSERT INTO b2
+VALUES (2, 2)
+INSERT INTO b3
+VALUES (3, 3)
+INSERT INTO b4
+VALUES (4, 4)
+ALTER TABLE b1
+	MODIFY COLUMN a bit(10),
+	ALGORITHM = OMC
+ALTER TABLE b2
+	MODIFY COLUMN a int,
+	ALGORITHM = OMC
+SHOW FULL CREATE TABLE b1
+Table,Create Table
+b1,CREATE TABLE `b1` (
+	`a` bit(10) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast1`
+SHOW FULL CREATE TABLE b2
+Table,Create Table
+b2,CREATE TABLE `b2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast1`
+ALTER TABLE b1
+	MODIFY COLUMN b bigint,
+	ALGORITHM = OMC
+ALTER TABLE b2
+	MODIFY COLUMN b bigint,
+	ALGORITHM = OMC
+SHOW FULL CREATE TABLE b1
+Table,Create Table
+b1,CREATE TABLE `b1` (
+	`a` bit(10) NOT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast1`
+SHOW FULL CREATE TABLE b2
+Table,Create Table
+b2,CREATE TABLE `b2` (
+	`a` int(11) NOT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast1`
+ALTER TABLE b3
+	MODIFY COLUMN a bit(10),
+	ALGORITHM = OMC
+ALTER TABLE b4
+	MODIFY COLUMN a int,
+	ALGORITHM = OMC
+SHOW FULL CREATE TABLE b3
+Table,Create Table
+b3,CREATE TABLE `b3` (
+	`a` bit(10) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast2`
+SHOW FULL CREATE TABLE b4
+Table,Create Table
+b4,CREATE TABLE `b4` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast2`
+ALTER TABLE b3
+	MODIFY COLUMN b bigint,
+	ALGORITHM = OMC
+ALTER TABLE b4
+	MODIFY COLUMN b bigint,
+	ALGORITHM = OMC
+SHOW FULL CREATE TABLE b3
+Table,Create Table
+b3,CREATE TABLE `b3` (
+	`a` bit(10) NOT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast2`
+SHOW FULL CREATE TABLE b4
+Table,Create Table
+b4,CREATE TABLE `b4` (
+	`a` int(11) NOT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `broadcast2`
+SELECT *
+FROM b1
+a,b
+1,1
+SELECT *
+FROM b2
+a,b
+2,2
+SELECT *
+FROM b3
+a,b
+3,3
+SELECT *
+FROM b4
+a,b
+4,4

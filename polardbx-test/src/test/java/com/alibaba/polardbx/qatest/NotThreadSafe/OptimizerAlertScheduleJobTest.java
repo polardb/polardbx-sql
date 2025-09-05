@@ -5,15 +5,19 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.scheduler.FiredScheduledJobState;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.executor.scheduler.executor.OptimizerAlertScheduledJob;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertType;
+import com.alibaba.polardbx.optimizer.optimizeralert.statisticalert.StatisticAlertLoggerBaseImpl;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Test;
 
@@ -60,6 +64,14 @@ public class OptimizerAlertScheduleJobTest extends ReadBaseTestCase {
     protected static final String ENABLE_TP_SLOW_ALERT_THRESHOLD = "set global ENABLE_TP_SLOW_ALERT_THRESHOLD = 10";
 
     public OptimizerAlertScheduleJobTest() {
+    }
+
+    @After
+    public void clearFailPoint() throws Exception {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s=true", FailPoint.FP_CLEAR));
+        }
     }
 
     @Test
@@ -163,6 +175,272 @@ public class OptimizerAlertScheduleJobTest extends ReadBaseTestCase {
         try (Connection connection = getPolardbxConnection()) {
             connection.createStatement().execute("set global alert_statistic_interrupt=false");
         }
+        Thread.sleep(2000);
+    }
+
+    @Test
+    public void testScheduleJobFailedAlert() throws Exception {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute("set global alert_statistic_interrupt=true");
+            statement.execute("set @fp_inject_ignore_interrupted_to_statistic_schedule_job='true'");
+        }
+        // wait 5 sec
+        Thread.sleep(5 * 1000L);
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_SAMPLE_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_HLL_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+
+                statement.execute("set global alert_statistic_interrupt=true");
+                statement.execute("set @fp_inject_ignore_interrupted_to_statistic_schedule_job='true'");
+                // wait 5 sec
+                Thread.sleep(5 * 1000L);
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_hll_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_SCHEDULE_JOB_INFORMATION_TABLES_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+
+                statement.execute("set global alert_statistic_interrupt=true");
+                statement.execute("set @fp_inject_ignore_interrupted_to_statistic_schedule_job='true'");
+                // wait 5 sec
+                Thread.sleep(5 * 1000L);
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='STATISTIC_INFO_SCHEMA_TABLES'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+
+        try (Connection connection = getPolardbxConnection()) {
+            connection.createStatement().execute("set global alert_statistic_interrupt=false");
+        }
+        Thread.sleep(2000);
+    }
+
+    @Test
+    public void testHllSubProcessStatisticAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_HLL_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_HLL_TASK_EXCEPTION));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_hll_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+    }
+
+    @Test
+    public void testRowCountSubProcessStatisticAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_COLLECT_ROWCOUNT_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(
+                    String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_ROWCOUNT_TASK_EXCEPTION));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+
+    }
+
+    @Test
+    public void testSampleSubProcessStatisticAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_SAMPLE_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_SAMPLE_TASK_EXCEPTION));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+
+    }
+
+    @Test
+    public void testPersistSubProcessStatisticAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_PERSIST_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(
+                    String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_PERSIST_TASK_EXCEPTION));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+
+    }
+
+    @Test
+    public void testSyncSubProcessStatisticAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_SYNC_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_SYNC_TASK_EXCEPTION));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+
+    }
+
+    @Test
+    public void testPersistTableStatisticFailedAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_PERSIST_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(
+                    String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_PERSIST_TABLE_STATISTIC));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+    }
+
+    @Test
+    public void testPersistColumnStatisticFailedAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_PERSIST_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(
+                    String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_PERSIST_COLUMN_STATISTIC));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
+    }
+
+    @Test
+    public void testPersistNDVStatisticFailedAlert() throws SQLException {
+        try (Connection connection = getPolardbxConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_STATISTIC_QUICK_FAIL));
+            statement.execute(
+                String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB));
+        }
+
+        testShouldAlert(OptimizerAlertType.STATISTIC_HLL_FAIL, () -> {
+            try (Connection conn = getPolardbxConnection();
+                Statement statement = conn.createStatement()) {
+                statement.execute(String.format("set @%s='true'", FailPointKey.FP_INJECT_IGNORE_PERSIST_NDV_STATISTIC));
+                ResultSet rs = statement.executeQuery(
+                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_hll_sketch'");
+                rs.next();
+                String scheduleId = rs.getString("schedule_id");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                statement.execute("fire schedule " + scheduleId);
+                return true;
+            }
+        });
     }
 
     protected void testShouldAlert(OptimizerAlertType targetAlert, Callable<?> func) {
@@ -245,7 +523,11 @@ public class OptimizerAlertScheduleJobTest extends ReadBaseTestCase {
             // schedule job did alert
             result = fireSchedule(schedule_id);
             long afterCount = alertCount(targetAlert);
-            assertThat(result).contains(OptimizerAlertScheduledJob.HAS_ALERT);
+            if (StatisticAlertLoggerBaseImpl.isStatisticAlertType(targetAlert)) {
+                assertThat(result).contains(OptimizerAlertScheduledJob.HAS_STATISTIC_ALERT);
+            } else {
+                assertThat(result).contains(OptimizerAlertScheduledJob.HAS_OPTIMIZER_ALERT);
+            }
             assertThat(result).contains(targetAlert.name());
             assertWithMessage(String.format("more alerts should be recorded")).that(afterCount)
                 .isGreaterThan(beforeCount);
@@ -257,7 +539,8 @@ public class OptimizerAlertScheduleJobTest extends ReadBaseTestCase {
         } else {
             // schedule job didn't alert
             result = fireSchedule(schedule_id);
-            if (result.contains(OptimizerAlertScheduledJob.HAS_ALERT)) {
+            if (result.contains(OptimizerAlertScheduledJob.HAS_OPTIMIZER_ALERT)
+                || result.contains(OptimizerAlertScheduledJob.HAS_STATISTIC_ALERT)) {
                 assertThat(result).doesNotContain(targetAlert.name());
             }
 
@@ -350,12 +633,13 @@ public class OptimizerAlertScheduleJobTest extends ReadBaseTestCase {
     }
 
     @AfterClass
-    public static void clean() throws SQLException {
+    public static void clean() throws Exception {
         try (Connection conn = getPolardbxConnection0();
             Statement statement = conn.createStatement()) {
             statement.execute("set global alert_statistic_interrupt=false");
             statement.execute("set @fp_inject_ignore_interrupted_to_statistic_schedule_job='false'");
             statement.execute("set global alert_statistic_inconsistent=false");
         }
+        Thread.sleep(2000);
     }
 }

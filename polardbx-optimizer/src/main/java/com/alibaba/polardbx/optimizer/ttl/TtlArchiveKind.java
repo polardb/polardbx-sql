@@ -8,7 +8,7 @@ import com.alibaba.polardbx.druid.util.StringUtils;
 public enum TtlArchiveKind {
 
     UNDEFINED(0, ""),
-    COLUMNAR(1, "COLUMNAR"),
+    ROW(1, "ROW"),
     PARTITION(2, "PARTITION"),
     SUBPARTITION(3, "SUBPARTITION");
     private int archiveKindCode;
@@ -24,7 +24,7 @@ public enum TtlArchiveKind {
         case 0:
             return TtlArchiveKind.UNDEFINED;
         case 1:
-            return TtlArchiveKind.COLUMNAR;
+            return TtlArchiveKind.ROW;
         case 2:
             return TtlArchiveKind.PARTITION;
         case 3:
@@ -43,8 +43,9 @@ public enum TtlArchiveKind {
 
         if (TtlArchiveKind.UNDEFINED.getArchiveKindStr().equalsIgnoreCase(archiveKindStr)) {
             return TtlArchiveKind.UNDEFINED;
-        } else if (TtlArchiveKind.COLUMNAR.getArchiveKindStr().equalsIgnoreCase(archiveKindStr)) {
-            return TtlArchiveKind.COLUMNAR;
+        } else if (TtlArchiveKind.ROW.getArchiveKindStr().equalsIgnoreCase(archiveKindStr)
+            || "COLUMNAR".equalsIgnoreCase(archiveKindStr)) {
+            return TtlArchiveKind.ROW;
         } else if (TtlArchiveKind.PARTITION.getArchiveKindStr().equalsIgnoreCase(archiveKindStr)) {
             return TtlArchiveKind.PARTITION;
         } else if (TtlArchiveKind.SUBPARTITION.getArchiveKindStr().equalsIgnoreCase(archiveKindStr)) {
@@ -66,4 +67,8 @@ public enum TtlArchiveKind {
         return archiveKindStr;
     }
 
+    public boolean archivedByPartitions() {
+        return this.archiveKindCode == TtlArchiveKind.PARTITION.getArchiveKindCode()
+            || this.archiveKindCode == TtlArchiveKind.SUBPARTITION.getArchiveKindCode();
+    }
 }

@@ -1,14 +1,18 @@
 package com.alibaba.polardbx.executor.ddl.newengine.resource;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.util.StringUtils;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils;
 import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DdlEngineResources {
@@ -17,16 +21,26 @@ public class DdlEngineResources {
         return new DdlEngineResources(ddlEngineResources.resources, null, false);
     }
 
-    public static Map<Long, Boolean> coverredBefore = new ConcurrentHashMap<>();
-
-    public static Boolean markNotCoverredBefore(Long taskId) {
-        if (coverredBefore.containsKey(taskId)) {
-            return true;
-        } else {
-            coverredBefore.put(taskId, true);
-            return false;
-        }
+    public static int calHashCode(Set<String> sets) {
+        return StringUtil.join(",", sets).toString().hashCode();
     }
+
+    public static String concatSubJobOwner(String schema, String tableGroupName, List<String> physicalPartitionNames) {
+        Set<String> physicalPartitionNameSet = new TreeSet<>(physicalPartitionNames);
+        int hashCode = calHashCode(physicalPartitionNameSet);
+        return String.format("schema: %s, tableGroupName: %s, partitionNames: %d", schema, tableGroupName, hashCode);
+    }
+
+//    public static Map<Long, Boolean> coverredBefore = new ConcurrentHashMap<>();
+//
+//    public static Boolean markNotCoverredBefore(Long taskId) {
+//        if (coverredBefore.containsKey(taskId)) {
+//            return true;
+//        } else {
+//            coverredBefore.put(taskId, true);
+//            return false;
+//        }
+//    }
 
     public static String extractHost(String resource) {
         int index = resource.lastIndexOf(":");
@@ -124,6 +138,14 @@ public class DdlEngineResources {
         resources.put(resourceName, new ResourceContainer(amount, owner));
     }
 
+    public void requestForce(String resourceName, Long amount, String owner) {
+        resources.put(resourceName, new ResourceContainer(amount, owner, true));
+    }
+
+    public void requestPhaseLock(String resourceName, Long amount, String owner, int phaseLock) {
+        resources.put(resourceName, new ResourceContainer(amount, owner, true, phaseLock));
+    }
+
     public void preAllocate(String resourceName, Long amount) {
         resources.put(resourceName, new ResourceContainer(amount, null));
     }
@@ -146,7 +168,7 @@ public class DdlEngineResources {
         }
     }
 
-    public Boolean cover(DdlEngineResources resourceAcquired) {
+    public Boolean cover(DdlEngineResources resourceAcquired, Boolean ignoreLack) {
         Boolean covered = true;
         for (String resourceName : resourceAcquired.resources.keySet()) {
             String fullResourceName = concateServerKeyAndResource(resourceAcquired.getServerKey(), resourceName);
@@ -154,6 +176,11 @@ public class DdlEngineResources {
                 if (!resources.get(fullResourceName).cover(resourceAcquired.resources.get(resourceName))) {
                     covered = false;
                     return covered;
+                }
+            } else {
+                Boolean force = resourceAcquired.resources.get(resourceName).force;
+                if (force != null && force) {
+                    resources.put(resourceName, new ResourceContainer(100L, null));
                 }
             }
         }
@@ -181,4 +208,18 @@ public class DdlEngineResources {
         return Optional.ofNullable(serverKey).orElse("");
     }
 
+    public static Boolean isValidateResourceName(String resourceName) {
+        for (String key : DdlResourceManagerUtils.validateResourcesNames) {
+            if (!resourceName.endsWith(key)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static String concateDnResourceName(Pair<String, Integer> sourceHostIpAndPort, String instId) {
+        String fullResourceName =
+            String.format("%s(%s:%s)", instId, sourceHostIpAndPort.getKey(), sourceHostIpAndPort.getValue());
+        return fullResourceName;
+    }
 }

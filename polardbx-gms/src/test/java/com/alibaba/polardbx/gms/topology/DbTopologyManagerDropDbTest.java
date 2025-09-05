@@ -92,6 +92,8 @@ public class DbTopologyManagerDropDbTest {
         dropDbInfo.setDropIfExists(true);
         dropDbInfo.setSocketTimeout(30000L);
         dropDbInfo.setVersionId(1L);
+        dropDbInfo.setTraceId("abcdef");
+        dropDbInfo.setConnId(10003L);
 
         final MetaDbDataSource metaDbDs = mock(MetaDbDataSource.class);
         final Connection mockMetaDbConn = mock(Connection.class);

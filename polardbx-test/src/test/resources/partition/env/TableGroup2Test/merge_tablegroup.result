@@ -1,0 +1,139 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup if not exists t_m_tg1
+create tablegroup if not exists t_m_tg2
+create tablegroup if not exists t_m_tg3
+create tablegroup if not exists t_m_tg4
+CREATE TABLE `t_k_k_tp1` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+SUBPARTITION BY key(`c1`)
+SUBPARTITIONS 4
+tablegroup = t_m_tg1
+CREATE TABLE `t_k_k_tp2` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+SUBPARTITION BY key(`c1`)
+SUBPARTITIONS 4
+CREATE TABLE `t_k_k_tp3` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+SUBPARTITION BY key(`c1`)
+SUBPARTITIONS 4
+alter tablegroup t_m_tg1 add tables t_k_k_tp2,t_k_k_tp3
+CREATE TABLE `t_k_k_tp10` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+SUBPARTITION BY key(`c1`)
+SUBPARTITIONS 4
+tablegroup = t_m_tg2
+CREATE TABLE `t_k_k_tp11` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+SUBPARTITION BY key(`c1`)
+SUBPARTITIONS 4
+tablegroup = t_m_tg2
+merge tablegroups t_m_tg1 into t_m_tg2
+select table_group_name,part_info,tables from information_schema.full_table_group
+where table_group_name in ('t_m_tg1','t_m_tg2')
+order by table_group_name
+table_group_name,part_info,tables
+t_m_tg1,,
+t_m_tg2,PARTITION BY KEY(VARCHAR)
+PARTITIONS 4
+SUBPARTITION BY KEY(VARCHAR)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (-4611686018427387899),
+ SUBPARTITION sp2 VALUES LESS THAN (3),
+ SUBPARTITION sp3 VALUES LESS THAN (4611686018427387905),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807))
+(PARTITION p1 VALUES LESS THAN (-4611686018427387899)
+ (SUBPARTITION p1sp1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (3) ENGINE = InnoDB,
+  SUBPARTITION p1sp3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+  SUBPARTITION p1sp4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (3)
+ (SUBPARTITION p2sp1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN (3) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+  SUBPARTITION p2sp4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB),
+ PARTITION p3 VALUES LESS THAN (4611686018427387905)
+ (SUBPARTITION p3sp1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES LESS THAN (3) ENGINE = InnoDB,
+  SUBPARTITION p3sp3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+  SUBPARTITION p3sp4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB),
+ PARTITION p4 VALUES LESS THAN (9223372036854775807)
+ (SUBPARTITION p4sp1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+  SUBPARTITION p4sp2 VALUES LESS THAN (3) ENGINE = InnoDB,
+  SUBPARTITION p4sp3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+  SUBPARTITION p4sp4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)),t_k_k_tp1,t_k_k_tp2,t_k_k_tp3,t_k_k_tp10,t_k_k_tp11
+CREATE TABLE `t_k1` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+tablegroup = t_m_tg3
+CREATE TABLE `t_k2` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+CREATE TABLE `t_k3` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+alter tablegroup t_m_tg3 add tables t_k2,t_k3
+CREATE TABLE `t_k10` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+tablegroup = t_m_tg4
+CREATE TABLE `t_k11` (
+`id` varchar(64) NOT NULL,
+`c1` varchar(64) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY key(`id`)
+PARTITIONS 4
+tablegroup = t_m_tg4
+merge tablegroups t_m_tg3 into t_m_tg4
+select table_group_name,part_info,tables from information_schema.full_table_group
+where table_group_name in ('t_m_tg3','t_m_tg4')
+order by table_group_name
+table_group_name,part_info,tables
+t_m_tg3,,
+t_m_tg4,PARTITION BY KEY(VARCHAR)
+PARTITIONS 4
+(PARTITION p1 VALUES LESS THAN (-4611686018427387899) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (4611686018427387905) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB),t_k1,t_k2,t_k3,t_k10,t_k11

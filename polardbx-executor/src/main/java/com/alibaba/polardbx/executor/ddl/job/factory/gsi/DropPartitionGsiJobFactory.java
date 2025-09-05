@@ -134,7 +134,7 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
         taskList.add(tableSyncTaskAfterCleanUpGsiIndexesMeta);
 
         //4. remove table meta for gsi table
-        DropTableRemoveMetaTask dropGsiTableRemoveMetaTask = new DropTableRemoveMetaTask(schemaName, indexTableName);
+        DropTableRemoveMetaTask dropGsiTableRemoveMetaTask = new DropTableRemoveMetaTask(schemaName, indexTableName, true);
         taskList.add(dropGsiTableRemoveMetaTask);
 
         if (!skipSchemaChange && !repartition) {

@@ -5,3 +5,4 @@ test_create_cci_partition_by_hash
 test_create_cci_partition_by_list
 test_create_cci_partition_by_range
 test_create_cci_with_options
+test_create_cci_set_columnar_config

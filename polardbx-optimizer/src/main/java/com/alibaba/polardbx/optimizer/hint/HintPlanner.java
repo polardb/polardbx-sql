@@ -32,6 +32,7 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.ConcurrentHashSet;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
@@ -673,7 +674,8 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 results.add(phyQueryOperation);
             } // end of for
         }
-        final BitSet planProperties = logicalPlanPropertiesVisitor.appendPlanProperties(null, null, ec);
+        final ConcurrentHashSet<Integer> planProperties =
+            logicalPlanPropertiesVisitor.appendPlanProperties(null, null, ec);
         final ExecutionPlan result = new ExecutionPlan(ast, wrapWithViewUnion(results), null, planProperties);
         result.setModifiedTables(tableModified);
         // disable tp slow check in hint direct mode
@@ -719,7 +721,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
         List<RelNode> results = new ArrayList<>();
         List<TableProperties> tableModified = null;
-        BitSet planProperties = null;
+        ConcurrentHashSet<Integer> planProperties = null;
         final List<Integer> dynamicParamIndex = PlannerUtils.getDynamicParamIndex(originAst);
 
         for (String partName : partNameList) {
@@ -828,89 +830,24 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 allPhyTableNames.addAll(tableSet.stream().map(dbTb -> dbTb.getValue()).collect(Collectors.toList()));
             }
 
-            if (!usingAutoCommit && (
-                (lockMode != SqlSelect.LockMode.UNDEF && sqlKind.belongsTo(SqlKind.QUERY)) || sqlKind.belongsTo(
-                    SqlKind.DML))) {
-                buildLogTblPhyTblsMapping(schemaName, finalGroups, allPhyTableNames, ec, logTbPhyTbListMapping);
-                if (logTbPhyTbListMapping.size() > 1) {
-                    // Not allowed access multi logical table by direct hint
-                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-                        "Unsupported to use direct HINT for modifying physical tables[%s] which is belong to more than one logical table[%s]",
-                        String.join("", allPhyTableNames), String.join(",", logTbPhyTbListMapping.keySet()));
-                } else if (logTbPhyTbListMapping.isEmpty()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-                        "Unsupported to use direct HINT for accessing physical tables[%s] which is not belong to any logical tables",
-                        String.join("", allPhyTableNames));
-                }
-                String logTb = logTbPhyTbListMapping.keySet().iterator().next();
-                Map<String, List<String>> grpToPhyTbls = logTbPhyTbListMapping.get(logTb);
-                if (grpToPhyTbls.size() > 1 && useGrpParallelism) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-                        String.format(
-                            "Not allowed to use direct HINT to access more than one groups[%s] of db[%s] with auto mode in transaction, please use partition selection syntax instead.",
-                            String.join(",", grpToPhyTbls.keySet()), schemaName)
-                    );
-                }
-                String grpName = grpToPhyTbls.keySet().iterator().next();
-                List<String> phyTblsOfOneGrp = grpToPhyTbls.get(grpName);
-                if (phyTblsOfOneGrp.size() > 1 && useGrpParallelism) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-                        String.format(
-                            "Not allowed to use direct HINT to access more than one physical tables[%s] of table[%s] of db[%s] with auto mode in transaction, please use partition selection syntax instead.",
-                            String.join(",", phyTblsOfOneGrp), logTb, schemaName)
-                    );
-                }
-                if (useGrpParallelism) {
-                    PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, ec);
-                    shouldUseGrpConnId = true;
-                }
-            }
-
-            if (shouldUseGrpConnId) {
-                String logTb = logTbPhyTbListMapping.keySet().iterator().next();
-                Map<String, List<String>> grpToPhyTbls = logTbPhyTbListMapping.get(logTb);
-                String grpName = grpToPhyTbls.keySet().iterator().next();
-                List<String> phyTblsOfOneGrp = grpToPhyTbls.get(grpName);
-                logTbls.add(logTb);
-                phyTbls.add(phyTblsOfOneGrp);
-                for (String group : finalGroups) {
-                    checkGroupPrivileges(group, ec);
-                    PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
-                        cluster, RelTraitSet.createEmpty(),
-                        schemaName,
-                        logTbls,
-                        phyTbls,
-                        ast,
-                        ast.getKind(),
-                        lockMode,
-                        group,
-                        null,
-                        true,
-                        param,
-                        dynamicParamIndex,
-                        ec);
-                    results.add(phyQueryOperation);
-                } // end of for
-            } else {
-                for (String group : finalGroups) {
-                    checkGroupPrivileges(group, ec);
-                    PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
-                        cluster, RelTraitSet.createEmpty(),
-                        schemaName,
-                        logTbls,
-                        phyTbls,
-                        ast,
-                        ast.getKind(),
-                        lockMode,
-                        group,
-                        null,
-                        false,
-                        param,
-                        dynamicParamIndex,
-                        ec);
-                    results.add(phyQueryOperation);
-                } // end of for
-            }
+            for (String group : finalGroups) {
+                checkGroupPrivileges(group, ec);
+                PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
+                    cluster, RelTraitSet.createEmpty(),
+                    schemaName,
+                    logTbls,
+                    phyTbls,
+                    ast,
+                    ast.getKind(),
+                    lockMode,
+                    group,
+                    null,
+                    false,
+                    param,
+                    dynamicParamIndex,
+                    ec);
+                results.add(phyQueryOperation);
+            } // end of for
         }
         final ExecutionPlan result = new ExecutionPlan(originAst, wrapWithViewUnion(results), null, planProperties);
         result.setModifiedTables(tableModified);

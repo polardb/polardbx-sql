@@ -103,7 +103,7 @@ public class ProjectWindowTransposeRule extends RelOptRule {
     }
 
     final LogicalProject projectBelowWindow =
-        new LogicalProject(cluster, window.getTraitSet(),
+        new LogicalProject(cluster, window.getTraitSet().replace(RelCollations.EMPTY),
             window.getInput(), exps, builder.build());
 
     if (projectBelowWindow.getRowType().getFieldList().size() == 0) {
@@ -181,7 +181,7 @@ public class ProjectWindowTransposeRule extends RelOptRule {
     }
 
     final LogicalWindow newLogicalWindow =
-        LogicalWindow.create(window.getTraitSet(), projectBelowWindow,
+        LogicalWindow.create(window.getTraitSet().replace(RelCollations.EMPTY), projectBelowWindow,
         window.constants, outputBuilder.build(), groups);
 
     // Modify the top LogicalProject

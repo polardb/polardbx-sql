@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.utils;
 
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
@@ -553,7 +554,8 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             0,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     private static GsiMetaManager.IndexRecord indexCoveringRecord(String catalog, String schema, String tableName,
@@ -591,7 +593,8 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             0L,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     private static GsiMetaManager.IndexRecord indexColumnRecord(String catalog, String schema, String tableName,
@@ -635,7 +638,8 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             flag,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     private static GsiMetaManager.IndexRecord indexColumnRecord(String catalog, String schema, String tableName,
@@ -673,7 +677,8 @@ public class GsiUtils {
             indexStatus.getValue(),
             version,
             0L,
-            IndexVisibility.VISIBLE.getValue());
+            IndexVisibility.VISIBLE.getValue(),
+            LackLocalIndexStatus.NO_LACKIING.getValue());
     }
 
     public static boolean isAddCci(SqlNode sqlNode, SqlAlterTable sqlAlterTable) {

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.chunk;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Arrays;
 
@@ -27,16 +28,22 @@ import java.util.Arrays;
  *
  */
 public class ByteArrayBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(ByteArrayBlockBuilder.class).instanceSize();
 
     private final int initialByteArrayLength;
-    final IntArrayList offsets; // records where the bytes end at
-    final ByteArrayList data;
+    final MemoryCountableIntArrayList offsets; // records where the bytes end at
+    final MemoryCountableByteArrayList data;
 
     public ByteArrayBlockBuilder(int capacity, int expectedItemLength) {
         super(capacity);
-        this.offsets = new IntArrayList(capacity);
-        this.data = new ByteArrayList(capacity * expectedItemLength);
+        this.offsets = new MemoryCountableIntArrayList(capacity);
+        this.data = new MemoryCountableByteArrayList(capacity * expectedItemLength);
         this.initialByteArrayLength = expectedItemLength;
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + offsets.getMemoryUsage() + data.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

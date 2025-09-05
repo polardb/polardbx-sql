@@ -1300,6 +1300,79 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
     }
 
     /**
+     * 有 PK 无 UK, 一个 GSI, 非主键拆分
+     * 每个唯一键中都包含全部拆分键，但只有索引表包含全部 UK
+     * REPLACE 转 SELECT + 去重 + REPLACE
+     * 主表按照 c1 分区，GSI 按照 主键 分区
+     */
+    @Test
+    public void tableWithPkNoUkWithUgsi_notPartitionByPk_usingGsi() throws SQLException {
+        final String tableName = "test_tb_not_partition_by_pk_with_gsi";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        final String mysqlCreatTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT '2',\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT '3',\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`id`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+        final String gsiName1 = "g_id_1";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT '2',\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT '3',\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`id`),\n"
+            + "  GLOBAL INDEX " + gsiName1
+            + "(`id`) PARTITION BY HASH(`id`) PARTITIONS 3\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " partition by hash(`c1`) partitions 7";
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, mysqlCreatTable);
+
+        final String insert =
+            buildCmdExtra(DISABLE_SKIP_DUPLICATE_CHECK_FOR_PK, DML_FORCE_PUSHDOWN_RC_REPLACE) + "replace into "
+                + tableName
+                + "(id, c1, c2, c5, c8) values"
+                + "(1, 1, 3, 'a', '2020-06-16 06:49:32'), "
+                + "(2, 2, 3, 'b', '2020-06-16 06:49:32'), "
+                + "(1, 3, 3, 'c', '2020-06-16 06:49:32')";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = false: gsi(partition pruning: 1) lookup primary table(2) replace(primary:2 + gsi:1)
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert,
+            "trace " + buildCmdExtra(DML_GET_DUP_FOR_PK_FROM_GSI) + insert, null, true);
+        checkTraceRowCount(Matchers.is(6));
+
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = true: primary (full table scan: 1) replace(primary:2 + gsi:1)
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert,
+            "trace " + buildCmdExtra(DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY) + insert, null, true);
+        checkTraceRowCount(Matchers.is(10));
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
+    }
+
+    /**
      * 有 PK 无 UK, 一个 UGSI, 主键拆分
      * 每个唯一键中都包含全部拆分键，但只有索引表包含全部 UK
      * 主表 REPLACE 转 SELECT + DELETE + INSERT
@@ -3159,7 +3232,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
 
         String replace = "replace into " + tableName + " values (1,2,3),(2,2,3)";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE") + replace);
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE", "DML_GET_DUP_USING_UNION_EQUAL=FALSE") + replace);
         List<List<String>> trace = getTrace(tddlConnection);
         String phySql = trace.get(0).get(trace.get(0).size() - 4);
         Assert.assertFalse(phySql.contains("UNION"));
@@ -3168,6 +3242,46 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         trace = getTrace(tddlConnection);
         phySql = trace.get(0).get(trace.get(0).size() - 4);
         Assert.assertTrue(phySql.contains("UNION"));
+    }
+
+    /**
+     * 检查使用 UNION EQUAL 代替 IN 的 HINT 是否生效
+     */
+    @Test
+    public void testSelectUseUnionEqualHint() throws SQLException {
+        final String tableName = "test_tb_use_union_equal";
+        dropTableIfExists(tableName);
+
+        final String gsiName = "test_tb_use_union_equal_gsi";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `pk` bigint(11) NOT NULL,\n"
+            + "  `c1` bigint(20) DEFAULT NULL,\n"
+            + "  `c2` bigint(20) DEFAULT NULL ,\n"
+            + "  PRIMARY KEY (`pk`),"
+            + "  GLOBAL INDEX " + gsiName + "(`c1`) PARTITION BY HASH(`c1`) PARTITIONS 3"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " PARTITION BY HASH(`c1`) PARTITIONS 3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String replace = "replace into " + tableName + " values (1,2,3),(2,2,3)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + buildCmdExtra("DML_GET_DUP_USING_UNION_EQUAL=TRUE") + replace);
+        List<List<String>> trace = getTrace(tddlConnection);
+        String phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertTrue(phySql, phySql.contains("UNION"));
+        Assert.assertTrue(phySql, phySql.contains("="));
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE", "DML_GET_DUP_USING_UNION_EQUAL=FALSE") + replace);
+        trace = getTrace(tddlConnection);
+        phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertFalse(phySql, phySql.contains("UNION"));
+        Assert.assertFalse(phySql, phySql.contains("="));
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + replace);
+        trace = getTrace(tddlConnection);
+        phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertTrue(phySql, phySql.contains("UNION"));
+        Assert.assertFalse(phySql, phySql.contains("="));
     }
 
     /**
@@ -3200,35 +3314,35 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
 
         // no limit, no partition pruning on primary table
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));
 
         // limit 1
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 12 * 2 + gsiTopology.size() * 3));
 
         // limit 3
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 4 * 2 + gsiTopology.size() * 3));
 
         // limit 5
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 5 + gsiTopology.size() * 3));
 
         // limit -1, same as no limit
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_GET_DUP_USING_UNION_EQUAL=FALSE, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
                 + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));

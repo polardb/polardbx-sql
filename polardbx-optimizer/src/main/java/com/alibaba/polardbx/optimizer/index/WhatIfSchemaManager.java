@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -224,7 +225,8 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
                 Long.MAX_VALUE,
                 false,
                 false,
-                IndexVisibility.VISIBLE
+                IndexVisibility.VISIBLE,
+                LackLocalIndexStatus.NO_LACKIING
             );
         return gsiIndexMetaBean;
     }

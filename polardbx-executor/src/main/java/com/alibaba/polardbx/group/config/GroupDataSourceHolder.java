@@ -18,6 +18,8 @@ package com.alibaba.polardbx.group.config;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.rpc.compatible.XDataSource;
 
 /**
  * @author 梦实 2017年11月21日 下午6:37:14
@@ -27,4 +29,5 @@ public interface GroupDataSourceHolder {
 
     TAtomDataSource getDataSource(MasterSlave masterSlave);
 
+    Pair<Boolean, XDataSource> isChangingLeader(MasterSlave masterSlave);
 }

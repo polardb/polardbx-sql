@@ -1,0 +1,50 @@
+drop table if exists s1;
+drop table if exists s2;
+drop table if exists s3;
+drop table if exists s4;
+
+drop tablegroup if exists single1;
+drop tablegroup if exists single2;
+
+create tablegroup single1;
+create tablegroup single2;
+
+create table s1(a int primary key, b int) single tablegroup = single1;
+create table s2(a bit(10) primary key, b int) single tablegroup = single1;
+
+create table s3(a int primary key, b int) single tablegroup = single2;
+create table s4(a bit(10) primary key, b int) single tablegroup = single2;
+
+insert into s1 values(1,1);
+insert into s2 values(2,2);
+insert into s3 values(3,3);
+insert into s4 values(4,4);
+
+alter table s1 modify column a bit(10), ALGORITHM=OMC;
+alter table s2 modify column a int, ALGORITHM=OMC;
+
+show full create table s1;
+show full create table s2;
+
+alter table s1 modify column b bigint, ALGORITHM=OMC;
+alter table s2 modify column b bigint, ALGORITHM=OMC;
+
+show full create table s1;
+show full create table s2;
+
+alter table s3 modify column a bit(10), ALGORITHM=OMC;
+alter table s4 modify column a int, ALGORITHM=OMC;
+
+show full create table s3;
+show full create table s4;
+
+alter table s3 modify column b bigint, ALGORITHM=OMC;
+alter table s4 modify column b bigint, ALGORITHM=OMC;
+
+show full create table s3;
+show full create table s4;
+
+select * from s1;
+select * from s2;
+select * from s3;
+select * from s4;

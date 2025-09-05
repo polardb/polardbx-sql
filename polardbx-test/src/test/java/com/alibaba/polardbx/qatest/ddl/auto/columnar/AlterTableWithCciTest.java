@@ -22,7 +22,6 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciMetaTask;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarColumnEvolutionRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
@@ -51,6 +50,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
+
 public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
     final static Log log = LogFactory.getLog(AlterTableTest.class);
 
@@ -72,6 +75,19 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         + "    PRIMARY KEY (`id`), \n"
         + "    CLUSTERED COLUMNAR INDEX `%s`(`buyer_id`) PARTITION BY KEY(`id`)\n"
         + ") ENGINE = InnoDB CHARSET = utf8 PARTITION BY KEY(`order_id`);\n";
+
+    private static final String creatTableTmpl2 = "CREATE TABLE `%s` ( \n"
+        + "    `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP, \n"
+        + "    `order_id` varchar(20) DEFAULT NULL, \n"
+        + "    `buyer_id` varchar(20) DEFAULT NULL, \n"
+        + "    `seller_id` varchar(20) DEFAULT NULL, \n"
+        + "    `order_snapshot` longtext,\n"
+        + "    PRIMARY KEY (`id`), \n"
+        + "    CLUSTERED COLUMNAR INDEX `%s`(`buyer_id`) PARTITION BY KEY(`id`)\n"
+        + ") PARTITION BY RANGE(id) \n"
+        + "(partition p0 values less than (1000)\n"
+        + ",partition p1 values less than (2000)\n"
+        + ");\n";
 
     @Override
     public boolean usingNewPartDb() {
@@ -240,19 +256,18 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         // Create table with cci
         createCciSuccess(sqlCreateTable1);
 
-        // DO NOT SUPPORT MIXED ALTERS ON CLUSTERED INDEX
-//        String sql = "alter table %s add column c2 int, add column c3 int first, add column c4 int after c3";
-//        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
-//        compareColumnPositions(schemaName, tableName);
-//        compareColumnRecords(schemaName, tableName);
-//        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c2, c3, c4"));
+        String sql = "alter table %s add column c2 int, add column c3 int first, add column c4 int after c3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c2", "c3", "c4"));
 
-        String sql = "alter table %s add c2 int";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
-        sql = "alter table %s add c3 int first";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
-        sql = "alter table %s add c4 int after c3";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+//        sql = "alter table %s add c2 int";
+//        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+//        sql = "alter table %s add c3 int first";
+//        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+//        sql = "alter table %s add c4 int after c3";
+//        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s modify column c2 bigint, modify column c3 int first, change column c4 c40 int after id";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
@@ -409,6 +424,114 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         Assert.assertTrue(createTableString.contains(newIndexName));
     }
 
+    @Test
+    public void testRebuildTable() throws SQLException {
+        // 特殊的情况，修改分区键（即使不更改分区键的长度）会重建主表，而不是走alter table的路径
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        String sql = "alter table %s modify column order_id varchar(20) comment 'test'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
+    }
+
+    @Test
+    public void testAddColumnAfterRepartition() throws SQLException {
+        /**
+         * 测试在经过repartition(move partition, split partition, etc.)后indexes系统表的version列变更
+         * 在老代码中，再创建新的列，其version列值为0，导致排序的时候被列为第一列，失去了CCI的标识和CLUSTER属性
+         * 新代码会将新列的version列值设置为和原表一致，避免这个问题。
+         */
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl2,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        // check last version & seq
+        Pair<Long, Long> versionAndSeqBefore = checkVersionAndSeq(schemaName, tableName);
+        Assert.assertNotNull(versionAndSeqBefore);
+
+        // split partition
+        String sql =
+            "ALTER TABLE %s SPLIT PARTITION p1 INTO  (PARTITION p10 VALUES LESS THAN (1500), PARTITION p11 VALUES LESS THAN(2000))";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s add c2 int";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        Pair<Long, Long> versionAndSeqAfter = checkVersionAndSeq(schemaName, tableName);
+        Assert.assertNotNull(versionAndSeqAfter);
+        assertEquals(versionAndSeqBefore.getKey(), versionAndSeqAfter.getKey());
+
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c2"));
+        checkCciMeta(indexName);
+
+        sql = "alter table %s add c3 int first";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c3"));
+        checkCciMeta(indexName);
+
+        // test omc
+        versionAndSeqBefore = checkVersionAndSeq(schemaName, tableName);
+        Assert.assertNotNull(versionAndSeqBefore);
+
+        // split partition
+        sql =
+            "ALTER TABLE %s SPLIT PARTITION p11 INTO  (PARTITION p110 VALUES LESS THAN (1700), PARTITION p111 VALUES LESS THAN(2000))";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s modify column c3 bigint, add c4 int after c3, algorithm = omc";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        versionAndSeqAfter = checkVersionAndSeq(schemaName, tableName);
+        Assert.assertNotNull(versionAndSeqAfter);
+        assertEquals(versionAndSeqBefore.getKey(), versionAndSeqAfter.getKey());
+
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c4"));
+        checkCciMeta(indexName);
+    }
+
+    public Pair<Long, Long> checkVersionAndSeq(String schemaName, String tableName) throws SQLException {
+        String sql = "select version, seq_in_index from indexes "
+            + "where table_schema='%s' and table_name='%s' and index_location = 1 order by version,seq_in_index desc limit 1";
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery(String.format(sql, schemaName, tableName))) {
+            if (rs.next()) {
+                return new Pair<>(rs.getLong(1), rs.getLong(2));
+            }
+        }
+        return null;
+    }
+
     private void compareColumnPositions(String schemaName, String tableName)
         throws SQLException {
         Map<Integer, String> sysTableColumnPositions = fetchColumnPositionsFromSysTable(schemaName, tableName);
@@ -543,7 +666,7 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         for (int i = 0; i < sysTableColumnRecords.size(); i++) {
             ColumnsRecord sysRecord = sysTableColumnRecords.get(i);
             ColumnsRecord evolutionRecord = evolutionTableColumnRecords.get(i);
-            if (!CheckCciMetaTask.equalsColumnRecord(sysRecord, evolutionRecord)) {
+            if (!ColumnsRecord.equalsColumnRecord(sysRecord, evolutionRecord)) {
                 Assert.fail("Different column records in '" + sysTableColumnRecords.get(i).columnName);
             }
         }

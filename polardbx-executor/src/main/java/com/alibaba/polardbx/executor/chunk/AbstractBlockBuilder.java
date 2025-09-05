@@ -16,6 +16,22 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.MemoryCountable;
+import com.alibaba.polardbx.common.utils.memory.SizeOf;
+import com.alibaba.polardbx.optimizer.core.datatype.Blob;
+import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import it.unimi.dsi.fastutil.chars.CharArrayList;
+import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
+import it.unimi.dsi.fastutil.floats.FloatArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
+import it.unimi.dsi.fastutil.shorts.ShortArrayList;
+import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
+
 public abstract class AbstractBlockBuilder implements BlockBuilder {
 
     final int initialCapacity;
@@ -26,6 +42,141 @@ public abstract class AbstractBlockBuilder implements BlockBuilder {
         this.initialCapacity = initialCapacity;
         this.valueIsNull = new BatchedArrayList.BatchBooleanArrayList(initialCapacity);
         this.containsNull = false;
+    }
+
+    static class MemoryCountableByteArrayList extends ByteArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableByteArrayList.class).instanceSize();
+
+        public MemoryCountableByteArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableFloatArrayList extends FloatArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableFloatArrayList.class).instanceSize();
+
+        public MemoryCountableFloatArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableShortArrayList extends ShortArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableShortArrayList.class).instanceSize();
+
+        public MemoryCountableShortArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableCharArrayList extends CharArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableCharArrayList.class).instanceSize();
+
+        public MemoryCountableCharArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableLongArrayList extends LongArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableLongArrayList.class).instanceSize();
+
+        public MemoryCountableLongArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableIntArrayList extends IntArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableIntArrayList.class).instanceSize();
+
+        public MemoryCountableIntArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableDoubleArrayList extends DoubleArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableDoubleArrayList.class).instanceSize();
+
+        public MemoryCountableDoubleArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableBooleanArrayList extends BooleanArrayList implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableBooleanArrayList.class).instanceSize();
+
+        public MemoryCountableBooleanArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            return INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+        }
+    }
+
+    static class MemoryCountableReferenceArrayList<T> extends ReferenceArrayList<T> implements MemoryCountable {
+        private static final int INSTANCE_SIZE =
+            ClassLayout.parseClass(MemoryCountableReferenceArrayList.class).instanceSize();
+        private static final int BLOB_INSTANCE_SIZE = ClassLayout.parseClass(Blob.class).instanceSize();
+
+        public MemoryCountableReferenceArrayList(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        public long getMemoryUsage() {
+            long memoryUsage = INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOf(a));
+
+            for (int i = 0; i < size; i++) {
+                if (a[i] instanceof Blob) {
+                    memoryUsage += FastMemoryCounter.sizeOf((java.sql.Blob) a[i], BLOB_INSTANCE_SIZE);
+                }
+            }
+
+            return memoryUsage;
+        }
     }
 
     @Override
@@ -47,6 +198,11 @@ public abstract class AbstractBlockBuilder implements BlockBuilder {
     protected void appendNullInternal() {
         valueIsNull.add(true);
         containsNull = true;
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return 0;
     }
 
     void setContainsNull() {

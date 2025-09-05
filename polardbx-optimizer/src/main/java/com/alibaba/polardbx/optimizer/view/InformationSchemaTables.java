@@ -85,6 +85,7 @@ public class InformationSchemaTables extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("CREATE_OPTIONS", 19, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_COMMENT", 20, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("AUTO_PARTITION", 21, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_GROUP", 22, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

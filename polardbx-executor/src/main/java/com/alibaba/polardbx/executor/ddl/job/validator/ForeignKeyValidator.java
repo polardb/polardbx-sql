@@ -108,7 +108,7 @@ public class ForeignKeyValidator {
             LimitValidator.validateDatabaseNameLength(data.refSchema);
             LimitValidator.validateTableNameLength(data.refTableName);
             LimitValidator.validateConstraintNameLength(data.constraint);
-            data.refColumns.forEach(LimitValidator::validateColumnNameLength);
+            data.refColumns.forEach(LimitValidator::validateColumnName);
 
             TableMeta referringTableMeta =
                 executionContext.getSchemaManager(data.refSchema).getTableWithNull(data.refTableName);
@@ -433,7 +433,7 @@ public class ForeignKeyValidator {
         LimitValidator.validateDatabaseNameLength(data.refSchema);
         LimitValidator.validateTableNameLength(data.refTableName);
         LimitValidator.validateConstraintNameLength(data.constraint);
-        data.refColumns.forEach(LimitValidator::validateColumnNameLength);
+        data.refColumns.forEach(LimitValidator::validateColumnName);
 
         // ref table fk column index must exist
         validateAddReferredTableFkIndex(data, executionContext, tableName, null);

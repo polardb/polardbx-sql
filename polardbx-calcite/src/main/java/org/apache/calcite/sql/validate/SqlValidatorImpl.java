@@ -82,6 +82,7 @@ import org.apache.calcite.sql.SqlAlterTablePurgeBeforeTimeStamp;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCallBinding;
+import org.apache.calcite.sql.SqlCheckTableGroup;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlCreateIndex;
@@ -2071,18 +2072,18 @@ SqlValidatorImpl implements SqlValidatorWithHints {
         if (node instanceof TDDLSqlSelect) {
             if (((TDDLSqlSelect) node).getSelectList().size() == 1) {
                 SqlNode sqlNode = ((TDDLSqlSelect) node).getSelectList().get(0);
-                SqlIdentifier sqlIdentifier = null;
+                SqlBasicCall sqlCall = null;
+
                 if (sqlNode instanceof SqlBasicCall && sqlNode.getKind() == SqlKind.AS) {
                     if (((SqlBasicCall) sqlNode).getOperands().length == 2 && ((SqlBasicCall) sqlNode)
-                        .getOperands()[0] instanceof SqlIdentifier) {
-                        sqlIdentifier = (SqlIdentifier) ((SqlBasicCall) sqlNode).getOperands()[0];
+                        .getOperands()[0] instanceof SqlBasicCall) {
+                        sqlCall = (SqlBasicCall) ((SqlBasicCall) sqlNode).getOperands()[0];
                     }
-                } else if (sqlNode instanceof SqlIdentifier) {
-                    sqlIdentifier = (SqlIdentifier) sqlNode;
+                } else if (sqlNode instanceof SqlBasicCall) {
+                    sqlCall = (SqlBasicCall) sqlNode;
                 }
 
-                if (sqlIdentifier != null && sqlIdentifier.names.size() == 2 && "nextval"
-                    .equalsIgnoreCase(sqlIdentifier.names.get(1).toString())) {
+                if (sqlCall != null && sqlCall.getOperator().isName(SqlFunction.NEXTVAL_FUNC_NAME)) {
                     if (((TDDLSqlSelect) node).getFrom() == null && ((TDDLSqlSelect) node).getWhere() != null) {
                         if (((TDDLSqlSelect) node).getWhere() instanceof SqlBasicCall) {
                             SqlBasicCall where = (SqlBasicCall) ((TDDLSqlSelect) node).getWhere();
@@ -3738,6 +3739,7 @@ SqlValidatorImpl implements SqlValidatorWithHints {
         case UNNEST:
         case OTHER_FUNCTION:
         case SHOW:
+        case CHECK_TABLEGROUP:
             if (alias == null) {
                 alias = deriveAlias(node, nextGeneratedId++);
             }
@@ -4636,6 +4638,15 @@ SqlValidatorImpl implements SqlValidatorWithHints {
                 registerDal(parentScope, usingScope, node, enclosingNode, alias, forceNullable);
             }
             break;
+        case CHECK_TABLEGROUP:
+            final SqlCheckTableGroup sqlCheckTableGroup = (SqlCheckTableGroup) node;
+            if (null != sqlCheckTableGroup.fakeSelect && usingScope == null) {
+                registerQuery(parentScope, usingScope, sqlCheckTableGroup.fakeSelect, node, alias, forceNullable,
+                    checkUpdate);
+            } else {
+                registerDal(parentScope, usingScope, node, enclosingNode, alias, forceNullable);
+            }
+            break;
         case CREATE_DATABASE:
             final CreateDatabaseNamespace createDbNamespace =
                 new CreateDatabaseNamespace(this, (SqlDdl) node, enclosingNode, parentScope);
@@ -4781,7 +4792,8 @@ SqlValidatorImpl implements SqlValidatorWithHints {
 
             registerQuery(withScope, null, withItem.query, with,
                 withItem.name.getSimple(), false);
-            WithItemNamespace wns = new WithItemNamespace(this, withItem, enclosingNode, with.isRecursive);
+            WithItemNamespace wns =
+                new WithItemNamespace(this, withItem, enclosingNode, with.isRecursive.booleanValue());
             registerNamespace(null, alias,
                 wns,
                 false);
@@ -6064,7 +6076,8 @@ SqlValidatorImpl implements SqlValidatorWithHints {
             case STREAM:
                 throw newValidationError(query, Static.RESOURCE.cannotStreamValues());
             }
-        } else if (query.getKind() == SqlKind.SHOW) {
+        } else if (query.getKind() == SqlKind.SHOW ||
+            query.getKind() == SqlKind.CHECK_TABLEGROUP) {
             return;
         } else {
             assert query.isA(SET_QUERY);
@@ -6088,7 +6101,8 @@ SqlValidatorImpl implements SqlValidatorWithHints {
             return select.getModifierNode(SqlSelectKeyword.STREAM) != null
                 ? SqlModality.STREAM
                 : SqlModality.RELATION;
-        } else if (query.getKind() == SqlKind.VALUES || query.getKind() == SqlKind.SHOW) {
+        } else if (query.getKind() == SqlKind.VALUES || query.getKind() == SqlKind.SHOW
+            || query.getKind() == SqlKind.CHECK_TABLEGROUP) {
             return SqlModality.RELATION;
         } else {
             assert query.isA(SET_QUERY);

@@ -1017,6 +1017,13 @@ public abstract class SqlOperator {
   public void accept(RexVisitor visitor, RexCall call) {
     visitor.visit(this, call);
   }
+
+  /**
+   * @return false iff it is never returns null; true is assumed by default
+   */
+  public boolean isNullable() {
+    return true;
+  }
 }
 
 // End SqlOperator.java

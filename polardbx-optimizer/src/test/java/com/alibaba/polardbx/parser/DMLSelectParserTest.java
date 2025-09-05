@@ -23,7 +23,6 @@ import com.alibaba.polardbx.druid.sql.parser.Token;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
-import com.alibaba.polardbx.optimizer.parse.visitor.FastSqlToCalciteNodeVisitor;
 import junit.framework.TestCase;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlJoin;
@@ -339,5 +338,17 @@ public class DMLSelectParserTest extends TestCase {
 
         SqlBasicCall lateralNode = (SqlBasicCall) ((SqlBasicCall) fromJoin.getRight()).getOperands()[0];
         Assert.assertSame(SqlKind.LATERAL, lateralNode.getOperator().getKind());
+    }
+
+    public void test_pre_filter() {
+        String sql =
+            "select * from  offer  a  where pre_filter(member_id)";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        SQLStatement stmt = parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        Assert.assertEquals("SELECT *\n"
+            + "FROM offer a\n"
+            + "WHERE pre_filter(member_id)", output);
     }
 }

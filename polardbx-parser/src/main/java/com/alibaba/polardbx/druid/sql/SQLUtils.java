@@ -851,8 +851,8 @@ public class SQLUtils {
             return true;
         }
 
-        String normalize_a = normalize(a);
-        String normalize_b = normalize(b);
+        String normalize_a = normalizeNoTrim(a);
+        String normalize_b = normalizeNoTrim(b);
 
         return normalize_a.equalsIgnoreCase(normalize_b);
     }

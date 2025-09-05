@@ -1,12 +1,14 @@
 package com.alibaba.polardbx.qatest.ddl.auto.partition;
 
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestUtils;
+import com.alibaba.polardbx.qatest.ddl.datamigration.locality.LocalityTestCaseUtils.LocalityTestUtils;
 import com.alibaba.polardbx.server.util.StringUtil;
+import org.junit.Ignore;
 import org.junit.runners.Parameterized;
 
 import java.util.List;
 import java.util.regex.Pattern;
 
+@Ignore("We don't support locality in drds mode any more")
 public class MultiDBSingleTableTest extends PartitionAutoLoadSqlTestBase {
 
     private String targetStorage = null;

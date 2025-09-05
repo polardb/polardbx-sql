@@ -10,10 +10,11 @@ import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.scheduler.TtlScheduledJobManager;
-import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlLoggerUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.TtlLoggerUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.scheduler.TtlScheduledJobStatManager;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
@@ -140,7 +141,7 @@ public class TtlArchivedDataScheduledJob extends SchedulerExecutor {
                     List<Long> restartedJobIdList = new ArrayList<>();
                     for (DdlEngineRecord ddlRec : allPausedDdlRecList) {
                         Long jobId = ddlRec.getJobId();
-                        if (!inMaintenanceWindow()) {
+                        if (!checkIfScheduledTtlJobInMaintenanceWindow()) {
                             continue;
                         }
                         if (jobId != null) {
@@ -278,7 +279,7 @@ public class TtlArchivedDataScheduledJob extends SchedulerExecutor {
     @Override
     public Pair<Boolean, String> needInterrupted() {
 
-        boolean withInMaintainWindow = inMaintenanceWindow();
+        boolean withInMaintainWindow = checkIfScheduledTtlJobInMaintenanceWindow();
         if (withInMaintainWindow) {
             if (executableScheduledJob.getState().equalsIgnoreCase("RUNNING")) {
                 String tableSchema = executableScheduledJob.getTableSchema();
@@ -509,6 +510,10 @@ public class TtlArchivedDataScheduledJob extends SchedulerExecutor {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(zoneId);
         String formattedDate = formatter.format(instant);
         return formattedDate;
+    }
+
+    protected boolean checkIfScheduledTtlJobInMaintenanceWindow() {
+        return InstConfUtil.isInTtlJobMaintenanceTimeWindow();
     }
 
 }

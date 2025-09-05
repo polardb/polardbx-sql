@@ -28,6 +28,7 @@ import org.apache.calcite.rel.core.DDL;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class DropTableWithGsiBuilder {
 
@@ -35,7 +36,7 @@ public class DropTableWithGsiBuilder {
     protected final DropTableWithGsiPreparedData preparedData;
     protected final ExecutionContext executionContext;
 
-    protected Map<String, List<List<String>>> primaryTableTopology;
+    protected TreeMap<String, List<List<String>>> primaryTableTopology;
     protected List<PhyDdlTableOperation> primaryTablePhysicalPlans;
 
     protected Map<String, Map<String, List<List<String>>>> indexTableTopologyMap = new LinkedHashMap<>();
@@ -53,7 +54,7 @@ public class DropTableWithGsiBuilder {
         buildIndexTablePhysicalPlans();
     }
 
-    public Map<String, List<List<String>>> getPrimaryTableTopology() {
+    public TreeMap<String, List<List<String>>> getPrimaryTableTopology() {
         return primaryTableTopology;
     }
 

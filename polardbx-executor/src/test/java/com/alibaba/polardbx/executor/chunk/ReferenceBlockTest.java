@@ -40,7 +40,7 @@ public class ReferenceBlockTest {
     @Test
     public void testSizeInBytes() {
         ReferenceBlock<Long> block = new ReferenceBlock<>(new LongType(), 1024);
-        Assert.assertEquals(5136, block.getElementUsedBytes());
+        Assert.assertEquals(5208, block.getElementUsedBytes());
     }
 
     @Test

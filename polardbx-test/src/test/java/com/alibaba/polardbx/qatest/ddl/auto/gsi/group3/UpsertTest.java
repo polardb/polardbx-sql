@@ -23,9 +23,7 @@ import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.util.Pair;
-import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;
-import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -641,7 +639,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
         // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
         executeOnceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
@@ -706,7 +704,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
         // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
         executeOnceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
@@ -1415,7 +1413,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         final String insert = "insert into " + tableName
             + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
             + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, 1 + 1 + 2);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), 1 + 1 + 2);
     }
 
     /**
@@ -1470,7 +1469,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         final String insert = "insert into " + tableName
                 + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
                 + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, topology.size() + 1 + 1);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            topology.size() + 1 + 1);
     }
 
     /**
@@ -1525,7 +1526,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 + tableName
                 + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
                 + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, 1 + 1 + 1);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), 1 + 1 + 1);
     }
 
     /**
@@ -1578,7 +1580,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         final String insert = "insert into " + tableName
             + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
             + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, 3);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), 3);
     }
 
     /**
@@ -1640,7 +1643,79 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 + "(2, 2, 3, 'b', '2020-06-16 06:49:32'), "
                 + "(1, 2, 3, 'c', '2020-06-16 06:49:32')"
                 + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, 3 + 1 + 1);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), 3 + 1 + 1);
+    }
+
+    /**
+     * 有 PK 无 UK, 一个 GSI, 非主键拆分
+     * 每个唯一键中都包含全部拆分键，但只有索引表包含全部 UK
+     * UPSERT 转 SELECT + 去重 + DELETE + INSERT
+     * 主表按照 c1 分区，GSI 按照 主键 分区
+     */
+    @Test
+    public void tableWithPkNoUkWithUgsi_notPartitionByPk_usingGsi() throws SQLException {
+        final String tableName = "test_tb_not_partition_by_pk_with_gsi";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        final String mysqlCreatTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT '2',\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT '3',\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`id`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+        final String gsiName1 = "g_id_1";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT '2',\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT '3',\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`id`),\n"
+            + "  GLOBAL INDEX " + gsiName1
+            + "(`id`) PARTITION BY HASH(`id`) PARTITIONS 3\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " partition by hash(`c1`) partitions 7";
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, mysqlCreatTable);
+
+        final String hint = buildCmdExtra(DISABLE_DML_SKIP_TRIVIAL_UPDATE, DISABLE_SKIP_DUPLICATE_CHECK_FOR_PK);
+
+        final String insert =
+            hint + "insert into "
+                + tableName
+                + "(id, c1, c2, c5, c8) values"
+                + "(1, 1, 3, 'a', '2020-06-16 06:49:32'), "
+                + "(2, 2, 3, 'b', '2020-06-16 06:49:32'), "
+                + "(1, 3, 3, 'c', '2020-06-16 06:49:32')"
+                + "on duplicate key update c5 = values(c5)";
+
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = false: gsi(partition pruning: 1) lookup primary table(2) update(primary:1 + gsi:1)
+        executeTwiceThenCheckGsiDataAndTraceResult(buildCmdExtra(DML_GET_DUP_FOR_PK_FROM_GSI) + hint,
+            insert,
+            tableName,
+            gsiName1,
+            1 + 2 + 2);
+
+        // DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY = true: primary (full table scan: 1) replace(primary:2 + gsi:1)
+        executeOnceThenCheckGsiDataAndTraceResult(buildCmdExtra(DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY) + hint,
+            insert,
+            tableName,
+            gsiName1,
+            Matchers.is(7 + 2));
     }
 
     /**
@@ -1700,7 +1775,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 + "(2, 2, 3, 'b', '2020-06-16 06:49:32'), "
                 + "(1, 2, 3, 'c', '2020-06-16 06:49:32')"
                 + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, 1 + 1 + 1);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), 1 + 1 + 1);
     }
 
     /**
@@ -1759,7 +1835,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             + "(2, 2, 3, 'b', '2020-06-16 06:49:32'), "
             + "(1, 2, 3, 'c', '2020-06-16 06:49:32')"
             + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, 3 + 1 + 1);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), 3 + 1 + 1);
     }
 
     /**
@@ -1817,7 +1894,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 + "(2, 2, 3, 'b', '2020-06-16 06:49:32'), "
                 + "(1, 2, 3, 'c', '2020-06-16 06:49:32')"
                 + "on duplicate key update c5 = values(c5)";
-        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName, 3);
+        executeTwiceThenCheckGsiDataAndTraceResult(hint, insert, tableName, gsiName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), 3);
     }
 
     /**
@@ -1886,9 +1964,11 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null,
             !useAffectedRows);
-        checkTraceRowCountIs(3 + 1);
+        checkTraceRowCount(Matchers.lessThanOrEqualTo(3 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -2138,8 +2218,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             !useAffectedRows);
         checkTraceRowCountIs(3 + 1 + 2 + (1 + 2) * 2 - 1);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -2219,7 +2300,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             !useAffectedRows);
         checkTraceRowCountIs(topology.size() + (1 + 2) * 2 - 1);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection,
             tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
@@ -2441,9 +2524,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // no hint here, or bad affected rows when replace
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
+//        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        final String checkSql = "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName;
+        String checkSql = "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName;
         selectContentSameAssert(checkSql, checkSql + " ignore index(" + gsiName + ")", null, mysqlConnection,
             tddlConnection);
 
@@ -2456,6 +2539,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             false);
         checkTraceRowCountIs(7);
 
+        checkSql = buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName);
         selectContentSameAssert(checkSql, checkSql + " ignore index(" + gsiName + ")", null, mysqlConnection,
             tddlConnection);
 
@@ -2533,9 +2617,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // no hint here, or bad affected rows when replace
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
+//        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        final String checkSql = "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName;
+        String checkSql = "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName;
         selectContentSameAssert(checkSql, checkSql + " ignore index(" + gsiName + ")", null, mysqlConnection,
             tddlConnection);
 
@@ -2549,6 +2633,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             !useAffectedRows);
         checkTraceRowCountIs(7);
 
+        checkSql = buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName);
         selectContentSameAssert(checkSql, checkSql + " ignore index(" + gsiName + ")", null, mysqlConnection,
             tddlConnection);
 
@@ -2747,7 +2832,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         org.junit.Assert.assertThat(trace2.size(), Matchers.is(1 + 2 + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            null, mysqlConnection, tddlConnection);
 
         // checkGsi(tddlConnection, gsiName);
     }
@@ -2813,7 +2900,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // equal when first insert
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + insert, null, true);
 
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
+//        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
         // final List<Pair<String, String>> gsiTopology = JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
@@ -2826,7 +2913,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             !useAffectedRows);
         checkTraceRowCountIs(3 + 1 + 2 + 5);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            null, mysqlConnection,
             tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
@@ -2907,7 +2996,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null, true);
         checkTraceRowCountIs(topology.size() + (2 + 1) * 2 - 1);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            null, mysqlConnection,
             tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
@@ -2979,7 +3070,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, "trace " + hint + upsert, null, true);
         checkTraceRowCountIs(primaryTopology.size() + 1 + 1 + 2);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -3050,7 +3143,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, "trace " + hint + upsert, null, true);
         checkTraceRowCountIs(topology.size() + 2);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -3128,7 +3223,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         // primary (all primary phy table) + gsi(partition pruning: 3 + primary partition pruning: 1) + update(primary + gsi: 8)
         Assert.assertThat(trace.size(), Matchers.is(primaryTopology.size() + 3 + 1 + 8));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName), null,
+            mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -3202,7 +3299,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, "trace " + hint + upsert, null, true);
         checkTraceRowCountIs(topology.size() + 4 * 2);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
+            null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -3246,7 +3345,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeTwiceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
             insert,
-            "select * from " + tableName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
             Matchers.is(topology.size() + 3));
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
@@ -3255,7 +3354,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         executeTwiceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
             insert,
-            "select * from " + tableName,
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName),
             Matchers.lessThanOrEqualTo(3 + 3));
     }
 
@@ -3347,7 +3446,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             + "(1, 2, 4, 'f', '2020-06-16 06:49:32')" // u_c1_c2 冲突，update
             + "on duplicate key update c2 = c2 + 1, c5 = values(c5)";
 
-        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
         // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
         executeOnceThenCheckDataAndTraceResult(
             hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
@@ -3724,21 +3823,24 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         final String insert = "/*+TDDL:CMD_EXTRA(DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE)*/insert into " + tableName
             + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (2, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
             + "on duplicate key update c5 = 'z'";
+
+        final String checkSql =
+            buildSqlCheckData(ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7"), tableName);
         // one
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         // two
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         // three
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         // fore
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(checkSql, null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
@@ -5330,7 +5432,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert(buildSqlCheckData(ImmutableList.of("a"), tableName), null, mysqlConnection,
+            tddlConnection);
     }
 
     @Test

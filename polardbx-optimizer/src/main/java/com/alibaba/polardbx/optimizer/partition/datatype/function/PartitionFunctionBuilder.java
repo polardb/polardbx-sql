@@ -38,14 +38,11 @@ import com.alibaba.polardbx.optimizer.partition.datatype.function.udf.UdfPartiti
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlFunction;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlUnresolvedFunction;
 import org.apache.calcite.sql.fun.SqlSubstringFunction;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlUserDefinedFunction;
 import org.jetbrains.annotations.NotNull;
 
@@ -63,6 +60,10 @@ public class PartitionFunctionBuilder {
     protected static Set<String> supportedBuiltInFunctions = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     protected static Set<PartitionStrategy> strategiesOfAllowedUsingPartFunc = new HashSet<PartitionStrategy>();
     protected static Set<String> supportedBuiltInStringFamilyPartFunctions =
+        new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    protected static Set<String> supportedBuiltInTimeBasedFamilyPartFunctions =
+        new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    protected static Set<String> supportedBuiltInTimeBasedFamilyPartFunctionsForPartitionTypeTtl =
         new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
     static {
@@ -96,10 +97,35 @@ public class PartitionFunctionBuilder {
         supportedBuiltInStringFamilyPartFunctions.add(TddlOperatorTable.SUBSTRING.getName());
         supportedBuiltInStringFamilyPartFunctions.add(TddlOperatorTable.RIGHT.getName());
         supportedBuiltInStringFamilyPartFunctions.add(TddlOperatorTable.LEFT.getName());
+
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.YEAR.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.TO_DAYS.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.TO_SECONDS.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.TO_MONTHS.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.TO_WEEKS.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.UNIX_TIMESTAMP.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.MONTH.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.DAYOFMONTH.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.DAYOFWEEK.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.DAYOFYEAR.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctions.add(TddlOperatorTable.WEEKOFYEAR.getName());
+
+        supportedBuiltInTimeBasedFamilyPartFunctionsForPartitionTypeTtl.add(TddlOperatorTable.TO_DAYS.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctionsForPartitionTypeTtl.add(TddlOperatorTable.TO_MONTHS.getName());
+        supportedBuiltInTimeBasedFamilyPartFunctionsForPartitionTypeTtl.add(TddlOperatorTable.UNIX_TIMESTAMP.getName());
+
     }
 
     public static boolean isStringFamilyPartitionFunction(String partFunOpName) {
         return supportedBuiltInStringFamilyPartFunctions.contains(partFunOpName);
+    }
+
+    public static boolean isTimeBasedFamilyPartitionFunction(String partFunOpName) {
+        return supportedBuiltInTimeBasedFamilyPartFunctions.contains(partFunOpName);
+    }
+
+    public static boolean isTimeBasedFamilyPartitionFunctionForPartitionTypeTtl(String partFunOpName) {
+        return supportedBuiltInTimeBasedFamilyPartFunctionsForPartitionTypeTtl.contains(partFunOpName);
     }
 
     public static Set<String> getAllSupportedPartitionFunctions() {

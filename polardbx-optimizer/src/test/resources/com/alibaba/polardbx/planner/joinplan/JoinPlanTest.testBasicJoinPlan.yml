@@ -135,10 +135,9 @@
 
   plan: |
 
-    hashagg(count(*)="sum(count(*))")
-      bkajoin(condition="id = id0", type="inner")
-        hashagg(group="id0", count(*)="sum(count(*))")
-          gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb,test_broadcast", shardcount=4, sql="select `test_broadcast`.`id` as `id0`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on (`test_hash_tb`.`name` = `test_broadcast`.`name`) group by `test_broadcast`.`id`")
+    hashagg(count(*)="count()")
+      hashjoin(condition="id = id0", type="inner")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2` force index(`primary`) where (`id` in (...))")
+          logicalview(tables="[0000-0003].test_hash_tb,test_broadcast", shardcount=4, sql="select `test_broadcast`.`id` as `id0` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on (`test_hash_tb`.`name` = `test_broadcast`.`name`)")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2`")

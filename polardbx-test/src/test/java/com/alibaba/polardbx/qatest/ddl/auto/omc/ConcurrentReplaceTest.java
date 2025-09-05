@@ -36,10 +36,10 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
                 + "replace into %%s values(%d, %d + %d,null,null)", count, count, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colA + FILL_COUNT == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false);
     }
 
     @Test
@@ -55,10 +55,10 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colA - FILL_COUNT == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false);
     }
 
     @Test
@@ -72,10 +72,8 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING) + "replace into %%s(a) values(%d)", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -92,10 +90,10 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colA + FILL_COUNT == colB && (colD.equalsIgnoreCase("dbc")
                 || Float.parseFloat(colC) + FILL_COUNT == Float.parseFloat(colD)));
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false);
     }
 
     @Test
@@ -112,10 +110,8 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colA + FILL_COUNT == colB && (colC.equalsIgnoreCase("dbc")
                 || colC.equalsIgnoreCase("abc")));
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -131,10 +127,12 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colA - FILL_COUNT == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, true);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true,
+            true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false,
+            true);
     }
 
     @Test
@@ -150,10 +148,10 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             count, count, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colA + FILL_COUNT == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false);
     }
 
     @Test
@@ -169,10 +167,10 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colA - FILL_COUNT == colB;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false);
     }
 
     @Test
@@ -186,10 +184,8 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING) + "replace into %%s(a) values(%d)", count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colB == 3 || colB == 4;
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -206,10 +202,10 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colA + FILL_COUNT == colB
                 && Float.parseFloat(colC) + FILL_COUNT == Float.parseFloat(colD));
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false);
     }
 
     @Test
@@ -226,10 +222,10 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colA - FILL_COUNT == colB) && colC.equalsIgnoreCase("def c")
                 && colD.equalsIgnoreCase("def d");
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, true);
+        concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+            checker, true, false);
     }
 
     @Test
@@ -244,10 +240,8 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
                 && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("wumu"));
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false);
     }
 
     @Test
@@ -271,7 +265,7 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
                 && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("wumu"));
         concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator, generator, checker, true,
-            false, 1, createSql);
+            false, createSql);
     }
 
     @Test
@@ -295,7 +289,7 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
                 && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("wumu"));
         concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator, generator, checker, true,
-            false, 1, createSql);
+            false, createSql);
     }
 
     @Test
@@ -311,9 +305,9 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
                 + "replace into %%s values(%d, %f + %d,null,null)", count, count / 7.0, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
 
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
-            1, false, false, null);
-        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
-            1, false, false, null);
+        concurrentTestInternalWithNotStrict(tableName, colDef, alterSql, selectSql, generator, generator, checker, true,
+            true);
+        concurrentTestInternalWithNotStrict(tableName, colDef, alterSql, selectSql, generator, generator, checker, true,
+            false);
     }
 }

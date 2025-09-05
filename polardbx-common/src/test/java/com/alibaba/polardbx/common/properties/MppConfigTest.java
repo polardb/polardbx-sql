@@ -14,9 +14,9 @@ public class MppConfigTest {
     @Test
     public void testEnableMppUI() {
         assertTrue(MppConfig.getInstance().isEnableMppUI());
-        MppConfig.getInstance().loadValue(logger, ConnectionProperties.ENABLE_MPP_UI, "false");
+        MppConfig.getInstance().loadValue(logger, ConnectionProperties.MPP_ENABLE_UI, "false");
         assertFalse(MppConfig.getInstance().isEnableMppUI());
-        MppConfig.getInstance().loadValue(logger, ConnectionProperties.ENABLE_MPP_UI, "true");
+        MppConfig.getInstance().loadValue(logger, ConnectionProperties.MPP_ENABLE_UI, "true");
         assertTrue(MppConfig.getInstance().isEnableMppUI());
     }
 }

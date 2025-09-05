@@ -33,6 +33,8 @@ import org.junit.Assert;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Connection;
+import java.sql.Driver;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -43,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -224,6 +227,22 @@ public class JdbcUtil {
             String errorMs = "[Execute preparedStatement query] failed! sql is: " + sql;
             log.error(errorMs, e);
             Assert.fail(errorMs + " \n" + e);
+        }
+        return rs;
+    }
+
+    /**
+     * 执行查询,如果失败则assertError
+     */
+    public static ResultSet executeQueryWithoutAssert(String sql, Connection c) {
+        Statement ps = createStatement(c);
+        ResultSet rs = null;
+        try {
+            rs = ps.executeQuery(sql);
+        } catch (SQLException e) {
+            String errorMs = "[Execute preparedStatement query] failed! sql is: " + sql;
+            log.error(errorMs, e);
+//            Assert.fail(errorMs + " \n" + e);
         }
         return rs;
     }
@@ -1236,7 +1255,9 @@ public class JdbcUtil {
             }
             PreparedStatement tddlPs = preparedStatementSet(sql.toString(), values, connection);
             ResultSet tddlRs = executeQuery(sql.toString(), tddlPs);
-            Assert.assertTrue(tddlRs.next());
+            Assert.assertTrue(
+                sql + " params: " + values.stream().map(o -> "[" + o.toString() + "]").collect(Collectors.joining()),
+                tddlRs.next());
         }
     }
 
@@ -1398,10 +1419,11 @@ public class JdbcUtil {
 
     }
 
-    public static void executeUpdateSuccessInTrx(Connection conn, String sql) {
+    public static void executeUpdateSuccessInTsoTrx(Connection conn, String sql) {
         Statement stmt = null;
         try {
             stmt = conn.createStatement();
+            stmt.execute("set transaction_policy = TSO");
             stmt.execute("begin");
             stmt.execute(sql);
             stmt.execute("commit");
@@ -2023,6 +2045,18 @@ public class JdbcUtil {
                 logDb);
         JdbcUtil.executeUpdate(polarxConn, createDbSql);
         useDb(polarxConn, logDb);
+    }
+
+    public static Connection getPolarxPreparedConnection(String user, String password, String db) throws SQLException {
+        Properties props = new Properties();
+        props.setProperty("user", user);
+        props.setProperty("password", password);
+        props.setProperty("useServerPrepStmts", "true");
+
+        String dbUrl = String.format("jdbc:mysql://%s:%s/%s",
+                ConnectionManager.getInstance().getPolardbxAddress(), ConnectionManager.getInstance().getPolardbxPort(), db);
+        Driver driver = DriverManager.getDriver(dbUrl);
+        return driver.connect(dbUrl, props);
     }
 
 }

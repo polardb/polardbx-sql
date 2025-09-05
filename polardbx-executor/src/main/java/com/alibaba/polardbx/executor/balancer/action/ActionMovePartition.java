@@ -24,15 +24,19 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.balancer.policy.PolicyPartitionBalance;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
 import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Sets;
@@ -49,6 +53,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.MOVE_PARTITION_BEFORE_CHECK;
+import static com.alibaba.polardbx.gms.topology.DbTopologyManager.getGroupNameToStorageInstIdMap;
 
 /**
  * Move partition to balance data
@@ -244,18 +251,19 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
 
     public static String getMovesSql(String schema, String tableGroupName, List<ActionMovePartition> moves) {
         Map<String, String> targetStorageMap =
-            DbTopologyManager.getGroupNameToStorageInstIdMap(schema);
+            getGroupNameToStorageInstIdMap(schema);
         List<String> subSqls = new ArrayList<>();
         String sql = String.format(ALTER_TABLEGROUP_PARTITIONS_SUBSQL, TStringUtil.backQuote(tableGroupName));
         if (moves.get(0).isSubpartition) {
             sql = String.format(ALTER_TABLEGROUP_SUBPARTITIONS_SUBSQL, TStringUtil.backQuote(tableGroupName));
         }
         for (ActionMovePartition move : moves) {
-            if (!targetStorageMap.containsKey(move.toGroup)) {
+            if (move.toInst == null && (move.toGroup == null || !targetStorageMap.containsKey(move.toGroup))) {
                 throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE,
                     "target storage not found: group=" + move.toGroup);
             }
-            String targetStorage = targetStorageMap.get(move.toGroup);
+            String targetStorage = move.toInst != null ?
+                move.toInst : targetStorageMap.get(move.toGroup);
             String partitionList =
                 move.partitionNames.stream().map(TStringUtil::backQuote).collect(Collectors.joining(","));
             String subSql;
@@ -290,14 +298,45 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
         try {
             List<PartitionStat> partitionStatList =
                 stats.filterPartitionStat(tableGroupName, Sets.newHashSet(partitionNames));
+            partitionNames.clear();
+            Map<String, PartitionStat> partitionStatMap = new HashMap<>();
             for (PartitionStat partitionStat : partitionStatList) {
-                totalRows += partitionStat.getPartitionRows();
-                totalSize += partitionStat.getPartitionDiskSize();
+                partitionStatMap.put(partitionStat.getPartitionName(), partitionStat);
+            }
+            Map<String, String> groupNameToInsts = getGroupNameToStorageInstIdMap(schema);
+            for (ActionMovePartition actionMovePartition : moves) {
+                List<String> movePartitionsNames = actionMovePartition.getPartitionNames();
+                if (actionMovePartition.getToInst() != null) {
+                    for (String movePartitionName : movePartitionsNames) {
+                        PartitionStat partitionStat = partitionStatMap.get(movePartitionName);
+                        String phyDb = partitionStat.getPartitionGroupRecord().getPhy_db();
+                        String originalInstId = groupNameToInsts.get(GroupInfoUtil.buildGroupNameFromPhysicalDb(phyDb));
+                        if (!actionMovePartition.getToInst().equalsIgnoreCase(originalInstId)) {
+                            partitionNames.add(movePartitionName);
+                            totalRows += partitionStat.getPartitionRows();
+                            totalSize += partitionStat.getPartitionDiskSize();
+                        }
+                    }
+                } else if (actionMovePartition.getToGroup() != null) {
+                    for (String movePartitionName : movePartitionsNames) {
+                        PartitionStat partitionStat = partitionStatMap.get(movePartitionName);
+                        String phyDb = partitionStat.getPartitionGroupRecord().getPhy_db();
+                        String originalGroupName = GroupInfoUtil.buildGroupNameFromPhysicalDb(phyDb);
+                        if (!actionMovePartition.getToGroup().equalsIgnoreCase(originalGroupName)) {
+                            partitionNames.add(movePartitionName);
+                            totalRows += partitionStat.getPartitionRows();
+                            totalSize += partitionStat.getPartitionDiskSize();
+                        }
+                    }
+                }
             }
         } catch (Exception e) {
             EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
         }
-        return ActionUtils.convertToDelegatorJob(move.schema, sql,
+        String resource1 = String.format("%s.%s", schema, tableGroupName);
+//        String resource2 = MOVE_PARTITION_BEFORE_CHECK;
+        return ActionUtils.convertToDelegatorJob(move.schema, sql, Arrays.asList(resource1),
+            tableGroupName, partitionNames,
             CostEstimableDdlTask.createCostInfo(totalRows, totalSize, (long) move.getLogicalTableCount()));
     }
 

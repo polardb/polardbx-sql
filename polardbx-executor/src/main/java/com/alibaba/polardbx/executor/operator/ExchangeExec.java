@@ -24,6 +24,8 @@ import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.SerializedChunk;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
+import com.alibaba.polardbx.executor.mpp.operator.ExchangeClient;
+import com.alibaba.polardbx.executor.mpp.operator.HttpPageBufferClient;
 import com.alibaba.polardbx.executor.mpp.operator.IExchangeClient;
 import com.alibaba.polardbx.executor.mpp.split.RemoteSplit;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -161,11 +163,28 @@ public class ExchangeExec extends SourceExec implements Closeable {
     @Override
     public void forceClose() {
         try {
-            cacheLocations.clear();
+            // destroy established connection first
             exchangeClient.close();
+        } catch (Exception e) {
+            log.error("exchange client close exception when closing ExchangeExec", e);
+        }
+        try {
+            // establish an RPC channel to send delete
+            clearCacheLocations();
+        } catch (Exception e) {
+            log.error("clear cache locations exception when closing ExchangeExec", e);
+        }
+        try {
             memoryPool.destroy();
-        } catch (IOException e) {
-            log.error("exchange operator close exception", e);
+        } catch (Exception e) {
+            log.error("memoryPool destroy exception when closing ExchangeExec", e);
+        }
+    }
+
+    private void clearCacheLocations() {
+        for (TaskLocation cacheLocation : cacheLocations) {
+            HttpPageBufferClient client = exchangeClient.buildHttpPageBufferClient(cacheLocation);
+            client.closeQuietly();
         }
     }
 

@@ -32,24 +32,30 @@ public class HotGsiEvolutionDisableEvolutionTest extends HotGsiEvolutionTest {
     protected String validator(SqlParameterized sqlParameterized, ExecutionPlan executionPlan,
                                ExecutionContext executionContext) {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
-        DynamicConfig.getInstance()
-            .loadValue(null, ConnectionProperties.ENABLE_HOT_GSI_EVOLUTION, String.valueOf(false));
-        PlanManager.getInstance().getBaselineMap().clear();
-        invokeEvolve(sqlParameterized, executionPlan, executionContext);
-        Assert.assertTrue(PlanManager.getInstance().getBaselineMap(appName).isEmpty());
+        try {
+            DynamicConfig.getInstance()
+                .loadValue(null, ConnectionProperties.ENABLE_HOT_GSI_EVOLUTION, String.valueOf(false));
+            PlanManager.getInstance().getBaselineMap().clear();
+            invokeEvolve(sqlParameterized, executionPlan, executionContext);
+            Assert.assertTrue(PlanManager.getInstance().getBaselineMap(appName).isEmpty());
 
-        DynamicConfig.getInstance()
-            .loadValue(null, ConnectionProperties.ENABLE_HOT_GSI_EVOLUTION, String.valueOf(true));
-        PlanManager.getInstance().getBaselineMap().clear();
-        invokeEvolve(sqlParameterized, executionPlan, executionContext);
-        Assert.assertTrue(PlanManager.getInstance().getBaselineMap(appName).size() == 1);
-        String planStr = RelUtils
-            .toString(executionPlan.getPlan(), OptimizerUtils.buildParam(sqlParameterized.getParameters()),
-                RexUtils.getEvalFunc(executionContext), executionContext);
+            DynamicConfig.getInstance()
+                .loadValue(null, ConnectionProperties.ENABLE_HOT_GSI_EVOLUTION, String.valueOf(true));
+            PlanManager.getInstance().getBaselineMap().clear();
+            invokeEvolve(sqlParameterized, executionPlan, executionContext);
+            Assert.assertTrue(PlanManager.getInstance().getBaselineMap(appName).size() == 1);
+            String planStr = RelUtils
+                .toString(executionPlan.getPlan(), OptimizerUtils.buildParam(sqlParameterized.getParameters()),
+                    RexUtils.getEvalFunc(executionContext), executionContext);
 
-        String code = removeSubqueryHashCode(planStr, executionPlan.getPlan(),
-            executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter(),
-            executionContext.getSqlExplainLevel());
-        return code;
+            String code = removeSubqueryHashCode(planStr, executionPlan.getPlan(),
+                executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter(),
+                executionContext.getSqlExplainLevel());
+            return code;
+        } finally {
+            DynamicConfig.getInstance()
+                .loadValue(null, ConnectionProperties.ENABLE_HOT_GSI_EVOLUTION, String.valueOf(true));
+        }
+
     }
 }

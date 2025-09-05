@@ -69,13 +69,20 @@ public class FlashbackDeleteBitmapManager extends AbstractLifecycle {
             long tableId = Long.parseLong(deleteFileMeta.getLogicalTableName());
             Engine engine = deleteFileMeta.getEngine();
 
+            Integer maxLength = null;
+
+            if (readPos < 0) {
+                maxLength =
+                    ((DynamicColumnarManager) ColumnarManager.getInstance()).getMaxLength(deleteFileName, flashbackTso);
+            }
+
             try (SimpleDeletionFileReader fileReader = new SimpleDeletionFileReader()) {
                 try {
                     fileReader.open(
                         engine,
                         deleteFileName,
                         0,
-                        readPos.intValue()
+                        readPos < 0 ? maxLength : readPos.intValue()
                     );
                 } catch (IOException e) {
                     throw new TddlRuntimeException(ErrorCode.ERR_LOAD_DEL_FILE, e,
@@ -84,7 +91,12 @@ public class FlashbackDeleteBitmapManager extends AbstractLifecycle {
                 }
 
                 DeletionFileReader.DeletionEntry entry;
-                while (fileReader.position() < readPos && (entry = fileReader.next()) != null) {
+                // readPos < 0 means auto position for flashback query
+                while ((readPos < 0 || fileReader.position() < readPos) && (entry = fileReader.next()) != null) {
+                    final long tso = entry.getTso();
+                    if (tso > flashbackTso) {
+                        break;
+                    }
                     final int fileId = entry.getFileId();
                     final RoaringBitmap bitmap = entry.getBitmap();
                     ColumnarManager.getInstance().fileNameOf(logicalSchema, tableId, partName, fileId)

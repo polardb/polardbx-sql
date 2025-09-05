@@ -11,11 +11,7 @@ import org.junit.Test;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.util.JdbcUtil.getTopology;
@@ -24,7 +20,10 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
 
     private static final String tableSchema = "_rollbackDb_";
     private static final String hint =
-        "/*+TDDL:cmd_extra(TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG = 'READY_TO_PUBLIC')*/ ";
+            "/*+TDDL:cmd_extra(TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG = 'READY_TO_PUBLIC')*/ ";
+    private static final String[] erroMsgs = {
+            "cancelled or interrupted", "does not exist in"
+    };
 
     @Test
     public void testMoveTableRollback() throws SQLException {
@@ -47,14 +46,13 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             Assert.assertTrue(!result.get(0).get(3).equalsIgnoreCase(result.get(1).get(3)));
 
             sql1 = String.format("alter table %s move partitions %s to '%s'", tableName, result.get(0).get(2),
-                result.get(1).get(3));
+                    result.get(1).get(3));
 
-            String ignoreErr =
-                "The DDL job has been paused or cancelled. Please use SHOW DDL";
+            String ignoreErr = "The DDL job has been cancelled or interrupted";
             Set<String> ignoreErrs = new HashSet<>();
             ignoreErrs.add(ignoreErr);
             JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, hint + sql1,
-                ignoreErrs);
+                    ignoreErrs);
             Long jobId = getDDLJobId(tddlConnection);
             String rollbackDdl = "rollback ddl " + jobId;
             if (i == 1) {
@@ -62,7 +60,7 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             } else {
                 sql1 = String.format("/*+TDDL:node('%s')*/  drop table %s", result.get(0).get(0), result.get(0).get(1));
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
-                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, "The DDL job has been paused or cancelled");
+                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, erroMsgs);
             }
         } while (i <= 1);
     }
@@ -94,15 +92,14 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             Assert.assertTrue(!result.get(0).get(3).equalsIgnoreCase(result.get(1).get(3)));
 
             sql1 = String.format("alter tablegroup by table %s move partitions %s to '%s'", tableName1,
-                result.get(0).get(2),
-                result.get(1).get(3));
+                    result.get(0).get(2),
+                    result.get(1).get(3));
 
-            String ignoreErr =
-                "The DDL job has been paused or cancelled. Please use SHOW DDL";
+            String ignoreErr = "The DDL job has been cancelled or interrupted";
             Set<String> ignoreErrs = new HashSet<>();
             ignoreErrs.add(ignoreErr);
             JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, hint + sql1,
-                ignoreErrs);
+                    ignoreErrs);
             Long jobId = getDDLJobId(tddlConnection);
             String rollbackDdl = "rollback ddl " + jobId;
             if (i == 1) {
@@ -110,7 +107,7 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             } else {
                 sql1 = String.format("/*+TDDL:node('%s')*/  drop table %s", result.get(0).get(0), result.get(0).get(1));
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
-                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, "The DDL job has been paused or cancelled");
+                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, erroMsgs);
             }
         } while (i <= 1);
     }
@@ -137,12 +134,11 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
 
             sql1 = String.format("alter table %s split partition %s", tableName, result.get(0).get(2));
 
-            String ignoreErr =
-                "The DDL job has been paused or cancelled. Please use SHOW DDL";
+            String ignoreErr = "The DDL job has been cancelled or interrupted";
             Set<String> ignoreErrs = new HashSet<>();
             ignoreErrs.add(ignoreErr);
             JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, hint + sql1,
-                ignoreErrs);
+                    ignoreErrs);
             Long jobId = getDDLJobId(tddlConnection);
             String rollbackDdl = "rollback ddl " + jobId;
             if (i == 1) {
@@ -150,7 +146,7 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             } else {
                 sql1 = String.format("/*+TDDL:node('%s')*/  drop table %s", result.get(0).get(0), result.get(0).get(1));
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
-                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, "The DDL job has been paused or cancelled");
+                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, erroMsgs);
             }
         } while (i <= 1);
     }
@@ -183,12 +179,11 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
 
             sql1 = String.format("alter tablegroup by table %s split partition %s", tableName1, result.get(0).get(2));
 
-            String ignoreErr =
-                "The DDL job has been paused or cancelled. Please use SHOW DDL";
+            String ignoreErr = "The DDL job has been cancelled or interrupted";
             Set<String> ignoreErrs = new HashSet<>();
             ignoreErrs.add(ignoreErr);
             JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, hint + sql1,
-                ignoreErrs);
+                    ignoreErrs);
             Long jobId = getDDLJobId(tddlConnection);
             String rollbackDdl = "rollback ddl " + jobId;
             if (i == 1) {
@@ -196,7 +191,7 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             } else {
                 sql1 = String.format("/*+TDDL:node('%s')*/  drop table %s", result.get(0).get(0), result.get(0).get(1));
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
-                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, "The DDL job has been paused or cancelled");
+                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, erroMsgs);
             }
         } while (i <= 1);
     }
@@ -222,14 +217,13 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             Assert.assertTrue(!result.get(0).get(3).equalsIgnoreCase(result.get(1).get(3)));
 
             sql1 = String.format("alter table %s merge partitions %s, %s to %s", tableName, result.get(0).get(2),
-                result.get(1).get(2), "pp");
+                    result.get(1).get(2), "pp");
 
-            String ignoreErr =
-                "The DDL job has been paused or cancelled. Please use SHOW DDL";
+            String ignoreErr = "The DDL job has been cancelled or interrupted";
             Set<String> ignoreErrs = new HashSet<>();
             ignoreErrs.add(ignoreErr);
             JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, hint + sql1,
-                ignoreErrs);
+                    ignoreErrs);
             Long jobId = getDDLJobId(tddlConnection);
             String rollbackDdl = "rollback ddl " + jobId;
             if (i == 1) {
@@ -237,7 +231,7 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             } else {
                 sql1 = String.format("/*+TDDL:node('%s')*/  drop table %s", result.get(0).get(0), result.get(0).get(1));
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
-                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, "The DDL job has been paused or cancelled");
+                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, erroMsgs);
             }
         } while (i <= 1);
     }
@@ -269,16 +263,15 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             Assert.assertTrue(!result.get(0).get(3).equalsIgnoreCase(result.get(1).get(3)));
 
             sql1 =
-                String.format("alter tablegroup by table %s merge partitions %s, %s to %s", tableName1,
-                    result.get(0).get(2),
-                    result.get(1).get(2), "pp");
+                    String.format("alter tablegroup by table %s merge partitions %s, %s to %s", tableName1,
+                            result.get(0).get(2),
+                            result.get(1).get(2), "pp");
 
-            String ignoreErr =
-                "The DDL job has been paused or cancelled. Please use SHOW DDL";
+            String ignoreErr = "The DDL job has been cancelled or interrupted";
             Set<String> ignoreErrs = new HashSet<>();
             ignoreErrs.add(ignoreErr);
             JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, hint + sql1,
-                ignoreErrs);
+                    ignoreErrs);
             Long jobId = getDDLJobId(tddlConnection);
             String rollbackDdl = "rollback ddl " + jobId;
             if (i == 1) {
@@ -286,7 +279,7 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
             } else {
                 sql1 = String.format("/*+TDDL:node('%s')*/  drop table %s", result.get(0).get(0), result.get(0).get(1));
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
-                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, "The DDL job has been paused or cancelled");
+                JdbcUtil.executeFailed(tddlConnection, rollbackDdl, erroMsgs);
             }
         } while (i <= 1);
     }
@@ -312,9 +305,9 @@ public class DdlRollbackTest extends DDLBaseNewDBTestCase {
         Random random = new Random();
 
         return random.ints(len, 0, characters.length())
-            .mapToObj(i -> characters.charAt(i))
-            .map(Object::toString)
-            .collect(Collectors.joining());
+                .mapToObj(i -> characters.charAt(i))
+                .map(Object::toString)
+                .collect(Collectors.joining());
     }
 
     @Before

@@ -21,6 +21,7 @@ DROP TABLE IF EXISTS `t_order_broadcast_4`;
 DROP TABLE IF EXISTS `t_order_broadcast_5`;
 DROP TABLE IF EXISTS `heavy_qps_table`;
 DROP TABLE IF EXISTS `region`;
+DROP TABLE IF EXISTS `tb_order`;
 
 # create auto partition table with cci (without PARTITION BY and PARTITIONS)
 /*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE TABLE `t_order_0` (
@@ -836,6 +837,57 @@ CHECK COLUMNAR INDEX `region_col_index` ON `region` meta;
 CCI,error_type,status,primary_key,details
 `region_col_index_$` ON `part_mtr`.`region`,SUMMARY,--,--,OK (metadata of columnar index checked) Finish time: %
 
+# 测试当cci的排序键和分区键一致时，生成auto_shard_key的情况
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE TABLE `tb_order` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`id2` smallint(5) DEFAULT NULL,
+	`order_no` varchar(50) NOT NULL,
+	`amount` decimal(10, 2) NOT NULL,
+	`create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+	`update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `c_ci_create_time`(`order_no`) PARTITION BY HASH (TO_DAYS(`create_time`)) PARTITIONS 16 ENGINE = OSS
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`order_no`) PARTITIONS 16
+SHOW CREATE TABLE `tb_order`
+Table,Create Table
+tb_order,CREATE TABLE `tb_order` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`id2` smallint(5) DEFAULT NULL,
+	`order_no` varchar(50) NOT NULL,
+	`amount` decimal(10, 2) NOT NULL,
+	`create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+	`update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `c_ci_create_time` (`order_no`)
+		PARTITION BY HASH(TO_DAYS(`create_time`))
+		PARTITIONS 16,
+	KEY `auto_shard_key_order_no` USING BTREE (`order_no`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_no`)
+PARTITIONS 16
+SHOW FULL CREATE TABLE `tb_order`
+Table,Create Table
+tb_order,CREATE TABLE `tb_order` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`id2` smallint(5) DEFAULT NULL,
+	`order_no` varchar(50) NOT NULL,
+	`amount` decimal(10, 2) NOT NULL,
+	`create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+	`update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* c_ci_create_time_$ */ `c_ci_create_time` (`order_no`)
+		PARTITION BY HASH(TO_DAYS(`create_time`))
+		PARTITIONS 16 ENGINE=OSS,
+	LOCAL KEY `auto_shard_key_order_no` USING BTREE (`order_no`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_no`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+CHECK COLUMNAR INDEX `c_ci_create_time` ON `tb_order` meta
+CCI,error_type,status,primary_key,details
+`c_ci_create_time_$` ON `test_create_tabl_2124162371`.`tb_order`,SUMMARY,--,--,OK (metadata of columnar index checked) Finish time: %
+
 DROP TABLE IF EXISTS `t_order_0`;
 DROP TABLE IF EXISTS `t_order_1`;
 DROP TABLE IF EXISTS `t_order_2`;
@@ -859,3 +911,4 @@ DROP TABLE IF EXISTS `t_order_broadcast_4`;
 DROP TABLE IF EXISTS `t_order_broadcast_5`;
 DROP TABLE IF EXISTS `heavy_qps_table`;
 DROP TABLE IF EXISTS `region`;
+DROP TABLE IF EXISTS `tb_order`;

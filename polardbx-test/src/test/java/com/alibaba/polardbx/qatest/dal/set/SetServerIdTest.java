@@ -1,6 +1,7 @@
 package com.alibaba.polardbx.qatest.dal.set;
 
 import com.alibaba.polardbx.druid.util.StringUtils;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DirectConnectionBaseTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
@@ -18,6 +19,7 @@ import java.sql.SQLException;
 public class SetServerIdTest extends DirectConnectionBaseTestCase {
 
     @Test
+    @CdcIgnore(ignoreReason = "该测试用例会导致binlog重建前后server id不一致")
     public void testSetServerId() throws SQLException, InterruptedException {
 
         try {

@@ -33,23 +33,30 @@ public class ColumnarFlashbackQueryTest extends ColumnarReadBaseTestCase {
 
     private final String partDef;
     private final int cciPartCount;
+    private final String columnarHint;
 
-    @Parameterized.Parameters(name = "{index}:partDef={0},cciPartCount={1},number={2}")
+    @Parameterized.Parameters(name = "{index}:partDef={0},cciPartCount={1},number={2},autoPosition={3}")
     public static Object[][] data() {
         return new Object[][] {
-            {ExecuteTableSelect.DEFAULT_NEW_PARTITIONING_DEFINITION, 1, 0},
-            {ExecuteTableSelect.DEFAULT_NEW_PARTITIONING_DEFINITION, 4, 1},
-            {" single", 1, 2},
-            {" single", 4, 3},
+            {ExecuteTableSelect.DEFAULT_NEW_PARTITIONING_DEFINITION, 1, 0, true},
+            {ExecuteTableSelect.DEFAULT_NEW_PARTITIONING_DEFINITION, 4, 1, true},
+            {" single", 1, 2, true},
+            {" single", 4, 3, true},
+            {ExecuteTableSelect.DEFAULT_NEW_PARTITIONING_DEFINITION, 1, 4, false},
+            {ExecuteTableSelect.DEFAULT_NEW_PARTITIONING_DEFINITION, 4, 5, false},
+            {" single", 1, 6, false},
+            {" single", 4, 7, false},
         };
     }
 
-    public ColumnarFlashbackQueryTest(String partDef, int cciPartCount, int caseNumber) {
+    public ColumnarFlashbackQueryTest(String partDef, int cciPartCount, int caseNumber, boolean autoPosition) {
         this.partDef = partDef;
         this.cciPartCount = cciPartCount;
         this.sourceTable = "insert_select_source_" + caseNumber;
         this.cciName = sourceTable + "_cci";
         this.targetName = "insert_select_target_" + caseNumber;
+        this.columnarHint = autoPosition ? "/*+TDDL: cmd_extra(ENABLE_COLUMNAR_SNAPSHOT_AUTO_POSITION=true)*/" :
+            "/*+TDDL: cmd_extra(ENABLE_COLUMNAR_SNAPSHOT_AUTO_POSITION=false)*/";
     }
 
     @Before
@@ -70,6 +77,15 @@ public class ColumnarFlashbackQueryTest extends ColumnarReadBaseTestCase {
         ColumnarUtils.createColumnarIndex(tddlConnection,
             cciName, sourceTable, "id", "id", cciPartCount);
 
+        // prepare csv data
+        for (String sql : GsiConstant.buildGsiFullTypeTestInserts(sourceTable)
+            .values().stream().flatMap(List::stream).collect(Collectors.toList())) {
+            if (sql.contains(NOT_SUPPORTED_ENUM) || sql.contains(NOT_SUPPORTED_C_BIT_64)) {
+                continue;
+            }
+            JdbcUtil.executeUpdate(tddlConnection, sql, true, true);
+        }
+
         // prepare target table
         JdbcUtil.dropTable(tddlConnection, targetName);
         JdbcUtil.executeUpdateSuccess(tddlConnection,
@@ -80,20 +96,23 @@ public class ColumnarFlashbackQueryTest extends ColumnarReadBaseTestCase {
     public void testInsertSelect() throws InterruptedException, SQLException {
         long oldTso = ColumnarUtils.columnarFlushAndGetTso(tddlConnection);
         Assert.assertTrue(oldTso > 0, "Failed to flush columnar snapshot");
+        JdbcUtil.executeQuery("begin", tddlConnection);
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             String.format("update %s set c_bigint_64 = id + %d", sourceTable, UPDATE_OFFSET));
+        JdbcUtil.executeQuery("commit", tddlConnection);
         waitForSync(tddlConnection);
 
         checkFlashbackQueryOldResult(oldTso);
 
         // insert select from source table for old data
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("insert into %s select * from %s as of tso %d force index(%s)",
+            String.format(this.columnarHint + "insert into %s select * from %s as of tso %d force index(%s)",
                 targetName, sourceTable, oldTso, cciName));
 
         DataValidator.selectContentSameAssertWithDiffSql(
             String.format("select * from %s", targetName),
-            String.format("select * from %s as of tso %d force index(%s)", sourceTable, oldTso, cciName),
+            String.format(this.columnarHint + "select * from %s as of tso %d force index(%s)", sourceTable, oldTso,
+                cciName),
             null, tddlConnection, tddlConnection, false, false, false
         );
     }
@@ -102,8 +121,10 @@ public class ColumnarFlashbackQueryTest extends ColumnarReadBaseTestCase {
     public void testReplaceSelect() throws InterruptedException, SQLException {
         long oldTso = ColumnarUtils.columnarFlushAndGetTso(tddlConnection);
         Assert.assertTrue(oldTso > 0, "Failed to flush columnar snapshot");
+        JdbcUtil.executeQuery("begin", tddlConnection);
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             String.format("update %s set c_bigint_64 = id + %d", sourceTable, UPDATE_OFFSET));
+        JdbcUtil.executeQuery("commit", tddlConnection);
         waitForSync(tddlConnection);
 
         checkFlashbackQueryOldResult(oldTso);
@@ -116,12 +137,13 @@ public class ColumnarFlashbackQueryTest extends ColumnarReadBaseTestCase {
 
         // insert select from source table for old data
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("replace into %s select * from %s as of tso %d force index(%s)",
+            String.format(this.columnarHint + "replace into %s select * from %s as of tso %d force index(%s)",
                 targetName, sourceTable, oldTso, cciName));
 
         DataValidator.selectContentSameAssertWithDiffSql(
             String.format("select * from %s", targetName),
-            String.format("select * from %s as of tso %d force index(%s)", sourceTable, oldTso, cciName),
+            String.format(this.columnarHint + "select * from %s as of tso %d force index(%s)", sourceTable, oldTso,
+                cciName),
             null, tddlConnection, tddlConnection, false, false, false
         );
     }
@@ -134,7 +156,8 @@ public class ColumnarFlashbackQueryTest extends ColumnarReadBaseTestCase {
 
     private void checkFlashbackQueryOldResult(long oldTso) throws SQLException {
         ResultSet rs = JdbcUtil.executeQuery(
-            String.format("select c_bigint_64 from %s as of tso %d force index(%s)", sourceTable, oldTso,
+            String.format(this.columnarHint + "select c_bigint_64 from %s as of tso %d force index(%s)", sourceTable,
+                oldTso,
                 cciName),
             tddlConnection
         );

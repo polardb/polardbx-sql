@@ -253,7 +253,7 @@
     ) t3 on t1.c1 = t3.max_c2;
 
   plan: |
-    project(c10="c10", c2="c20", c1="c1", $1="f2w0$o0")
+    project(c1="c10", c2="c20", c10="c1", $1="f2w0$o0")
       bkajoin(condition="f2w0$o0 = c1", type="inner")
         hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
           exchange(distribution=hash[0], collation=[])
@@ -269,7 +269,7 @@
 
   plan: |
 
-    project(c10="c1", c2="c2", c1="c10", $1="f2w0$o0")
+    project(c1="c1", c2="c2", c10="c10", $1="f2w0$o0")
       hashjoin(condition="c1 = c1", type="inner")
         exchange(distribution=hash[0], collation=[])
           logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")

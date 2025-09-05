@@ -2,9 +2,13 @@ package com.alibaba.polardbx.group.config;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.ha.HaSwitchParams;
+import com.alibaba.polardbx.gms.ha.HaSwitcher;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.server.SwitchoverManager;
+import com.alibaba.polardbx.server.response.OnDnChangeLeaderAction;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.MockedStatic;
@@ -12,6 +16,8 @@ import org.mockito.Mockito;
 
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 public class OptimizedGroupConfigManagerTest {
@@ -84,4 +90,32 @@ public class OptimizedGroupConfigManagerTest {
         }
     }
 
+    @Test
+    public void testSwitchover0() {
+        final TGroupDataSource tGroupDataSource = new TGroupDataSource("abc", "def",
+            "gh", "ijk");
+        final OptimizedGroupConfigManager optimizedGroupConfigManager =
+            new OptimizedGroupConfigManager(tGroupDataSource);
+        final HaSwitcher sw = optimizedGroupConfigManager.getGroupDsSwithcer();
+        sw.doHaSwitch(new HaSwitchParams());
+    }
+
+    @Test
+    public void testSwitchover1() {
+        final TGroupDataSource tGroupDataSource = new TGroupDataSource("abc", "def",
+            "gh", "ijk");
+        final OptimizedGroupConfigManager optimizedGroupConfigManager =
+            new OptimizedGroupConfigManager(tGroupDataSource);
+        final HaSwitcher sw = optimizedGroupConfigManager.getGroupDsSwithcer();
+
+        try (final MockedStatic<SwitchoverManager> switchoverManagerMockedStatic = mockStatic(SwitchoverManager.class);
+            final MockedStatic<OnDnChangeLeaderAction> onDnChangeLeaderActionMockedStatic = mockStatic(
+                OnDnChangeLeaderAction.class)) {
+            switchoverManagerMockedStatic.when(SwitchoverManager::rescheduleAll).thenAnswer(i -> null);
+            onDnChangeLeaderActionMockedStatic.when(() -> OnDnChangeLeaderAction.onDnLeaderChanging(anyBoolean()))
+                .thenAnswer(i -> null);
+
+            sw.doHaSwitch(new HaSwitchParams());
+        }
+    }
 }

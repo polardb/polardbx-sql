@@ -409,7 +409,7 @@ public class ChangeSetExecutor extends Extractor {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, modifyStringColumns, ec);
 
         ExtractorInfo info =
-            Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, false, false,
+            Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true, false,
                 onlineModifyColumn);
 
         SqlSelect.LockMode lockMode = SqlSelect.LockMode.UNDEF;

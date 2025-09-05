@@ -1,6 +1,84 @@
 -
   sql: |
 
+    select * from t_decimal where b = 1;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].t_decimal_[00-15]", shardcount=16, sql="select `a`, `b`, `c` from `t_decimal` as `t_decimal` where (`b` = 1)")
+-
+  sql: |
+
+    /*+TDDL:cmd_extra(ENABLE_INDEX_SELECTION_PRUNE=false)*/ select * from t_decimal where b = 1;
+
+  plan: |
+    project(a="a", b="b", c="c")
+
+-
+  sql: |
+
+    select * from t_decimal force index(gsi_b) where b = 1;
+
+  plan: |
+    project(a="a", b="b", c="c")
+
+
+-
+  sql: |
+
+    select * from t_decimal, t_order where t_order.seller_id = 's1' and t_order.id = a;
+
+  plan: |
+    hashjoin(condition="a = id", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_decimal_[00-15]", shardcount=16, sql="select `a`, `b`, `c` from `t_decimal` as `t_decimal`")
+      project(id="id", order_id="order_id", buyer_id="buyer_id", seller_id="seller_id", order_snapshot="order_snapshot", order_detail="order_detail")
+        bkajoin(condition="id = id and order_id <=> order_id", type="inner")
+          indexscan(tables="optest_0000.g_i_seller_02", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot` from `g_i_seller` as `g_i_seller` where (`seller_id` = 's1')")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t_order_[00-11]", shardcount=12, sql="select `id`, `order_id`, `order_detail` from `t_order` as `t_order` where ((`seller_id` = 's1') and (`id` in (...)))")
+-
+  sql: |
+
+    /*+TDDL:cmd_extra(enable_hash_join=false enable_sort_merge_join=false enable_nl_join=false)*/
+    select * from t_decimal, t_order where t_order.seller_id = 's1' and t_order.id = a;
+
+  plan: |
+    bkajoin(condition="a = id", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_decimal_[00-15]", shardcount=16, sql="select `a`, `b`, `c` from `t_decimal` as `t_decimal`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_order_[00-11]", shardcount=12, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` where ((`seller_id` = 's1') and (`id` in (...)))")
+-
+  sql: |
+
+    select * from t_decimal, t_order where t_order.seller_id = 's1' and t_order.id = a and b = 1;
+
+  plan: |
+
+    hashjoin(condition="a = id", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_decimal_[00-15]", shardcount=16, sql="select `a`, `b`, `c` from `t_decimal` as `t_decimal` where (`b` = 1)")
+      project(id="id", order_id="order_id", buyer_id="buyer_id", seller_id="seller_id", order_snapshot="order_snapshot", order_detail="order_detail")
+        bkajoin(condition="id = id and order_id <=> order_id", type="inner")
+          indexscan(tables="optest_0000.g_i_seller_02", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot` from `g_i_seller` as `g_i_seller` where (`seller_id` = 's1')")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t_order_[00-11]", shardcount=12, sql="select `id`, `order_id`, `order_detail` from `t_order` as `t_order` where ((`seller_id` = 's1') and (`id` in (...)))")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(enable_hash_join=false enable_sort_merge_join=false enable_nl_join=false)*/
+    select * from t_decimal, t_order where t_order.seller_id = 's1' and t_order.id = a and b = 1;
+
+  plan: |
+    bkajoin(condition="a = id", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_decimal_[00-15]", shardcount=16, sql="select `a`, `b`, `c` from `t_decimal` as `t_decimal` where (`b` = 1)")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_order_[00-11]", shardcount=12, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `t_order` as `t_order` where ((`seller_id` = 's1') and (`id` in (...)))")
+-
+  sql: |
+
     select t_order.id,t_order.order_snapshot from t_order where t_order.seller_id = 's1';
 
   plan: |
@@ -456,7 +534,7 @@
       bkajoin(condition="id = id and order_id <=> order_id", type="inner")
         indexscan(tables="optest_0001.g_i_seller_03", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot` from `g_i_seller` as `g_i_seller` where ((`seller_id` = 's2') and (`buyer_id` = 'b2')) order by `order_id`")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].t_order_[00-11]", shardcount=12, sql="select `id`, `order_id`, `order_detail` from `t_order` as `t_order` where ((`buyer_id` = 'b2') and (`seller_id` = 's2') and (`id` in (...)))")
+          logicalview(tables="[0000-0003].t_order_[00-11]", shardcount=12, sql="select `id`, `order_id`, `order_detail` from `t_order` as `t_order` where ((`seller_id` = 's2') and (`buyer_id` = 'b2') and (`id` in (...)))")
 
 -
   sql: |
@@ -709,7 +787,7 @@
     select * from test_index join test_index_join on test_index.k1 = test_index_join.k where test_index_join.id = 1;
 
   plan: |
-    project(id0="id0", k1="k1", k2="k2", value="value", d1="d1", id="id", k="k")
+    project(id="id0", k1="k1", k2="k2", value="value", d1="d1", id0="id", k="k")
       bkajoin(condition="k = k1", type="inner")
         logicalview(tables="optest_0001.test_index_join", sql="select `id`, `k` from `test_index_join` as `test_index_join` where (`id` = 1)")
         project(id="id", k1="k1", k2="k2", value="value", d1="d1")

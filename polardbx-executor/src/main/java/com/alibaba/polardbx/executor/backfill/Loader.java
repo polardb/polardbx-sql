@@ -167,6 +167,8 @@ public abstract class Loader extends PhyOperationBuilderCommon {
             return 0;
         }
 
+        baseEcAndIndexPair.getKey().setTxIsolation(Connection.TRANSACTION_READ_COMMITTED);
+
         // Batch insert
         final Integer batchInsertResult =
             GsiUtils.wrapWithDistributedTrx(tm, baseEcAndIndexPair.getKey(), (insertEc) -> {

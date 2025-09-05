@@ -1,0 +1,51 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION=true;
+
+create table auto_rng_part_tc6_t1(
+a int not null auto_increment,
+b bigint not null,
+primary key(a)
+)
+partition by range columns(b)
+(
+partition p1 values less than(1000),
+partition p2 values less than(2000),
+partition p3 values less than(3000)
+)
+;
+
+alter table auto_rng_part_tc6_t1 modify ttl set ttl_expr=`b` expire over 8 partitions, archive_type='PARTITION', ttl_part_interval=interval(1000, NUMBER), archive_table_post_allocate=8;
+show create table auto_rng_part_tc6_t1;
+
+alter table auto_rng_part_tc6_t1 cleanup expired data;
+
+create table auto_rng_part_tc6_t1_bk like auto_rng_part_tc6_t1 engine=columnar archive_mode='ttl';
+
+alter table auto_rng_part_tc6_t1 modify ttl set ttl_cleanup='on';
+
+show create table auto_rng_part_tc6_t1;
+alter table auto_rng_part_tc6_t1 cleanup expired data;
+show create table auto_rng_part_tc6_t1;
+
+alter table auto_rng_part_tc6_t1 modify ttl set ttl_part_interval=interval(100000, number);
+
+show create table auto_rng_part_tc6_t1;
+alter table auto_rng_part_tc6_t1 cleanup expired data;
+show create table auto_rng_part_tc6_t1;
+
+alter table auto_rng_part_tc6_t1 add partition
+(
+partition p300000 values less than(300000)
+);
+
+show create table auto_rng_part_tc6_t1;
+alter table auto_rng_part_tc6_t1 cleanup expired data;
+show create table auto_rng_part_tc6_t1;
+
+drop table auto_rng_part_tc6_t1;

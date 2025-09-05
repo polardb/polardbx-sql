@@ -48,6 +48,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIgnoreIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIndexHintImpl;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPagingForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUseIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
@@ -879,6 +880,14 @@ public class MySqlSelectParser extends SQLSelectParser {
         if (lexer.identifierEquals(FnvHash.Constants.FORCE)) {
             lexer.nextToken();
             MySqlForceIndexHint hint = new MySqlForceIndexHint();
+            parseIndexHint(hint);
+            tableSource.getHints().add(hint);
+            parseIndexHintList(tableSource);
+        }
+
+        if (lexer.identifierEquals(FnvHash.Constants.PAGING_FORCE)) {
+            lexer.nextToken();
+            MySqlPagingForceIndexHint hint = new MySqlPagingForceIndexHint();
             parseIndexHint(hint);
             tableSource.getHints().add(hint);
             parseIndexHintList(tableSource);

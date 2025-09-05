@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.executor.operator.util.DriverObjectPool;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
@@ -40,11 +41,12 @@ public abstract class AbstractBlock implements Block, RandomAccessBlock {
      */
     long elementUsedBytes;
 
+    @FieldMemoryCounter(false)
     protected DataType dataType;
     protected boolean[] isNull;
     protected boolean hasNull;
-    protected String digest;
 
+    @FieldMemoryCounter(false)
     protected DriverObjectPool.Recycler recycler;
 
     AbstractBlock(int arrayOffset, int positionCount, boolean[] valueIsNull) {
@@ -162,10 +164,12 @@ public abstract class AbstractBlock implements Block, RandomAccessBlock {
 
     @Override
     public String getDigest() {
-        if (digest == null) {
-            digest();
-        }
-        return digest;
+        return new StringBuilder()
+            .append("{class = ").append(getClass().getSimpleName())
+            .append(", datatype = ").append(dataType == null ? "null" : dataType.toString())
+            .append(", size = ").append(positionCount)
+            .append("}")
+            .toString();
     }
 
     @Override
@@ -198,15 +202,6 @@ public abstract class AbstractBlock implements Block, RandomAccessBlock {
         another.resize(positionCount);
     }
 
-    protected void digest() {
-        this.digest = new StringBuilder()
-            .append("{class = ").append(getClass().getSimpleName())
-            .append(", datatype = ").append(dataType == null ? "null" : dataType.toString())
-            .append(", size = ").append(positionCount)
-            .append("}")
-            .toString();
-    }
-
     protected void updateElementAt(int position, Object element, Consumer<Object> consumer) {
         if (element != null) {
             isNull[position] = false;
@@ -235,6 +230,11 @@ public abstract class AbstractBlock implements Block, RandomAccessBlock {
     @Override
     public void setElementAt(int position, Object element) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return getElementUsedBytes();
     }
 
     @Override

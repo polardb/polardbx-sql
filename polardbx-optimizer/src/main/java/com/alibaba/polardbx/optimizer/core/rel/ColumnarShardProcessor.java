@@ -61,4 +61,27 @@ public class ColumnarShardProcessor {
         PhysicalPartitionInfo phyPartInfo = router.routeTuple(valuesOfAllLevelPartCols);
         return phyPartInfo.getPartName();
     }
+
+    /**
+     * 由于旧版本PartTupleRouter初始化ExecutionContext.copy开销比较大，所以提供一个新方法，避免重复初始化，需注意ec的并发安全性.主要注意点为tmpEc.setParams(singleValueParams);
+     * 如果useTmpCtx=true，则router.ec会被copy一份，能够并发安全
+     * 如果useTmpCtx=false，则router.ec不会被copy，需调用线程保证并发安全
+     */
+    public static String shard(PartTupleRouter router, List<Object> values, List<Object> subPartValues,
+                               boolean useTmpCtx) {
+
+        /**
+         * valuesOfAllLevelPartCols[0]: the values of 1st-level full part cols
+         * valuesOfAllLevelPartCols[1]: the values of 2nd-level full part cols
+         */
+        List<List<Object>> valuesOfAllLevelPartCols = new ArrayList<>();
+        valuesOfAllLevelPartCols.add(values);
+
+        if (subPartValues != null && !subPartValues.isEmpty()) {
+            valuesOfAllLevelPartCols.add(subPartValues);
+        }
+
+        PhysicalPartitionInfo phyPartInfo = router.routeTuple(valuesOfAllLevelPartCols, useTmpCtx);
+        return phyPartInfo.getPartName();
+    }
 }

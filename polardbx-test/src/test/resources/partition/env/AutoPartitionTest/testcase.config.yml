@@ -39,3 +39,4 @@ test_add_global_index
 test_alter_table_drop_modify_col
 test_avg_row_length
 test_bool_column
+test_bka_join

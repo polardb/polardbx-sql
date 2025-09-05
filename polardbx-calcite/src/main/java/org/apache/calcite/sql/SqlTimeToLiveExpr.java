@@ -19,6 +19,7 @@ public class SqlTimeToLiveExpr  extends SqlNode {
     protected SqlNode column;
     protected SqlNode expireAfter;
     protected SqlNode unit;
+    protected SqlNode expireOver;
     protected SqlNode timezone;
 
     public SqlTimeToLiveExpr() {
@@ -27,7 +28,20 @@ public class SqlTimeToLiveExpr  extends SqlNode {
 
     @Override
     public SqlNode clone(SqlParserPos pos) {
-        return null;
+        SqlTimeToLiveExpr newExpr = new SqlTimeToLiveExpr();
+        if (column != null) {
+            newExpr.setColumn(column.clone(pos));
+        }
+        if (expireAfter != null) {
+            newExpr.setExpireAfter(expireAfter.clone(pos));
+        }
+        if (unit != null) {
+            newExpr.setUnit(unit.clone(pos));
+        }
+        if (timezone != null) {
+            newExpr.setTimezone(timezone.clone(pos));
+        }
+        return newExpr;
     }
 
     @Override
@@ -37,10 +51,17 @@ public class SqlTimeToLiveExpr  extends SqlNode {
 
         writer.print(column.toSqlString(MysqlSqlDialect.DEFAULT, false).getSql());
         writer.print(" ");
-        writer.print("EXPIRE AFTER ");
-        writer.print(expireAfter.toSqlString(MysqlSqlDialect.DEFAULT, false).getSql());
-        writer.print(" ");
-        writer.print(SQLUtils.normalize(unit.toSqlString(MysqlSqlDialect.DEFAULT, false).getSql()));
+        if (expireAfter != null) {
+            writer.print("EXPIRE AFTER ");
+            writer.print(expireAfter.toSqlString(MysqlSqlDialect.DEFAULT, false).getSql());
+            writer.print(" ");
+            writer.print(SQLUtils.normalize(unit.toSqlString(MysqlSqlDialect.DEFAULT, false).getSql()));
+        } else if (expireOver != null) {
+            writer.print("EXPIRE OVER ");
+            writer.print(expireOver.toSqlString(MysqlSqlDialect.DEFAULT, false).getSql());
+            writer.print(" PARTITIONS");
+        }
+
         if (timezone != null) {
             writer.print(" ");
             writer.print("TIMEZONE ");
@@ -94,5 +115,13 @@ public class SqlTimeToLiveExpr  extends SqlNode {
 
     public void setTimezone(SqlNode timezone) {
         this.timezone = timezone;
+    }
+
+    public SqlNode getExpireOver() {
+        return expireOver;
+    }
+
+    public void setExpireOver(SqlNode expireOver) {
+        this.expireOver = expireOver;
     }
 }

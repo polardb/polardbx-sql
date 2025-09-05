@@ -474,7 +474,6 @@ public class MetaDbUtil {
         }
     }
 
-
     /**
      * Generate columnar config for all columnar indexes of a single logical table.
      */

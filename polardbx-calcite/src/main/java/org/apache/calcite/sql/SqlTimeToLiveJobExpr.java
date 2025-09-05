@@ -22,7 +22,14 @@ public class SqlTimeToLiveJobExpr extends SqlNode {
 
     @Override
     public SqlNode clone(SqlParserPos pos) {
-        return null;
+        SqlTimeToLiveJobExpr newExpr = new SqlTimeToLiveJobExpr();
+        if (cron != null) {
+            newExpr.setCron(cron.clone(pos));
+        }
+        if (timezone != null) {
+            newExpr.setTimezone(timezone.clone(pos));
+        }
+        return newExpr;
     }
 
     @Override

@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.visitor;
 
 import com.alibaba.polardbx.druid.DbType;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.AutoIncrementType;
 import com.alibaba.polardbx.druid.sql.ast.SQLAnnIndex;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
@@ -124,6 +125,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.FullTextType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIgnoreIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPagingForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUseIndexHint;
@@ -220,7 +222,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransS
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransStatsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSkipRebalanceSubjob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSlowSqlCclStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsTerminateRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsUnArchiveStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySql8ShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterDatabaseKillJob;
@@ -247,6 +248,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAnalyzeSt
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlBinlogStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeMasterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeReplicationFilterStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCheckTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCheckTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChecksumTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlClearPartitionsHeatmapCacheStatement;
@@ -300,6 +302,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowAutho
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinLogEventsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinaryLogsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinaryStreamsStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBinlogDumpStatusStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowBroadcastsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowCharacterSetStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowClusterNameStatement;
@@ -3971,6 +3974,21 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     }
 
     @Override
+    public boolean visit(MySqlShowBinlogDumpStatusStatement x) {
+        print0(ucase ? "SHOW BINLOG DUMP STATUS" : "show binlog dump status");
+        if (x.getWith() != null) {
+            print0(ucase ? " WITH " : " with ");
+            x.getWith().accept(this);
+        }
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlShowBinlogDumpStatusStatement x) {
+
+    }
+
+    @Override
     public boolean visit(MySqlShowCharacterSetStatement x) {
         print0(ucase ? "SHOW CHARACTER SET" : "show character set");
         if (x.getPattern() != null) {
@@ -4857,6 +4875,32 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
 
     @Override
     public void endVisit(MySqlCheckTableStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(MySqlCheckTableGroupStatement x) {
+        print0(ucase ? "CHECK TABLEGROUP " : "check tablegroup ");
+        printAndAccept(x.getTableGroups(), ",");
+        if (x.getWhere() != null) {
+            print0(ucase ? " WHERE " : " where ");
+            x.getWhere().accept(this);
+        }
+
+        if (x.getOrderBy() != null) {
+            print0(" ");
+            x.getOrderBy().accept(this);
+        }
+
+        if (x.getLimit() != null) {
+            print0(" ");
+            x.getLimit().accept(this);
+        }
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlCheckTableGroupStatement x) {
 
     }
 
@@ -5938,6 +5982,25 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
 
     @Override
     public void endVisit(MySqlForceIndexHint x) {
+
+    }
+
+    @Override
+    public boolean visit(MySqlPagingForceIndexHint x) {
+        print0(ucase ? "PAGING_FORCE INDEX " : "paging_force index ");
+        if (x.getOption() != null) {
+            print0(ucase ? "FOR " : "for ");
+            print0(x.getOption().name);
+            print(' ');
+        }
+        print('(');
+        printAndAccept(x.getIndexList(), ", ");
+        print(')');
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlPagingForceIndexHint x) {
 
     }
 
@@ -8772,57 +8835,128 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         SQLExpr ttlExprAst = x.getTtlExpr();
         SQLExpr ttlJobAst = x.getTtlJob();
 
+        SQLExpr ttlFilterAst = x.getTtlFilter();
+        SQLExpr ttlCleanupAst = x.getTtlCleanup();
+        SQLExpr ttlPartIntervalAst = x.getTtlPartInterval();
+
         SQLExpr arcTblSchema = x.getArchiveTableSchema();
         SQLExpr arcTblName = x.getArchiveTableName();
 
         SQLExpr arcKind = x.getArchiveKind();
         SQLExpr arcPreAllocate = x.getArcPreAllocate();
         SQLExpr arcPostAllocate = x.getArcPostAllocate();
-
+        int alterOptionCount = 0;
         if (ttlEnableAst != null) {
-            print0(ucase ? "TTL_ENABLE " : "ttl_enable ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "TTL_ENABLE" : "ttl_enable");
             print0(" = ");
             ttlEnableAst.accept(this);
         }
 
         if (ttlExprAst != null) {
-            print0(ucase ? " TTL_EXPR " : " ttl_expr ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "TTL_EXPR" : "ttl_expr");
             print0(" = ");
             ttlExprAst.accept(this);
         }
 
         if (ttlJobAst != null) {
-            print0(ucase ? " TTL_JOB " : " ttl_job ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "TTL_JOB" : "ttl_job");
             print0(" = ");
             ttlJobAst.accept(this);
         }
 
+        if (ttlFilterAst != null) {
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "TTL_FILTER" : "ttl_filter");
+            print0(" = ");
+            print0(ucase ? "COND_EXPR" : "cond_expr");
+            print0("(");
+            SQLUtils.FormatOption noPrettyFormat = new SQLUtils.FormatOption(true, false);
+            String filterStr = SQLUtils.toMySqlString(ttlFilterAst, noPrettyFormat);
+            print(filterStr);
+            print0(")");
+        }
+
+        if (ttlCleanupAst != null) {
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "TTL_CLEANUP" : "ttl_cleanup");
+            print0(" = ");
+            ttlCleanupAst.accept(this);
+        }
+
+        if (ttlPartIntervalAst != null) {
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "TTL_PART_INTERVAL" : "ttl_part_interval");
+            print0(" = ");
+            ttlPartIntervalAst.accept(this);
+        }
+
         if (arcPreAllocate != null) {
-            print0(ucase ? " ARCHIVE_TABLE_PRE_ALLOCATE " : " archive_table_pre_allocate ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "ARCHIVE_TABLE_PRE_ALLOCATE" : "archive_table_pre_allocate");
             print0(" = ");
             arcPreAllocate.accept(this);
         }
 
         if (arcPostAllocate != null) {
-            print0(ucase ? " ARCHIVE_TABLE_POST_ALLOCATE " : " archive_table_post_allocate ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "ARCHIVE_TABLE_POST_ALLOCATE" : "archive_table_post_allocate");
             print0(" = ");
             arcPostAllocate.accept(this);
         }
 
         if (arcKind != null) {
-            print0(ucase ? " ARCHIVE_TYPE " : " archive_type ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "ARCHIVE_TYPE" : "archive_type");
             print0(" = ");
             arcKind.accept(this);
         }
 
         if (arcTblSchema != null) {
-            print0(ucase ? " ARCHIVE_TABLE_SCHEMA " : " archive_table_schema ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "ARCHIVE_TABLE_SCHEMA" : "archive_table_schema");
             print0(" = ");
             arcTblSchema.accept(this);
         }
 
         if (arcTblName != null) {
-            print0(ucase ? " ARCHIVE_TABLE_NAME " : " archive_table_name ");
+            alterOptionCount++;
+            if (alterOptionCount > 1) {
+                print0(", ");
+            }
+            print0(ucase ? "ARCHIVE_TABLE_NAME" : "archive_table_name");
             print0(" = ");
             arcTblName.accept(this);
         }
@@ -9250,6 +9384,8 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         SQLExpr ttlExpr = x.getTtlExpr();
         SQLExpr ttlJobExpr = x.getTtlJobExpr();
         SQLExpr ttlFilterExpr = x.getTtlFilterExpr();
+        SQLExpr ttlCleanupExpr = x.getTtlCleanupExpr();
+        SQLExpr ttlPartIntervalExpr = x.getTtlPartIntervalExpr();
         SQLExpr archiveTypeExpr = x.getArchiveTypeExpr();
         SQLExpr archiveTableSchemaExpr = x.getArchiveTableSchemaExpr();
         SQLExpr archiveTableNameExpr = x.getArchiveTableNameExpr();
@@ -9257,7 +9393,7 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         SQLExpr archiveTablePostAllocate = x.getArchiveTablePostAllocateExpr();
 
         print0(ucase ? "TTL_DEFINITION" : "ttl_definition");
-        print0("(");
+        print0(" (");
 
         if (ttlEnableExpr != null) {
             print0(ucase ? " TTL_ENABLE" : "ttl_enable");
@@ -9283,7 +9419,27 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             print0(",");
             print0(ucase ? " TTL_FILTER" : " ttl_filter");
             print0(" = ");
-            ttlFilterExpr.accept(this);
+            print0(ucase ? "COND_EXPR" : " cond_expr");
+            print0(" ( ");
+//            ttlFilterExpr.accept(this);
+            SQLUtils.FormatOption noPrettyFormat = new SQLUtils.FormatOption(true, false);
+            String filterStr = SQLUtils.toMySqlString(ttlFilterExpr, noPrettyFormat);
+            print(filterStr);
+            print0(" ) ");
+        }
+
+        if (ttlCleanupExpr != null) {
+            print0(",");
+            print0(ucase ? " TTL_CLEANUP" : " ttl_cleanup");
+            print0(" = ");
+            ttlCleanupExpr.accept(this);
+        }
+
+        if (ttlPartIntervalExpr != null) {
+            print0(",");
+            print0(ucase ? " TTL_PART_INTERVAL" : " ttl_part_interval");
+            print0(" = ");
+            ttlPartIntervalExpr.accept(this);
         }
 
         if (archiveTypeExpr != null) {
@@ -9312,7 +9468,6 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             print0(ucase ? " ARCHIVE_TABLE_PRE_ALLOCATE" : " archive_table_pre_allocate");
             print0(" = ");
             archiveTablePreAllocate.accept(this);
-
         }
 
         if (archiveTablePostAllocate != null) {
@@ -9336,6 +9491,7 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         SQLExpr column = x.getColumn();
         SQLExpr expireAfter = x.getExpireAfter();
         SQLExpr unit = x.getUnit();
+        SQLExpr expireOver = x.getExpireOver();
         SQLExpr timezone = x.getTimezone();
 
         column.accept(this);
@@ -9347,6 +9503,13 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
                 print0(" ");
                 unit.accept(this);
             }
+        }
+
+        if (expireOver != null) {
+            print0(" ");
+            print0(ucase ? "EXPIRE OVER " : "expire over ");
+            expireOver.accept(this);
+            print0(ucase ? " PARTITIONS " : " partitions ");
         }
 
         if (timezone != null) {

@@ -43,6 +43,7 @@ import com.alibaba.polardbx.server.response.ShowMemoryPool;
 import com.alibaba.polardbx.server.response.ShowMpp;
 import com.alibaba.polardbx.server.response.ShowNode;
 import com.alibaba.polardbx.server.response.ShowParametric;
+import com.alibaba.polardbx.server.response.ShowSqlEngineAlert;
 import com.alibaba.polardbx.server.response.ShowStatistic;
 import com.alibaba.polardbx.server.response.ShowWarnings;
 import com.alibaba.polardbx.server.response.ShowWorkload;
@@ -106,6 +107,8 @@ public final class ShowHandler {
                 return ShowColumnarStatus.execute(c, stmt, offset, false);
             case ServerParseShow.FULL_COLUMNAR_STATUS:
                 return ShowColumnarStatus.execute(c, stmt, offset, true);
+                case ServerParseShow.SQL_ENGINE_ALERT:
+                return ShowSqlEngineAlert.execute(c);
             case ServerParseShow.COLUMNAR_OFFSET:
                 return ShowColumnarOffset.execute(c);
             case ServerParseShow.COMPATIBILITY_LEVEL:

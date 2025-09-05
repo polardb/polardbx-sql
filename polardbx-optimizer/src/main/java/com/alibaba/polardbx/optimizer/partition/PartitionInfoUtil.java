@@ -2473,8 +2473,8 @@ public class PartitionInfoUtil {
         return groupAndPhyTableList;
     }
 
-    public static Map<String, List<List<String>>> buildTargetTablesFromPartitionInfo(PartitionInfo partitionInfo) {
-        Map<String, List<List<String>>> targetTables = new HashMap<>();
+    public static TreeMap<String, List<List<String>>> buildTargetTablesFromPartitionInfo(PartitionInfo partitionInfo) {
+        TreeMap<String, List<List<String>>> targetTables = new TreeMap<>();
         if (partitionInfo != null) {
             // get table type
             PartitionTableType tblType = partitionInfo.getTableType();
@@ -3886,4 +3886,17 @@ public class PartitionInfoUtil {
         }
     }
 
+    public static SearchDatumComparator buildPartColumnComparator(List<ColumnMeta> partColMetaList) {
+        return PartitionByDefinition.buildQuerySpaceComparator(partColMetaList);
+    }
+
+    /**
+     * Build SearchDatumComparator by specify reldataTypes,
+     * only used by ttl-job
+     */
+    public static SearchDatumComparator buildQuerySpaceComparatorBySpecifyDataTypes(
+        List<RelDataType> partFldRelDataTypes,
+        List<DataType> partFldDataTypes) {
+        return PartitionByDefinition.buildQuerySpaceComparatorBySpecifyDataTypes(partFldRelDataTypes, partFldDataTypes);
+    }
 }

@@ -39,11 +39,11 @@ public class IndexPruneContext {
     private ColumnarTracer pruneTracer;
 
     public Object acquireFromParameter(int paramIndex, DataType dataType, SqlTypeName type) {
-        return parameters.getCurrentParameter().get(paramIndex).getValue();
+        return parameters.getCurrentParameter().get(paramIndex + 1).getValue();
     }
 
     public Object[] acquireArrayFromParameter(int paramIndex, DataType dataType, SqlTypeName typeName) {
-        Object value = parameters.getCurrentParameter().get(paramIndex).getValue();
+        Object value = parameters.getCurrentParameter().get(paramIndex + 1).getValue();
         if (value instanceof RawString) {
             RawString rs = (RawString) value;
             return rs.getObjList().toArray();

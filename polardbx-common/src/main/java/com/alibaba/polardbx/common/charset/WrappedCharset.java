@@ -46,4 +46,8 @@ public class WrappedCharset extends Charset {
     public CharsetEncoder newEncoder() {
         return originalCharset.newEncoder();
     }
+
+    public Charset getOriginalCharset() {
+        return originalCharset;
+    }
 }

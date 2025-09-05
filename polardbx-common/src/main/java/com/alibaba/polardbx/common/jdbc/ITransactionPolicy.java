@@ -137,14 +137,24 @@ public interface ITransactionPolicy {
                 TransactionClass.AUTO_COMMIT_TSO);
     }
 
-    Free FREE = new Free();
+    // 1. TDDL
+    // 2. FLEXIBLE
+    // 3. ALLOW_READ_CROSS_DB
     AllowRead ALLOW_READ_CROSS_DB = new AllowRead();
+    // 4. NO_TRANSACTION
     NoTransaction NO_TRANSACTION = new NoTransaction();
-    DefaultPolicy XA = new DefaultPolicy(TransactionClass.XA);
+    // 5. FREE
+    Free FREE = new Free();
+    // 6. XA
+    DefaultPolicy XA = new DefaultPolicy(TransactionClass.XA, 6);
+    // 7. BEST_EFFORT / 2PC
+    DefaultPolicy BEST_EFFORT = new DefaultPolicy(TransactionClass.BEST_EFFORT, 7);
+    // 8. TSO
     Tso TSO = new Tso();
-    DefaultPolicy BEST_EFFORT = new DefaultPolicy(TransactionClass.BEST_EFFORT);
+    // 9. ARCHIVE
     Archive ARCHIVE = new Archive();
-    DefaultPolicy IGNORE_BINLOG_TRANSACTION = new DefaultPolicy(TransactionClass.IGNORE_BINLOG_TRANSACTION);
+    // 10. IGNORE_BINLOG_TRANSACTION
+    DefaultPolicy IGNORE_BINLOG_TRANSACTION = new DefaultPolicy(TransactionClass.IGNORE_BINLOG_TRANSACTION, 10);
 
     /**
      * If isAutoCommit is true but isForbidAutoCommitTrx is true,
@@ -153,6 +163,11 @@ public interface ITransactionPolicy {
      */
     TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
                                         boolean isForbidAutoCommitTrx);
+
+    /**
+     * @return int id for transaction policy
+     */
+    int getIntPolicy();
 
     class Free implements ITransactionPolicy {
 
@@ -164,6 +179,11 @@ public interface ITransactionPolicy {
             }
 
             return TransactionClass.COBAR_STYLE;
+        }
+
+        @Override
+        public int getIntPolicy() {
+            return 5;
         }
 
         @Override
@@ -182,6 +202,11 @@ public interface ITransactionPolicy {
             }
 
             return TransactionClass.ALLOW_READ_CROSS_DB;
+        }
+
+        @Override
+        public int getIntPolicy() {
+            return 3;
         }
 
         @Override
@@ -206,6 +231,11 @@ public interface ITransactionPolicy {
         }
 
         @Override
+        public int getIntPolicy() {
+            return 8;
+        }
+
+        @Override
         public String toString() {
             return "TSO";
         }
@@ -223,6 +253,11 @@ public interface ITransactionPolicy {
         }
 
         @Override
+        public int getIntPolicy() {
+            return 4;
+        }
+
+        @Override
         public String toString() {
             return "NO_TRANSACTION";
         }
@@ -232,10 +267,21 @@ public interface ITransactionPolicy {
 
         final TransactionClass type;
         final boolean auto;
+        final int intPolicy;
+        final String strPolicy;
 
-        public DefaultPolicy(TransactionClass type) {
+        public DefaultPolicy(TransactionClass type, int intPolicy) {
             this.type = type;
             this.auto = false;
+            this.intPolicy = intPolicy;
+            this.strPolicy = type.toString();
+        }
+
+        public DefaultPolicy(TransactionClass type, int intPolicy, String strPolicy) {
+            this.type = type;
+            this.auto = false;
+            this.intPolicy = intPolicy;
+            this.strPolicy = TStringUtil.isBlank(strPolicy) ? type.toString() : strPolicy;
         }
 
         @Override
@@ -248,8 +294,13 @@ public interface ITransactionPolicy {
         }
 
         @Override
+        public int getIntPolicy() {
+            return intPolicy;
+        }
+
+        @Override
         public String toString() {
-            return type.toString();
+            return strPolicy;
         }
     }
 
@@ -259,6 +310,11 @@ public interface ITransactionPolicy {
         public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
                                                    boolean isForbidAutoCommitTrx) {
             return TransactionClass.ARCHIVE;
+        }
+
+        @Override
+        public int getIntPolicy() {
+            return 9;
         }
 
         @Override
@@ -292,6 +348,30 @@ public interface ITransactionPolicy {
             return ITransactionPolicy.IGNORE_BINLOG_TRANSACTION;
         default:
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "Unknown transaction policy: " + name);
+        }
+    }
+
+    static ITransactionPolicy of(int intPolicy) {
+        switch (intPolicy) {
+        case 3: // ALLOW_READ / ALLOW_READ_CROSS_DB
+            return ITransactionPolicy.ALLOW_READ_CROSS_DB;
+        case 4: // NO_TRANSACTION
+            return ITransactionPolicy.NO_TRANSACTION;
+        case 5: // FREE
+            return ITransactionPolicy.FREE;
+        case 1: // TDDL
+        case 2: // FLEXIBLE
+        case 6: // XA
+        case 7: // BEST_EFFORT / 2PC
+            return ITransactionPolicy.XA;
+        case 8: // TSO
+            return ITransactionPolicy.TSO;
+        case 9: // ARCHIVE
+            return ITransactionPolicy.ARCHIVE;
+        case 10: // IGNORE_BINLOG_TRANSACTION
+            return ITransactionPolicy.IGNORE_BINLOG_TRANSACTION;
+        default:
+            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "Unknown transaction policy: " + intPolicy);
         }
     }
 }

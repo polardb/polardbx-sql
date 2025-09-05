@@ -128,6 +128,12 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             + "next_fire_time=? "
             + "WHERE schedule_id=?";
 
+    private static final String UPDATE_NEXT_FIRE_TIME_SQL =
+        "UPDATE " + SCHEDULED_JOBS + " "
+            + "SET "
+            + "next_fire_time=? "
+            + "WHERE schedule_id=?";
+
     public int insert(ScheduledJobsRecord record) {
         try {
             return MetaDbUtil.insert(INSERT_TABLE_SCHEDULED_JOBS, record.buildParams(), connection);
@@ -304,6 +310,18 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, epochSeconds);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, scheduleId);
             return MetaDbUtil.update(FIRE_SQL, params, connection) > 0;
+        } catch (Exception e) {
+            throw logAndThrow("Failed to update " + SCHEDULED_JOBS, "update", e);
+        }
+    }
+
+    public boolean updateNextFireTime(long epochSeconds, long scheduleId) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, epochSeconds);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, scheduleId);
+            return MetaDbUtil.update(UPDATE_NEXT_FIRE_TIME_SQL, params, connection) > 0;
         } catch (Exception e) {
             throw logAndThrow("Failed to update " + SCHEDULED_JOBS, "update", e);
         }

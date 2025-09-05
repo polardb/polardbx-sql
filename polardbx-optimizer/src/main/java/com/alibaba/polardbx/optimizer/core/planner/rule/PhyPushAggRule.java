@@ -108,6 +108,7 @@ public class PhyPushAggRule extends RelOptRule {
                 LogicalAggregate.create(logicalView.getPushedRelNode(), hashAgg.getGroupSet(), hashAgg.getGroupSets(),
                     hashAgg.getAggCallList());
             logicalView.push(aggregate);
+            logicalView.setOnePhaseAgg(true);
             RelUtils.changeRowType(logicalView, aggregate.getRowType());
             call.transformTo(logicalView);
             return;

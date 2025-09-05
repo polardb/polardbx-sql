@@ -254,6 +254,10 @@ public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
         sql = String.format("insert into %s values (1,null,3), (4,5,6)", tableName2);
         JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql, "");
 
+        // fix bug: update null value
+        sql = String.format("update %s set b = null where a int (1,4)", tableName2);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql, "");
+
         dropTableIfExists(tableName2);
         createSql2 =
             MessageFormat.format(CREATE_TABLE_TMPL_4, tableName2,

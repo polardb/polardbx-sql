@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_MPP_UI;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_ENABLE_UI;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_ALLOCATOR_SIZE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_AP_PRIORITY;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_CLUSTER_NAME;
@@ -280,7 +280,7 @@ public class MppConfig {
                     Splitter.on(",").trimResults().omitEmptyStrings().split(value));
                 spillPaths = spillPathsSplit.stream().map(path -> Paths.get(path)).collect(Collectors.toList());
                 break;
-            case ENABLE_MPP_UI:
+            case MPP_ENABLE_UI:
                 this.enableMppUI = parseValue(value, Boolean.class, DEFAULT_ENABLE_MPP_UI);
                 break;
             default:

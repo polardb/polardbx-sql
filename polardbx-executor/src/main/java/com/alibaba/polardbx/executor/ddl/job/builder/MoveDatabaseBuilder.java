@@ -42,7 +42,7 @@ public class MoveDatabaseBuilder {
 
     protected Map<String, List<PhyDdlTableOperation>> logicalTablesPhysicalPlansMap =
         new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-    protected Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+    protected Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
         new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected Map<String, Map<String, Set<String>>> sourceTablesTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected Map<String, Map<String, Set<String>>> targetTablesTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -96,7 +96,7 @@ public class MoveDatabaseBuilder {
         return logicalTablesPhysicalPlansMap;
     }
 
-    public Map<String, Map<String, List<List<String>>>> getTablesTopologyMap() {
+    public Map<String, TreeMap<String, List<List<String>>>> getTablesTopologyMap() {
         return tablesTopologyMap;
     }
 

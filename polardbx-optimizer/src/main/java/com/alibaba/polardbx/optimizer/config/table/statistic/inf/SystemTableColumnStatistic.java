@@ -20,6 +20,7 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 
@@ -40,7 +41,7 @@ public interface SystemTableColumnStatistic {
 
     Collection<Row> selectAll(long sinceTime);
 
-    void batchReplace(final List<SystemTableColumnStatistic.Row> rowList);
+    void batchReplace(final List<SystemTableColumnStatistic.Row> rowList) throws SQLException;
 
     class Row {
 

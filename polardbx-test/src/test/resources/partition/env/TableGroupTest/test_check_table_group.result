@@ -1,0 +1,73 @@
+CREATE TABLEGROUP tgc1
+CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`, `b`) PARTITIONS 4
+TABLEGROUP = tgc1
+CREATE TABLE `t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`, `b`) PARTITIONS 4
+TABLEGROUP = tgc1
+CREATE TABLE `t3` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`, `b`) PARTITIONS 4
+TABLEGROUP = tgc1
+CREATE TABLEGROUP tgc2
+CREATE TABLE `t4` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`, `b`) PARTITIONS 5
+TABLEGROUP = tgc2
+CHECK TABLEGROUP tgc1
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP tgc2
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc2,1,1,OK,
+CHECK TABLEGROUP  WHERE tablegroup = 'tgc1'
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  WHERE tablegroup = 'tgc2'
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc2,1,1,OK,
+CHECK TABLEGROUP  ORDER BY tablegroup
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+tgc2,1,1,OK,
+CHECK TABLEGROUP  ORDER BY tablegroup DESC
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc2,1,1,OK,
+tgc1,3,3,OK,
+CHECK TABLEGROUP  ORDER BY tablegroup LIMIT 1
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  ORDER BY tablegroup LIMIT 1, 1
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc2,1,1,OK,
+CHECK TABLEGROUP  WHERE tablegroup = 'tgc1' ORDER BY tablegroup
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  WHERE total_tables > 1
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  WHERE total_tables > 1 ORDER BY tablegroup
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  WHERE total_tables > 0 ORDER BY tablegroup LIMIT 1
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  WHERE match_tables > 1
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  WHERE match_tables > 1 ORDER BY tablegroup
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,
+CHECK TABLEGROUP  WHERE match_tables > 0 ORDER BY tablegroup LIMIT 1
+TableGroup,match_tables,total_tables,Status,Msg_text
+tgc1,3,3,OK,

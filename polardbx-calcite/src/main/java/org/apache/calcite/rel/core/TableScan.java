@@ -244,7 +244,7 @@ public abstract class TableScan extends AbstractRelNode {
       pw.item(RelDrdsWriter.REL_NAME, "TableScan");
       // get table's name which is the last element of the identifier list
       pw.item("table", this.getTable().getQualifiedName().get(this.getTable().getQualifiedName().size()-1));
-
+      pw.item("index", RexUtil.seriIndexHint(indexNode));
       return pw;
   }
 

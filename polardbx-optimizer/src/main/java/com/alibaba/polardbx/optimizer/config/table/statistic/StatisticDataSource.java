@@ -80,9 +80,9 @@ public interface StatisticDataSource {
 
     // ndv api end
 
-    void batchReplace(final List<SystemTableTableStatistic.Row> rowList);
+    void batchReplace(final List<SystemTableTableStatistic.Row> rowList) throws SQLException;
 
-    void batchReplace(final ArrayList<SystemTableColumnStatistic.Row> rowList);
+    void batchReplace(final ArrayList<SystemTableColumnStatistic.Row> rowList) throws SQLException;
 
     String scheduleJobs();
 

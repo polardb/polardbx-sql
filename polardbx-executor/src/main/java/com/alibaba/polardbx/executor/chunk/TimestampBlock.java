@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
@@ -30,6 +31,7 @@ import com.google.common.base.Preconditions;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -52,6 +54,7 @@ public class TimestampBlock extends AbstractCommonBlock {
      */
     private final long[] packed;
 
+    @FieldMemoryCounter(value = false)
     private TimeZone timezone;
 
     private int[] selection;
@@ -359,7 +362,10 @@ public class TimestampBlock extends AbstractCommonBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(packed);
-        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(packed))
+            + (selection == null ? 0 : VMSupport.align((int) sizeOf(selection)));
+        estimatedSize = elementUsedBytes;
     }
 }

@@ -19,7 +19,6 @@ package com.alibaba.polardbx.transaction.trx;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
-import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -27,11 +26,11 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.LockUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
+import com.alibaba.polardbx.stats.TransactionStatistics;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
-import com.alibaba.polardbx.stats.TransactionStatistics;
+import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
 import com.alibaba.polardbx.transaction.utils.XAUtils;
 
 import java.sql.SQLException;
@@ -350,5 +349,23 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
     @Override
     public boolean allowMultipleWriteConns() {
         return executionContext.isAllowGroupMultiWriteConns() && executionContext.isShareReadView();
+    }
+
+    @Override
+    public void releaseDirtyReadConnections() {
+        releaseDirtyReadConnections(heldConn -> {
+            switch (heldConn.getParticipated()) {
+            case NONE:
+                rollbackNonParticipantSync(heldConn.getGroup(), heldConn.getRawConnection());
+                break;
+            case SHARE_READVIEW_READ:
+                rollbackNonParticipantShareReadViewSync(heldConn.getGroup(), heldConn.getRawConnection());
+                break;
+
+            default:
+                throw new UnsupportedOperationException(
+                    "Unexpected trx conn type: " + heldConn.getParticipated());
+            }
+        });
     }
 }

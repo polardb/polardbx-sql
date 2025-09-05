@@ -149,6 +149,11 @@ public class MaterializedSemiJoin extends SemiJoin implements LookupJoin {
             ((Gather) this.getLeft()).setJoin(this);
         } else if (this.getLeft() instanceof LogicalView) {
             ((LogicalView) this.getLeft()).setJoin(this);
+        } else if (this.getLeft() instanceof MergeSort) {
+            RelNode rootNode = ((MergeSort) this.getLeft()).getInput();
+            if (rootNode instanceof LogicalView) {
+                ((LogicalView) rootNode).setJoin(this);
+            }
         } else if (this.getLeft() instanceof Project) {
             RelNode node = ((BKAJoin) ((Project) this.getLeft()).getInput()).getOuter();
             if (node instanceof Gather) {

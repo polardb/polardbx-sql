@@ -56,7 +56,7 @@ public class PhysicalPlanData {
     private String defaultPhyTableName;
 
     private TablesExtRecord tablesExtRecord;
-    private Map<String, List<List<String>>> tableTopology;
+    private TreeMap<String, List<List<String>>> tableTopology;
     private Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology;
 
     private SqlKind kind;
@@ -89,6 +89,8 @@ public class PhysicalPlanData {
 
     private boolean renamePhyTable = false;
 
+    private boolean popLocalIndex = false;
+
     private LBACSecurityEntity tableESA;
     private List<LBACSecurityEntity> colEsaList;
 
@@ -107,7 +109,7 @@ public class PhysicalPlanData {
         clone.defaultDbIndex = this.defaultDbIndex;
         clone.defaultPhyTableName = this.defaultPhyTableName;
         clone.tablesExtRecord = this.tablesExtRecord;
-        clone.tableTopology = tableTopology == null ? null : new LinkedHashMap<>(this.tableTopology);
+        clone.tableTopology = tableTopology == null ? null : new TreeMap<>(this.tableTopology);
         clone.physicalPartitionTopology =
             this.physicalPartitionTopology == null ? null : new LinkedHashMap<>(this.physicalPartitionTopology);
         clone.kind = this.kind;
@@ -129,6 +131,7 @@ public class PhysicalPlanData {
         clone.renamePhyTable = this.renamePhyTable;
         clone.tableESA = this.tableESA;
         clone.colEsaList = colEsaList == null ? null : new ArrayList<>(colEsaList);
+        clone.popLocalIndex = this.popLocalIndex;
         return clone;
     }
 
@@ -152,7 +155,7 @@ public class PhysicalPlanData {
      *
      * </pre>
      */
-    public List<Map<String, List<List<String>>>> partitionTableTopology(int parallelism) {
+    public List<TreeMap<String, List<List<String>>>> partitionTableTopology(int parallelism) {
         /**
          * <pre>
          *     Convert to data_struct from
@@ -235,9 +238,9 @@ public class PhysicalPlanData {
          *              grp1->t1_3,t2_2,t3_3
          * </pre>
          */
-        List<Map<String, List<List<String>>>> result = new ArrayList<>();
+        List<TreeMap<String, List<List<String>>>> result = new ArrayList<>();
         for (List<Pair<String, List<String>>> itemsInOneMap : partitionedFlatTopology) {
-            Map<String, List<List<String>>> map = new HashMap<>();
+            TreeMap<String, List<List<String>>> map = new TreeMap<>();
             for (Pair<String, List<String>> item : itemsInOneMap) {
                 map.compute(item.getKey(), (s, lists) -> {
                     if (lists == null) {

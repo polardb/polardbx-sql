@@ -16,11 +16,14 @@
 
 package com.alibaba.polardbx.gms.metadb.limit;
 
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtAccessor;
@@ -85,7 +88,19 @@ public class LimitValidator {
 
     // Column Related Limits
 
-    public static void validateColumnNameLength(String columnName) {
+    public static void validateColumnName(String columnName) {
+        if (TStringUtil.isEmpty(columnName) || TStringUtil.isBlank(columnName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format("Incorrect column name '%s'", columnName));
+        }
+        if ("``".equalsIgnoreCase(columnName) || "''".equalsIgnoreCase(columnName)
+            || "\"\"".equalsIgnoreCase(columnName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Incorrect column name ''");
+        }
+        if (columnName.equalsIgnoreCase(TddlConstants.RDS_IMPLICIT_COL_NAME)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format("Not supported column name '%s'", columnName));
+        }
         validateIdentifierNameLength(columnName, Limits.MAX_LENGTH_OF_COLUMN_NAME);
     }
 

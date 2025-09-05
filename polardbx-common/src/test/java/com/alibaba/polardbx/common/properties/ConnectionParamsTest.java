@@ -21,6 +21,18 @@ public class ConnectionParamsTest {
     }
 
     @Test
+    public void testENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION() {
+        assertTrue("ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION should be an instance of BooleanConfigParam",
+            ConnectionParams.ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION instanceof BooleanConfigParam);
+
+        assertTrue("ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION default value should be true",
+            Boolean.parseBoolean(ConnectionParams.ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION.getDefault()));
+
+        assertTrue("ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION should be editable",
+            ConnectionParams.ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION.isMutable());
+    }
+
+    @Test
     public void testENABLE_AUTO_COMMIT_TSO() {
         assertTrue("ENABLE_AUTO_COMMIT_TSO should be an instance of BooleanConfigParam",
             ConnectionParams.ENABLE_AUTO_COMMIT_TSO instanceof BooleanConfigParam);

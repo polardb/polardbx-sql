@@ -48,6 +48,7 @@ public class MaterializedSemiJoinExec extends AbstractJoinExec implements Consum
     ListenableFuture<?> blocked;
     // equal with this outerInput
     private LookupTableExec lookUpExec;
+    private boolean isSortLookup = false;
 
     public MaterializedSemiJoinExec(Executor outerInput, Executor innerInput,
                                     boolean distinctInput, List<EquiJoinKey> joinKeys,
@@ -68,6 +69,7 @@ public class MaterializedSemiJoinExec extends AbstractJoinExec implements Consum
         while (outerChild != null) {
             if (outerChild instanceof LookupTableExec) {
                 this.lookUpExec = (LookupTableExec) outerChild;
+                this.isSortLookup = outerChild instanceof MultiUnionAllLookupTableExec;
                 break;
             } else {
                 outerChild = outerChild.getInputs().get(0);
@@ -93,7 +95,7 @@ public class MaterializedSemiJoinExec extends AbstractJoinExec implements Consum
         memoryPool = MemoryPoolUtils.createOperatorTmpTablePool(getExecutorName(), context.getMemoryPool());
         memoryAllocator = memoryPool.getMemoryAllocatorCtx();
         bufferInputBatchQueue = new BufferInputBatchQueue(
-            batchSize, innerInput.getDataTypes(), memoryAllocator, chunkLimit, context);
+            batchSize, innerInput.getDataTypes(), memoryAllocator, chunkLimit, context, isSortLookup);
     }
 
     @Override

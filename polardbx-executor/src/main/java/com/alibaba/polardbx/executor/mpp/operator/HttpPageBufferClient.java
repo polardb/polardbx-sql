@@ -254,6 +254,14 @@ public final class HttpPageBufferClient
         return closed;
     }
 
+    public void closeQuietly() {
+        try {
+            this.close();
+        } catch (RuntimeException e) {
+            // ignored
+        }
+    }
+
     @Override
     public void close() {
         boolean shouldSendDelete;

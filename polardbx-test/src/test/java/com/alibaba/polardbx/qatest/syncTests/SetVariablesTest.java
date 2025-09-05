@@ -1107,6 +1107,10 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("consensus_io_thread_cnt", "4", true));
         variableAssignmentList.add(new AssignmentItem("consensus_new_follower_threshold", "100000", true));
         variableAssignmentList.add(new AssignmentItem("consensus_replicate_with_cache_log", "ON", true));
+        variableAssignmentList.add(new AssignmentItem("consensus_wait_milliseconds_before_change_leader", "200", true));
+        variableAssignmentList.add(new AssignmentItem("consensus_wait_unfinished_trx_timeout", "800", true));
+        variableAssignmentList.add(new AssignmentItem("consensus_wait_unfinished_xa_timeout", "500", true));
+        variableAssignmentList.add(new AssignmentItem("consensus_wait_unfinished_bgc_timeout", "500", true));
         variableAssignmentList.add(new AssignmentItem("consensus_worker_thread_cnt", "4", true));
 //        variableAssignmentList.add(new AssignmentItem("datadir", "/u01/chenmo.cm/my3434/data", true));
         variableAssignmentList.add(new AssignmentItem("default_storage_engine", "InnoDB", true));

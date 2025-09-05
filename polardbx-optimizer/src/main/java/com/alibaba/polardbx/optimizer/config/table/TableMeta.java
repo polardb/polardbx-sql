@@ -99,6 +99,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -528,6 +529,39 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         return null;
     }
 
+    public GsiMetaManager.GsiIndexMetaBean findGlobalSecondaryIndexByNameOrFullName(@NonNull String indexName) {
+        // Normalize the input index name
+        String normalizedIndexName = SQLUtils.normalizeNoTrim(indexName);
+
+        if (gsiPublished != null && !gsiPublished.isEmpty()) {
+            for (GsiMetaManager.GsiIndexMetaBean gsiMeta : gsiPublished.values()) {
+                if (gsiMeta.visibility != IndexVisibility.VISIBLE) {
+                    continue;
+                }
+                String gsiIndexName = TddlSqlToRelConverter.unwrapGsiName(gsiMeta.indexName);
+                if (gsiMeta.indexName.equalsIgnoreCase(normalizedIndexName)
+                    || gsiIndexName.equalsIgnoreCase(normalizedIndexName)) {
+                    return gsiMeta;
+                }
+            }
+        }
+
+        if (columnarIndexPublished != null && !columnarIndexPublished.isEmpty()) {
+            for (GsiMetaManager.GsiIndexMetaBean cciMeta : columnarIndexPublished.values()) {
+                if (cciMeta.visibility != IndexVisibility.VISIBLE) {
+                    continue;
+                }
+                String cciName = TddlSqlToRelConverter.unwrapGsiName(cciMeta.indexName);
+                if (cciMeta.indexName.equalsIgnoreCase(normalizedIndexName)
+                    ||cciName.equalsIgnoreCase(normalizedIndexName)) {
+                    return cciMeta;
+                }
+            }
+        }
+
+        return null;
+    }
+
     public Set<String> getLocalIndexNames() {
         Set<String> indexes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexes.addAll(
@@ -742,7 +776,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
                 if (autoUpdateColumns == null) {
                     autoUpdateColumns = new ArrayList<>();
                     for (ColumnMeta column : allColumnsOrderByDefined) {
-                        if (TStringUtil.containsIgnoreCase(column.getField().getExtra(), "on update")) {
+                        if (column.isAutoUpdateColumn()) {
                             autoUpdateColumns.add(column);
                         }
                     }
@@ -750,6 +784,12 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             }
         }
         return autoUpdateColumns;
+    }
+
+    public boolean isAutoUpdateColumn(String columnName) {
+        return Optional.ofNullable(getColumn(columnName))
+            .map(ColumnMeta::isAutoUpdateColumn)
+            .orElse(false);
     }
 
     public List<String> getLogicalGeneratedColumnNames() {
@@ -933,7 +973,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     public boolean withClustered() {
-        return withGsi() && getGsiTableMetaBean().indexMap.values().stream().anyMatch(bean -> bean.clusteredIndex);
+        return withGsi() && getGsiTableMetaBean().indexMap.values().stream().filter(bean -> !bean.columnarIndex)
+            .anyMatch(bean -> bean.clusteredIndex);
     }
 
     public boolean withPublishedGsi() {
@@ -965,7 +1006,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     public boolean isColumnarArchive() {
         String ttlTable = this.columnarOriginTable();
-        TableMeta ttlTm = OptimizerContext.getContext(this.getSchemaName()).getLatestSchemaManager().getTableWithNull(ttlTable);
+        TableMeta ttlTm =
+            OptimizerContext.getContext(this.getSchemaName()).getLatestSchemaManager().getTableWithNull(ttlTable);
         if (ttlTm == null) {
             return false;
         }
@@ -1147,8 +1189,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             }
 
             if (TStringUtil.containsIgnoreCase(columnDefaultStr, "CURRENT_TIMESTAMP")) {
-                // Let MySQL handle time precision
-                return rexBuilder.makeCall(TddlOperatorTable.CURRENT_TIMESTAMP, ImmutableList.of());
+                final int scale = field.getDataType().getScale();
+                return rexBuilder.makeCall(TddlOperatorTable.CURRENT_TIMESTAMP, rexBuilder.makeIntLiteral(scale));
             }
 
             if (DataTypeUtil.isNumberSqlType(columnDataType)) {
@@ -1186,6 +1228,11 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
             if (DataTypeUtil.isStringType(columnDataType)) {
                 return rexBuilder.makeLiteral("", relDataTypeField.getType(), false);
+            }
+
+            if (DataTypeUtil.equalsSemantically(columnDataType, DataTypes.TimestampType)) {
+                final int scale = field.getDataType().getScale();
+                return rexBuilder.makeCall(TddlOperatorTable.CURRENT_TIMESTAMP, rexBuilder.makeIntLiteral(scale));
             }
 
             return super.newImplicitDefaultValue(table, iColumn, context);
@@ -1289,5 +1336,14 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     public void setEncryption(boolean encryption) {
         this.encryption = encryption;
+    }
+
+    public boolean containFullTextIndex() {
+        for (IndexMeta indexMeta : secondaryIndexes.values()) {
+            if (indexMeta.isFullTextIndex()) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -50,7 +50,7 @@ public class JSONParseTest {
         List<List<String>> tableNames = buildTableNames();
         JdbcSplit jdbcSplit =
             new JdbcSplit("ca", "sc", "db0", hint, bytesSql, null, params, "127.1", tableNames, ITransaction.RW.WRITE,
-                true, null, new byte[] {0x01, 0x02, 0x03}, true);
+                true, null, new byte[] {0x01, 0x02, 0x03}, true, null, null);
         String data = JSON.toJSONString(jdbcSplit, SerializerFeature.WriteClassName);
         ParserConfig parserConfig = ParserConfig.getGlobalInstance();
         parserConfig.setAutoTypeSupport(true);
@@ -91,7 +91,7 @@ public class JSONParseTest {
             Object[] argsV = new Object[2];
             argsV[0] = 2;
             argsV[1] = inVlaue;
-            v.setArgs(args);
+            v.setArgs(argsV);
 
             for (int j = 0; j < r.nextInt(10); j++) {
                 inVlaue.add(j);

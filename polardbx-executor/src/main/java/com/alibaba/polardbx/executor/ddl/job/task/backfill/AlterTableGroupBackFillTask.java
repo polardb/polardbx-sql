@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.backfill;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
@@ -25,12 +26,17 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.AlterTableGroupBackfill;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalBackfill;
 import lombok.Getter;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.util.Pair;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -39,6 +45,7 @@ import java.util.Set;
 public class AlterTableGroupBackFillTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
 
     String logicalTableName;
+    Map<String, Pair<String, String>> ptbGroupMap;
     Map<String, Set<String>> sourcePhyTables;
     Map<String, Set<String>> targetPhyTables;
     boolean broadcast;
@@ -49,6 +56,7 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
     @JSONCreator
     public AlterTableGroupBackFillTask(String schemaName,
                                        String logicalTableName,
+                                       Map<String, Pair<String, String>> ptbGroupMap,
                                        Map<String, Set<String>> sourcePhyTables,
                                        Map<String, Set<String>> targetPhyTables,
                                        boolean broadcast,
@@ -57,16 +65,17 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
                                        boolean usePhysicalBackfill) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
+        this.ptbGroupMap = ptbGroupMap;
         this.sourcePhyTables = sourcePhyTables;
         this.targetPhyTables = targetPhyTables;
         this.broadcast = broadcast;
         this.movePartitions = movePartitions;
         this.useChangeSet = useChangeSet;
         this.usePhysicalBackfill = usePhysicalBackfill;
-        if (useChangeSet) {
-            // onExceptionTryRollback, such as dn ha
-            onExceptionTryRecoveryThenRollback();
-        }
+//        if (useChangeSet) {
+        // onExceptionTryRollback, such as dn ha
+        onExceptionTryRecoveryThenRollback();
+//        }
     }
 
     @Override
@@ -93,8 +102,8 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
             ExecutorHelper.execute(executablePhyBackfillPlan, executionContext);
         } else {
             final RelNode executableLogicalBackfillPlan = AlterTableGroupBackfill
-                .createAlterTableGroupBackfill(schemaName, logicalTableName, executionContext, sourcePhyTables,
-                    targetPhyTables, broadcast, movePartitions, useChangeSet);
+                .createAlterTableGroupBackfill(schemaName, logicalTableName, executionContext, ptbGroupMap,
+                    sourcePhyTables, targetPhyTables, broadcast, movePartitions, useChangeSet);
             ExecutorHelper.execute(executableLogicalBackfillPlan, executionContext);
         }
     }
@@ -112,5 +121,13 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
 
     public static String getTaskName() {
         return "AlterTableGroupBackFillTask";
+    }
+
+    @Override
+    public List<String> explainInfo() {
+        String backfillTask = "LOGICAL_BACKFILL(" + logicalTableName + ")";
+        List<String> command = new ArrayList<>(1);
+        command.add(backfillTask);
+        return command;
     }
 }

@@ -77,7 +77,7 @@
 
   plan: |
     logicalmodify(type="delete", tables="optest.test_broadcast")
-      logicalview(tables="optest_0001.test_hash_tb,test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time` as `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
+      logicalview(tables="optest_0001.test_hash_tb,test_broadcast", sql="select `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_tb`.`id` as `id0`, `test_hash_tb`.`name` as `name0`, `test_hash_tb`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
 
 - sql: |
     delete b from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
@@ -90,7 +90,7 @@
 
   plan: |
     logicalmodify(type="delete", tables="optest.test_broadcast, optest.test_hash_tb")
-      logicalview(tables="optest_0001.test_hash_tb,test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time` as `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
+      logicalview(tables="optest_0001.test_hash_tb,test_broadcast", sql="select `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_tb`.`id` as `id0`, `test_hash_tb`.`name` as `name0`, `test_hash_tb`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
 
 - sql: |
     /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
@@ -161,7 +161,7 @@
 
   plan: |
     logicalmodify(type="delete", tables="optest.test_broadcast")
-      logicalview(tables="optest_0001.test_hash_ta,test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time`, `test_hash_ta`.`name`, `test_hash_ta`.`id` from `test_hash_ta` as `test_hash_ta` inner join `test_broadcast` as `test_broadcast` on (`test_hash_ta`.`id` = `test_broadcast`.`id`) where ((`test_hash_ta`.`id` = ?) and (`test_hash_ta`.`name` = ?)) for update")
+      logicalview(tables="optest_0001.test_hash_ta,test_broadcast", sql="select `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_ta`.`name` as `name0`, `test_hash_ta`.`id` as `id0` from `test_hash_ta` as `test_hash_ta` inner join `test_broadcast` as `test_broadcast` on (`test_hash_ta`.`id` = `test_broadcast`.`id`) where ((`test_hash_ta`.`id` = ?) and (`test_hash_ta`.`name` = ?)) for update")
 
 - sql: |
     /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta;
@@ -362,7 +362,7 @@
   plan: |
 
     logicalmodify(type="delete", tables="optest.test_hash_tb")
-      project(id0="id0", name0="name0", create_time0="create_time0", name="name", create_time="create_time", id="id")
+      project(id="id0", name="name0", create_time="create_time0", name0="name", create_time0="create_time", id0="id")
         bkajoin(condition="id = id", type="inner")
           dynamicvalues(tuples=[{ ?0, ?1, ?2 }, { ?3, ?4, ?5 }])
           gather(concurrent=true)
@@ -418,7 +418,7 @@
 
   plan: |
     logicalmodify(type="delete", tables="optest.test_hash_tb, optest.test_hash_ta")
-      project(id="id", name="name", create_time="create_time", id1="id1", name0="name0", create_time1="create_time1", id0="id0", key="key", create_time0="create_time0")
+      project(id="id", name="name", create_time="create_time", id0="id1", name0="name0", create_time0="create_time1", id1="id0", key="key", create_time1="create_time0")
         bkajoin(condition="name = name", type="inner")
           gather(concurrent=true)
             logicalview(tables="optest_0001.test_hash_tb,test_hash_tc", sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tc`.`id` as `id0`, `test_hash_tc`.`key`, `test_hash_tc`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` force index(primary) inner join `test_hash_tc` as `test_hash_tc` on ((`test_hash_tc`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_hash_tc`.`id`)) for update")

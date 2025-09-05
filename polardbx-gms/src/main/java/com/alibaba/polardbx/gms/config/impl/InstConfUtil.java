@@ -24,16 +24,22 @@ import com.alibaba.polardbx.common.properties.LongConfigParam;
 import com.alibaba.polardbx.common.properties.StringConfigParam;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 
+import java.time.ZoneId;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TimeZone;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAINTENANCE_TIME_END;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAINTENANCE_TIME_START;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAINTENANCE_ENABLE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAINTENANCE_TIME_END;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAINTENANCE_TIME_START;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.TTL_JOB_MAINTENANCE_ENABLE;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.TTL_JOB_MAINTENANCE_TIME_END;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.TTL_JOB_MAINTENANCE_TIME_START;
 
 /**
  * @author fangwu
@@ -58,6 +64,18 @@ public class InstConfUtil {
     public static boolean isInRebalanceMaintenanceTimeWindow() {
         return isInRebalanceMaintenanceTimeWindow(REBALANCE_MAINTENANCE_TIME_START, REBALANCE_MAINTENANCE_TIME_END,
             REBALANCE_MAINTENANCE_ENABLE);
+    }
+
+    public static boolean isInTtlJobMaintenanceTimeWindow() {
+        boolean enabled = getBool(TTL_JOB_MAINTENANCE_ENABLE);
+        if (!enabled) {
+            return true;// no limit, always works.
+        }
+
+        ZoneId zoneId = ZoneId.of(TtlInfoRecord.TTL_JOB_CRON_DEFAULT_TIME_ZONE);
+        TimeZone cronTimezone = TimeZone.getTimeZone(zoneId);
+        return isInMaintenanceTimeWindow(Calendar.getInstance(cronTimezone), TTL_JOB_MAINTENANCE_TIME_START,
+            TTL_JOB_MAINTENANCE_TIME_END);
     }
 
     public static boolean isInRebalanceMaintenanceTimeWindow(StringConfigParam maintenanceTimeStart,
@@ -88,6 +106,7 @@ public class InstConfUtil {
 
     public static boolean isInMaintenanceTimeWindow(Calendar calendar, StringConfigParam maintenanceTimeStart,
                                                     StringConfigParam maintenanceTimeEnd) {
+
         int currentMinute = calendar.get(Calendar.MINUTE) + calendar.get(Calendar.HOUR_OF_DAY) * 60;
         String startTime = getOriginVal(maintenanceTimeStart);
         String endTime = getOriginVal(maintenanceTimeEnd);

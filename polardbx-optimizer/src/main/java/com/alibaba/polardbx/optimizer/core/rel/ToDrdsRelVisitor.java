@@ -37,6 +37,7 @@ import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.AccessPathRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
@@ -140,6 +141,9 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTables;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalSequenceDdl;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalUnArchive;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.LogicalWriteUtil;
+import com.alibaba.polardbx.optimizer.hint.operator.HintType;
+import com.alibaba.polardbx.optimizer.index.IndexUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
@@ -299,6 +303,7 @@ import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
+import org.apache.commons.collections.CollectionUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -381,6 +386,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private boolean existsGroupingSets;
     private boolean modifyWithLimitOffset = false;
     private boolean existsOSSTable;
+    private boolean existPagingForce = false;
     private boolean existForceColumnar = false;
     private boolean allTableHaveColumnar = true;
 
@@ -525,6 +531,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
         // remove all force index
         removeForceIndex(scan);
+        if (CollectionUtils.isNotEmpty(IndexUtil.getPagingForceIndex(scan.getIndexNode()))) {
+            this.existPagingForce = true;
+        }
         return RelUtils.createLogicalView(scan, lockMode, engine);
     }
 
@@ -564,25 +573,24 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                                                  TableMeta tMeta,
                                                  Engine engine) {
         // get index hint
-        SqlCall indexHint = getIndexHint(scan);
-        if (indexHint == null) {
+        Pair<SqlCall, IndexUtil.IndexHintType> pair = getIndexHint(scan);
+        if (pair == null) {
             return null;
         }
-
-        List<SqlNode> args = indexHint.getOperandList();
+        List<SqlNode> args = pair.getKey().getOperandList();
         String tablePart = args.get(1).toString();
         String indexPart = null;
         if (args.size() > 2) {
             indexPart = args.get(2).toString();
         }
         if (indexPart == null) {
-            return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart);
+            return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, pair.getValue());
         } else {
-            return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, indexPart);
+            return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, indexPart, pair.getValue());
         }
     }
 
-    private SqlCall getIndexHint(TableScan scan) {
+    private Pair<SqlCall, IndexUtil.IndexHintType> getIndexHint(TableScan scan) {
         SqlNodeList sqlNodes = scan.getHints();
         if (sqlNodes == null) {
             return null;
@@ -590,12 +598,19 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         for (SqlNode node : sqlNodes) {
             if (node instanceof SqlCall) {
                 SqlCall call = (SqlCall) node;
-                if (call.getOperator().getName().equalsIgnoreCase("index")) {
+                if (call.getOperator().getName().equalsIgnoreCase(HintType.CMD_INDEX.getValue().toLowerCase())) {
                     if (call.getOperandList().size() < 2) {
                         // throw new IllegalArgumentException("wrong args num in index hint");
                         return null;
                     }
-                    return call;
+                    return Pair.of(call, IndexUtil.IndexHintType.FORCE_INDEX);
+                }
+                if (call.getOperator().getName().equalsIgnoreCase(HintType.CMD_PAGING_INDEX.getValue().toLowerCase())) {
+                    if (call.getOperandList().size() < 2) {
+                        // throw new IllegalArgumentException("wrong args num in index hint");
+                        return null;
+                    }
+                    return Pair.of(call, IndexUtil.IndexHintType.PAGING_FORCE_INDEX);
                 }
             }
         }
@@ -614,16 +629,16 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
      */
     protected RelNode buildForceIndexByForceIndex(RelOptSchema catalog, TableScan scan, String schemaName,
                                                   TableMeta tMeta, Engine engine) {
-        SqlIdentifier indexId = getForceIndex(scan);
-        if (indexId != null) {
+        Pair<SqlIdentifier, IndexUtil.IndexHintType> pair = getForceIndex(scan);
+        if (pair != null) {
             this.withIndexHint = true;
-            String tablePart = indexId.names.get(0);
-            String indexPart = indexId.names.size() > 1 ? indexId.names.get(1) : null;
+            String tablePart = pair.getKey().names.get(0);
+            String indexPart = pair.getKey().names.size() > 1 ? pair.getKey().names.get(1) : null;
 
             if (indexPart == null) {
-                return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart);
+                return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, pair.getValue());
             } else {
-                return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, indexPart);
+                return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, indexPart, pair.getValue());
             }
         }
         return null;
@@ -645,7 +660,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
      * @return RelNode with the enforced index
      */
     AbstractRelNode buildForceIndex(RelOptSchema catalog, TableScan scan, String schemaName, TableMeta tMeta,
-                                    Engine engine, @NotNull String indexName) {
+                                    Engine engine, @NotNull String indexName, IndexUtil.IndexHintType indexHintType) {
         GsiMetaManager.GsiIndexMetaBean gsi = tMeta.findGlobalSecondaryIndexByName(indexName);
         if (gsi == null) {
             System.out.println("test");
@@ -653,7 +668,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             IndexMeta localIndex = tMeta.findLocalIndexByName(indexName);
             if (localIndex != null) {
                 hasLocalForceIndex = true;
-                scan.setIndexNode(buildForceIndex(localIndex.getPhysicalIndexName()));
+                scan.setIndexNode(buildForceIndex(localIndex.getPhysicalIndexName(), indexHintType));
                 return RelUtils.createLogicalView(scan, lockMode, engine);
             } else {
                 return null;
@@ -665,7 +680,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     .getBoolean(ConnectionParams.ENABLE_DELETE_FORCE_CC_INDEX) ? null :
                     buildOSSTableScan(catalog, scan, schemaName, engine, gsi);
             } else {
-                return buildLogicalTableLookup(catalog, scan, schemaName, engine, gsi, null);
+                return buildLogicalTableLookup(catalog, scan, schemaName, engine, gsi, null, indexHintType);
             }
         }
     }
@@ -689,7 +704,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
      */
     private AbstractRelNode buildForceIndex(RelOptSchema catalog, TableScan scan, String schemaName, TableMeta tMeta,
                                             Engine engine, @NotNull String gsiPart,
-                                            @NotNull String lsiPart) {
+                                            @NotNull String lsiPart, IndexUtil.IndexHintType indexHintType) {
         // try gsi.local
         GsiMetaManager.GsiIndexMetaBean gsi = tMeta.findGlobalSecondaryIndexByName(gsiPart);
         if (gsi != null) {
@@ -705,7 +720,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     return null;
                 } else {
                     hasLocalForceIndex = true;
-                    return buildLogicalTableLookup(catalog, scan, schemaName, engine, gsi, lsiPart);
+                    return buildLogicalTableLookup(catalog, scan, schemaName, engine, gsi, lsiPart, indexHintType);
                 }
             }
         }
@@ -716,7 +731,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             IndexMeta primaryLocalIndex = tMeta.findLocalIndexByName(lsiPart);
             if (primaryLocalIndex != null) {
                 hasLocalForceIndex = true;
-                scan.setIndexNode(buildForceIndex(primaryLocalIndex.getPhysicalIndexName()));
+                scan.setIndexNode(buildForceIndex(primaryLocalIndex.getPhysicalIndexName(), indexHintType));
             } else {
                 // local index were not found any match for tblPath
                 return null;
@@ -741,10 +756,13 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
      * @param localIndexPath Local index path (if any)
      * @return A new LogicalTableLookup instance
      */
-    @NotNull
     protected LogicalTableLookup buildLogicalTableLookup(RelOptSchema catalog, TableScan scan, String schemaName,
                                                          Engine engine, GsiMetaManager.GsiIndexMetaBean gsi,
-                                                         String localIndexPath) {
+                                                         String localIndexPath, IndexUtil.IndexHintType indexHintType) {
+        // don't support paging force gsi
+        if (StringUtils.isEmpty(localIndexPath) && indexHintType == IndexUtil.IndexHintType.PAGING_FORCE_INDEX) {
+            return null;
+        }
         // Create a logical view from the original table scan, and remove its index node
         scan.setIndexNode(null);
         LogicalView primary = RelUtils.createLogicalView(scan, lockMode, engine);
@@ -754,7 +772,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         LogicalTableScan indexTableScan = LogicalTableScan.create(scan.getCluster(),
             indexTable,
             scan.getHints(),
-            StringUtils.isEmpty(localIndexPath) ? null : buildForceIndex(localIndexPath),
+            StringUtils.isEmpty(localIndexPath) ? null : buildForceIndex(localIndexPath, indexHintType),
             scan.getFlashback(),
             scan.getFlashbackOperator(),
             null);
@@ -791,11 +809,16 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
      * @return A SQL node list with the force index hint
      */
     @NotNull
-    private SqlNodeList buildForceIndex(@NotNull String localIndexPath) {
+    private SqlNodeList buildForceIndex(@NotNull String localIndexPath, IndexUtil.IndexHintType indexHintType) {
+        if (indexHintType == IndexUtil.IndexHintType.PAGING_FORCE_INDEX) {
+            this.existPagingForce = true;
+        }
         return new SqlNodeList(
             Collections.singletonList(
                 new SqlIndexHint(
-                    SqlCharStringLiteral.createCharString("FORCE INDEX", ZERO),
+                    SqlCharStringLiteral.createCharString(
+                        indexHintType == IndexUtil.IndexHintType.PAGING_FORCE_INDEX ?
+                            "PAGING_FORCE INDEX" : "FORCE INDEX", ZERO),
                     null,
                     SqlNodeList.of(new SqlIdentifier(localIndexPath, ZERO)),
                     ZERO)
@@ -810,7 +833,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
      * @param scan Original table scan
      * @return force index info, null if there is no force index in table scan
      */
-    protected SqlIdentifier getForceIndex(TableScan scan) {
+    protected Pair<SqlIdentifier, IndexUtil.IndexHintType> getForceIndex(TableScan scan) {
         if (!(scan.getIndexNode() instanceof SqlNodeList)) {
             return null;
         }
@@ -823,7 +846,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         // get first force index hint
         SqlIndexHint sqlIndexHint = null;
         for (SqlNode node : indexNodes) {
-            if (node instanceof SqlIndexHint && ((SqlIndexHint) node).forceIndex()) {
+            if (node instanceof SqlIndexHint &&
+                (((SqlIndexHint) node).forceIndex() || ((SqlIndexHint) node).pagingForceIndex())) {
                 sqlIndexHint = (SqlIndexHint) node;
                 break;
             }
@@ -838,7 +862,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         if (indexList != null &&
             indexList.size() > 0 &&
             indexList.get(0) instanceof SqlIdentifier) {
-            return (SqlIdentifier) indexList.get(0);
+            return Pair.of((SqlIdentifier) indexList.get(0),
+                sqlIndexHint.pagingForceIndex() ?
+                    IndexUtil.IndexHintType.PAGING_FORCE_INDEX : IndexUtil.IndexHintType.FORCE_INDEX);
         }
 
         return null;
@@ -915,6 +941,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         this.existsWindow |= replaceTableScanInFilterSubQueryFinder.isExistsWindow();
         this.existsNonPushDownFunc |= replaceTableScanInFilterSubQueryFinder.isExistsNonPushDownFunc();
         this.existsOSSTable |= replaceTableScanInFilterSubQueryFinder.existsOSSTable();
+        this.existPagingForce |= replaceTableScanInFilterSubQueryFinder.isExistPagingForce();
         this.existForceColumnar |= replaceTableScanInFilterSubQueryFinder.isExistForceColumnar();
         this.allTableHaveColumnar &= replaceTableScanInFilterSubQueryFinder.isAllTableHaveColumnar();
         return LogicalProject.create(logicalProject.getInput(0),
@@ -986,6 +1013,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         this.containComplexExpression |= replaceTableScanInFilterSubQueryFinder.isContainComplexExpression();
         this.existsNonPushDownFunc |= replaceTableScanInFilterSubQueryFinder.isExistsNonPushDownFunc();
         this.existsOSSTable |= replaceTableScanInFilterSubQueryFinder.existsOSSTable();
+        this.existPagingForce |= replaceTableScanInFilterSubQueryFinder.isExistPagingForce();
         this.existForceColumnar |= replaceTableScanInFilterSubQueryFinder.isExistForceColumnar();
         this.allTableHaveColumnar &= replaceTableScanInFilterSubQueryFinder.isAllTableHaveColumnar();
         this.existsWindow |= replaceTableScanInFilterSubQueryFinder.isExistsWindow();
@@ -1028,6 +1056,11 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     allTableSingleWithSameGroup = false;
                 }
 
+                if (modify.isSourceSelect()) {
+                    final ExecutionContext ec = plannerContext.getExecutionContext();
+                    logicalInsert = LogicalWriteUtil.handleDynamicImplicitDefault(logicalInsert, ec);
+                }
+
                 newPlan = logicalInsert;
                 targetTableProperties = RelUtils.buildTablePropertiesMap(logicalInsert.getTargetTableNames(),
                     schemaName, this.plannerContext.getExecutionContext());
@@ -1046,7 +1079,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     logicalInsert.setModifyForeignKey(true);
                 }
 
-                if (logicalInsert.isSourceSelect() && !this.plannerContext.getExecutionContext().getParamManager()
+                if (modify.isSourceSelect() && !this.plannerContext.getExecutionContext().getParamManager()
                     .getBoolean(ConnectionParams.ENABLE_INSERT_SELECT_WITH_FLASHBACK_PUSH_DOWN)) {
                     if (RelUtils.containFlashback(logicalInsert.getInput())) {
                         insertSelectWithFlashback = true;
@@ -1876,6 +1909,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         private LockMode lockMode = LockMode.UNDEF;
         private List<String> schemaNames;
         private boolean existsOSSTable;
+        private boolean existPagingForce = false;
         private boolean existForceColumnar = false;
         private boolean allTableHaveColumnar = true;
         private boolean existsWindow = false;
@@ -1917,15 +1951,18 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             visitor.schemaNames = this.schemaNames;
             visitor.allTableBroadcast = allTableBroadcast;
             visitor.allTableSingleNoBroadcast = allTableSingleNoBroadcast;
+            visitor.tableStorages = storageIds;
             RelNode r = subQuery.rel.accept(visitor);
             this.allTableSingleWithSameGroup = visitor.allTableSingleWithSameGroup;
             this.allTableSingle = visitor.allTableSingle;
             this.singleDbIndex = visitor.singleDbIndex;
             this.baseLogicalView = visitor.baseLogicalView;
             this.tableNames = visitor.tableNames;
+            this.storageIds = visitor.tableStorages;
             this.allTableBroadcast = visitor.allTableBroadcast;
             this.allTableSingleNoBroadcast = visitor.allTableSingleNoBroadcast;
             this.existsOSSTable = visitor.existsOSSTable;
+            this.existPagingForce |= visitor.existPagingForce;
             this.existForceColumnar |= visitor.existForceColumnar;
             this.allTableHaveColumnar &= visitor.allTableHaveColumnar;
             this.allTableSingleTgId = visitor.allTableSingleTgId;
@@ -1968,6 +2005,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
         public boolean existsOSSTable() {
             return existsOSSTable;
+        }
+
+        public boolean isExistPagingForce() {
+            return existPagingForce;
         }
 
         public boolean isExistForceColumnar() {
@@ -2061,7 +2102,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             existsIntersect ||
             existsMinus || existsCheckSum || existsUnpushableAgg || existsNonPushDownFunc ||
             (modifyBroadcastTable && containUncertainValue) || existsCheckSumV2 ||
-            existsUnPushedDynamicValues || insertSelectWithFlashback;
+            existsUnPushedDynamicValues || insertSelectWithFlashback || existPagingForce;
     }
 
     public boolean isContainOnlineModifyColumnTable() {
@@ -2082,6 +2123,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
     public boolean existsOSSTable() {
         return existsOSSTable;
+    }
+
+    public boolean isExistPagingForce() {
+        return existPagingForce;
     }
 
     public boolean isExistForceColumnar() {

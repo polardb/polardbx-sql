@@ -19,6 +19,7 @@ package com.alibaba.polardbx.common.utils;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -451,7 +452,7 @@ public class GeneralUtil {
         return map;
     }
 
-    public static List<ParameterContext> mapToList(Map<Integer, ParameterContext> param) {
+    public static List<ParameterContext> mapToList(Map<Integer, ParameterContext> param, boolean isBatch) {
         if (param == null) {
             return Collections.emptyList();
         }
@@ -460,7 +461,14 @@ public class GeneralUtil {
             if (param.get(i) == null) {
                 p.add(null);
             } else {
-                p.add(param.get(i));
+                ParameterContext pc = param.get(i);
+                if (isBatch && pc.getValue() instanceof PruneRawString) {
+                    PruneRawString pruneRawString = (PruneRawString) pc.getValue();
+                    p.add(new ParameterContext(pc.getParameterMethod(),
+                        new Object[] {pc.getArgs()[0], pruneRawString.restoreToOriginRawString()}));
+                } else {
+                    p.add(param.get(i));
+                }
             }
         }
         return p;

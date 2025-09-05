@@ -65,7 +65,7 @@
 
   plan: |
 
-    Project(id0="id0", name0="name0", id="id", user_id="user_id", name="name")
+    project(id="id0", name="name0", id0="id", user_id="user_id", name0="name")
       LogicalJoin(condition="id = user_id", type="inner")
         LogicalView(tables="optest_0000.TDDL_ORDERS_01", sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders` WHERE (`id` = 1)")
         LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")

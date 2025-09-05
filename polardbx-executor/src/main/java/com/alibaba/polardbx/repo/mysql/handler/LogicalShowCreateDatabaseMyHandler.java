@@ -112,7 +112,7 @@ public class LogicalShowCreateDatabaseMyHandler extends HandlerCommon {
         if (locality != null) {
             LocalityDesc localityDesc = LocalityInfoUtils.parse(locality.getLocality());
             if (!localityDesc.holdEmptyDnList()) {
-                optiionBuilder.append(" LOCALITY = \"").append(locality.getLocality()).append("\"");
+                optiionBuilder.append("  LOCALITY = '").append(localityDesc.toString()).append("'");
             }
         }
 

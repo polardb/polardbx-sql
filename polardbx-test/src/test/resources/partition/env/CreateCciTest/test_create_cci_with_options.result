@@ -1,6 +1,7 @@
 ## DISABLE_FAST_SQL_PARSER
 drop table if exists t_order
 delete from metadb.columnar_config where table_id = 0 and config_key = 'SNAPSHOT_RETENTION_DAYS'
+delete from metadb.columnar_config where table_id = 0 and config_key = 'columnar_purge_save_ms'
 delete from metadb.columnar_config where table_id = 0 and config_key = 'AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL'
 CREATE TABLE t_order (
 `id` bigint(11) NOT NULL AUTO_INCREMENT,
@@ -34,6 +35,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`order_id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"10",
 			"SNAPSHOT_RETENTION_DAYS":"15",
@@ -82,6 +84,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`order_id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"SNAPSHOT_RETENTION_DAYS":"15",
@@ -128,6 +131,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"SNAPSHOT_RETENTION_DAYS":"7",
@@ -177,6 +181,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`order_id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"10",
 			"SNAPSHOT_RETENTION_DAYS":"15",
@@ -225,6 +230,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`order_id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"SNAPSHOT_RETENTION_DAYS":"15",
@@ -271,6 +277,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"SNAPSHOT_RETENTION_DAYS":"7",
@@ -330,6 +337,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`order_id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"SNAPSHOT_RETENTION_DAYS":"15",
@@ -377,6 +385,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"DICTIONARY_COLUMNS":"`ORDER_SNAPSHOT`,`ORDER_DETAIL`",
@@ -425,6 +434,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"DICTIONARY_COLUMNS":"`ORDER_SNAPSHOT`,`ORDER_DETAIL`",
@@ -474,6 +484,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY HASH(`id`)
 		PARTITIONS 16 ENGINE=OSS
 		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
 			"TYPE":"SNAPSHOT",
 			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
 			"DICTIONARY_COLUMNS":"`ORDER_SNAPSHOT`,`ORDER_DETAIL`",
@@ -502,4 +513,55 @@ t_order,CREATE TABLE `t_order` (
 PARTITION BY KEY(`order_id`)
 PARTITIONS 16
 ALTER TABLE t_order DROP INDEX seller_snapshot
+CALL polardbx.columnar_set_config('columnar_purge_save_ms', '31622400000')
+key,value
+columnar_purge_save_ms,31622400000
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE t_order ADD CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+COLUMNAR_OPTIONS='{
+  "type":"snapshot",
+  "DICTIONARY_COLUMNS":"order_snapshot,order_detail",
+  }'
+SHOW FULL CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* seller_snapshot_$ */ `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`id`)
+		PARTITIONS 16 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"COLUMNAR_BACKUP_ENABLE":"TRUE",
+			"TYPE":"SNAPSHOT",
+			"AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL":"-1",
+			"DICTIONARY_COLUMNS":"`ORDER_SNAPSHOT`,`ORDER_DETAIL`",
+			"SNAPSHOT_RETENTION_DAYS":"367",
+		}',
+	LOCAL KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
+/* tablegroup = `tg` */
+SHOW CREATE TABLE t_order
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`)
+		PARTITION BY HASH(`id`)
+		PARTITIONS 16,
+	KEY `l_i_order` (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16
 DROP TABLE IF EXISTS t_order;

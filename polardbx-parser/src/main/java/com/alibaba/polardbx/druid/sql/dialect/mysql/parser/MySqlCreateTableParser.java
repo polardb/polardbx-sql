@@ -86,6 +86,9 @@ import com.alibaba.polardbx.druid.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.polardbx.druid.sql.parser.Token.LPAREN;
+import static com.alibaba.polardbx.druid.sql.parser.Token.RPAREN;
+
 public class MySqlCreateTableParser extends SQLCreateTableParser {
 
     public MySqlCreateTableParser(ByteString sql) {
@@ -660,6 +663,28 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                 SQLExpr expr = new SQLCharExpr(lexer.stringVal());
                 lexer.nextToken();
                 stmt.addOption("DICTIONARY_COLUMNS", expr);
+                continue;
+            }
+
+            if (lexer.identifierEquals("PAGE_CHECKSUM")) {
+                lexer.nextToken();
+                if (lexer.token() == Token.EQ) {
+                    lexer.nextToken();
+                }
+
+                SQLExpr expr = this.exprParser.expr();
+                stmt.setPageChecksum(expr);
+                continue;
+            }
+
+            if (lexer.identifierEquals("TRANSACTIONAL")) {
+                lexer.nextToken();
+                if (lexer.token() == Token.EQ) {
+                    lexer.nextToken();
+                }
+
+                SQLExpr expr = this.exprParser.expr();
+                stmt.setTransactional(expr);
                 continue;
             }
 
@@ -2307,8 +2332,29 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
             if (lexer.identifierEquals(FnvHash.Constants.TTL_FILTER)) {
                 lexer.nextToken();
                 exprParser.accept(Token.EQ);
-                SQLExpr ttlFilterExpr = exprParser.charExpr();
+                exprParser.acceptIdentifier("COND_EXPR");
+                exprParser.accept(LPAREN);
+                SQLExpr ttlFilterExpr = exprParser.expr();
+                exprParser.accept(RPAREN);
                 sqlTimeToLiveDefinitionExpr.setTtlFilterExpr(ttlFilterExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_CLEANUP)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlCleanupExpr = exprParser.charExpr();
+                sqlTimeToLiveDefinitionExpr.setTtlCleanupExpr(ttlCleanupExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_PART_INTERVAL)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlPartInterval = exprParser.expr();
+                sqlTimeToLiveDefinitionExpr.setTtlPartIntervalExpr(ttlPartInterval);
                 findOptions = true;
                 continue;
             }
@@ -2385,7 +2431,8 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
             lexer.nextToken();
             timezone = exprParser.expr();
         } else {
-            throw new ParserException("syntax error, 'TIMEZONE' must be after the second 'CRON' ");
+//            throw new ParserException("syntax error, 'TIMEZONE' must be after the second 'CRON' ");
+            timezone = null;
         }
 
         SQLTimeToLiveJobExpr timeToLiveJobExpr = new SQLTimeToLiveJobExpr();
@@ -2395,33 +2442,71 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
     }
 
     public static SQLTimeToLiveExpr parseTimeToLiveExpr(SQLExprParser exprParser, Lexer lexer) {
+
         SQLExpr ttlColumn = exprParser.expr();
+        if (lexer.token() == Token.COMMA) {
+            SQLTimeToLiveExpr ttlExpr = new SQLTimeToLiveExpr();
+            ttlExpr.setColumn(ttlColumn);
+            return ttlExpr;
+        }
+
+        if (lexer.token() == Token.EOF) {
+            SQLTimeToLiveExpr ttlExpr = new SQLTimeToLiveExpr();
+            ttlExpr.setColumn(ttlColumn);
+            return ttlExpr;
+        }
+
         if (lexer.identifierEquals("EXPIRE")) {
             lexer.nextToken();
         } else {
             exprParser.setErrorEndPos(lexer.pos());
             throw new ParserException("syntax error, 'expire' must be after the column identifier");
         }
+
+        boolean isExpireAfter = false;
+        boolean isExpireOver = false;
         if (lexer.identifierEquals("AFTER")) {
             lexer.nextToken();
+            isExpireAfter = true;
+        } else if (lexer.token() == Token.OVER) {
+            lexer.nextToken();
+            isExpireOver = true;
         } else {
             exprParser.setErrorEndPos(lexer.pos());
-            throw new ParserException("syntax error, 'after' must be after 'expire' ");
+            throw new ParserException("syntax error, 'after/over' must be after 'expire' ");
         }
-        SQLExpr expireInterval = exprParser.expr();
-        SQLExpr expireIntervalUnit = exprParser.expr();
+
+        SQLExpr expireInterval = null;
+        SQLExpr expireIntervalUnit = null;
+
+        SQLExpr expireOverPartCnt = null;
+        if (isExpireAfter) {
+            expireInterval = exprParser.expr();
+            expireIntervalUnit = exprParser.expr();
+        } else if (isExpireOver) {
+            expireOverPartCnt = exprParser.expr();
+            if (lexer.identifierEquals("PARTITIONS")) {
+                lexer.nextToken();
+            } else {
+                throw new ParserException("syntax error, 'partitions' must be after 'expire over' ");
+            }
+        }
+
         SQLExpr ttlTimezone = null;
         if (lexer.identifierEquals("TIMEZONE")) {
             lexer.nextToken();
             ttlTimezone = exprParser.expr();
         } else {
-            throw new ParserException("syntax error, 'timezone' must be after the unit identifier");
+            if (isExpireAfter) {
+                throw new ParserException("syntax error, 'timezone' must be after the unit identifier");
+            }
         }
 
         SQLTimeToLiveExpr timeToLiveExpr = new SQLTimeToLiveExpr();
         timeToLiveExpr.setColumn(ttlColumn);
         timeToLiveExpr.setExpireAfter(expireInterval);
         timeToLiveExpr.setUnit(expireIntervalUnit);
+        timeToLiveExpr.setExpireOver(expireOverPartCnt);
         timeToLiveExpr.setTimezone(ttlTimezone);
         return timeToLiveExpr;
     }

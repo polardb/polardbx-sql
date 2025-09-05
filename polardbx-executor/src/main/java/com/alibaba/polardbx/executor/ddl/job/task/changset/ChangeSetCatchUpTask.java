@@ -31,6 +31,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,6 +45,7 @@ public class ChangeSetCatchUpTask extends BaseBackfillTask {
     final private ChangeSetManager.ChangeSetCatchUpStatus catchUpStatus;
     final private ComplexTaskMetaManager.ComplexTaskType taskType;
     final private Long changeSetId;
+    final private List<String> notUsingBinaryStringColumns;
     final private Boolean loop;
 
     @JSONCreator
@@ -52,7 +54,8 @@ public class ChangeSetCatchUpTask extends BaseBackfillTask {
                                 Map<String, String> orderedTargetTableLocations,
                                 ChangeSetManager.ChangeSetCatchUpStatus catchUpStatus,
                                 ComplexTaskMetaManager.ComplexTaskType taskType,
-                                Long changeSetId, Boolean loop
+                                Long changeSetId, List<String> notUsingBinaryStringColumns,
+                                Boolean loop
     ) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
@@ -62,6 +65,7 @@ public class ChangeSetCatchUpTask extends BaseBackfillTask {
         this.catchUpStatus = catchUpStatus;
         this.changeSetId = changeSetId;
         this.taskType = taskType;
+        this.notUsingBinaryStringColumns = notUsingBinaryStringColumns;
         this.loop = loop;
         onExceptionTryRollback();
     }
@@ -87,6 +91,7 @@ public class ChangeSetCatchUpTask extends BaseBackfillTask {
             taskType,
             catchUpStatus,
             changeSetId,
+            notUsingBinaryStringColumns,
             executionContext
         );
 

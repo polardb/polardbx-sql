@@ -17,10 +17,8 @@
 package com.alibaba.polardbx.qatest.ddl.auto.tablegroup;
 
 import com.alibaba.polardbx.common.utils.Assert;
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestBase;
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestUtils;
+import com.alibaba.polardbx.qatest.ddl.datamigration.locality.LocalityTestBase;
 import net.jcip.annotations.NotThreadSafe;
-import org.apache.commons.lang.BooleanUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -30,16 +28,11 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
-
-import javax.validation.constraints.AssertFalse;
 
 import static com.google.common.truth.Truth.assertWithMessage;
 
@@ -84,40 +77,8 @@ public class FastCheckerTest extends DDLBaseNewDBTestCase {
 
     }
 
-    public static List<LocalityTestUtils.StorageNodeBean> getStorageInfo(Connection tddlConnection) {
-        final String showStorageSql = "SHOW STORAGE REPLICAS";
-        // STORAGE_INST_ID | polardbx-storage-1-master
-        // LEADER_NODE     | 100.82.20.151:3318
-        // IS_HEALTHY      | true
-        // INST_KIND       | MASTER
-        // DB_COUNT        | 3
-        // GROUP_COUNT     | 5
-        // STATUS          | 0
-        // DELETABLE       | 1
-        // REPLICAS        | LEADER/100.82.20.151:3318/az2,FOLLOWER(100.82.20.151:3308)(az1),FOLLOWER(100.82.20.151:3328)(az3)
-
-        List<LocalityTestUtils.StorageNodeBean> res = new ArrayList<>();
-        try (ResultSet result = JdbcUtil.executeQuerySuccess(tddlConnection, showStorageSql)) {
-            while (result.next()) {
-                String instance = result.getString(1);
-                String instKind = result.getString(4);
-                String status = result.getString(7);
-                boolean deletable = BooleanUtils.toBoolean(result.getString(8));
-                String replicaStr = result.getString(11);
-                LocalityTestUtils.StorageNodeBean
-                    storageNode =
-                    new LocalityTestUtils.StorageNodeBean(instance, instKind, status, deletable, replicaStr);
-                res.add(storageNode);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-//        LOG.info("getStorageInfo: " + res);
-        return res;
-    }
-
     public static String getDataNode(Connection tddlConnection) {
-        List<LocalityTestUtils.StorageNodeBean> dnList = getStorageInfo(tddlConnection);
+        List<LocalityTestBase.StorageNodeBean> dnList = LocalityTestBase.getStorageInfo(tddlConnection);
         List<String> names = dnList.stream()
             .filter(x -> "MASTER".equals(x.instKind))
             .filter(x -> x.deletable == true)

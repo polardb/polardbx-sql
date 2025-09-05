@@ -102,7 +102,10 @@ public class MdlDeadlockDetectionTask implements Runnable {
 
     private static final String GRANTED_STATUS = "GRANTED";
 
+    public static final Long MIN_MDL_WAIT_TIMEOUT_SECOND = 2L;
+
     private Collection<String> allSchema;
+
 
     private static final Set<String> DDL_WAIT_MDL_LOCK_TYPE =
         ImmutableSet.of(
@@ -600,7 +603,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
             runningCountByDb.put(DEFAULT_DB_NAME, new AtomicLong(0));
         }
 
-        int phyiscalMdlWaitTimeout = DynamicConfig.getInstance().getPhyiscalMdlWaitTimeout();
+        int phyiscalMdlWaitTimeout = DynamicConfig.getInstance().getPhysicalMdlWaitTimeout();
         if (phyiscalMdlWaitTimeout <= 0) {
             if (runningCountByDb.get(DEFAULT_DB_NAME).get() > 0L) {
                 EventLogger.log(EventType.DEAD_LOCK_DETECTION,
@@ -610,7 +613,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
             TransactionLogger.debug("Skip MDL deadlock detection task since dn mdl wait timeout is negative or zero");
             return;
         } else {
-            MDL_WAIT_TIMEOUT.set(Math.max(phyiscalMdlWaitTimeout, 5));
+            MDL_WAIT_TIMEOUT.set(Math.max(phyiscalMdlWaitTimeout, MIN_MDL_WAIT_TIMEOUT_SECOND));
             long runningCount = runningCountByDb.get(DEFAULT_DB_NAME).get();
             if (runningCount < 0L) {
                 EventLogger.log(EventType.DEAD_LOCK_DETECTION,
@@ -640,6 +643,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
     }
 
     private void detectMetaDataDeadLock() {
+        EventLogger.log(EventType.DEAD_LOCK_DETECTION, "the deadlock detection task is running on db " + db);
         final DiGraph<TrxLookupSet.Transaction> graph = new DiGraph<>();
 
         // Get all global transaction information

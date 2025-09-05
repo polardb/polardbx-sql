@@ -64,17 +64,21 @@ public class SqlFunction extends SqlOperator {
 
     public static Set<String> NON_PUSHDOWN_FUNCTION = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
+    public static Set<String> NON_NULL_FUNCTION = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
     static {
         // Non-mysql Functions
         NON_PUSHDOWN_FUNCTION.add(NEXTVAL_FUNC_NAME);
         NON_PUSHDOWN_FUNCTION.add(CURRVAL_FUNC_NAME);
         NON_PUSHDOWN_FUNCTION.add("PART_ROUTE");
         NON_PUSHDOWN_FUNCTION.add("TIME_TO_TSO");
+        NON_PUSHDOWN_FUNCTION.add("TSO_TO_TIME");
 
         // Information Functions
         NON_PUSHDOWN_FUNCTION.add("CONNECTION_ID");
         NON_PUSHDOWN_FUNCTION.add("CURRENT_ROLE");
         NON_PUSHDOWN_FUNCTION.add("CURRENT_USER");
+        NON_PUSHDOWN_FUNCTION.add("CUR_TIME_ZONE");
         NON_PUSHDOWN_FUNCTION.add("DATABASE");
         NON_PUSHDOWN_FUNCTION.add("FOUND_ROWS");
         NON_PUSHDOWN_FUNCTION.add("ICU_VERSION");
@@ -96,6 +100,8 @@ public class SqlFunction extends SqlOperator {
         NON_PUSHDOWN_FUNCTION.add("IS_USED_LOCK");
         NON_PUSHDOWN_FUNCTION.add("HYPERLOGLOG");
         NON_PUSHDOWN_FUNCTION.add("PART_HASH");
+        NON_PUSHDOWN_FUNCTION.add("CARTESIAN");
+        NON_PUSHDOWN_FUNCTION.add("LIST");
         SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_CHECK");
         SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_READ");
         SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_WRITE");
@@ -142,6 +148,28 @@ public class SqlFunction extends SqlOperator {
         DYNAMIC_FUNCTION.add("IS_USED_LOCK");
         DYNAMIC_FUNCTION.add("RELEASE_ALL_LOCKS");
         DYNAMIC_FUNCTION.add("RELEASE_LOCK");
+
+        // Time Function
+        NON_NULL_FUNCTION.add("CURDATE");
+        NON_NULL_FUNCTION.add("CURRENT_DATE");
+        NON_NULL_FUNCTION.add("CURRENT_TIME");
+        NON_NULL_FUNCTION.add("CURRENT_TIMESTAMP");
+        NON_NULL_FUNCTION.add("CURTIME");
+        NON_NULL_FUNCTION.add("LOCALTIME");
+        NON_NULL_FUNCTION.add("LOCALTIMESTAMP");
+        NON_NULL_FUNCTION.add("NOW");
+        NON_NULL_FUNCTION.add("SYSDATE");
+        NON_NULL_FUNCTION.add("UNIX_TIMESTAMP");
+        NON_NULL_FUNCTION.add("UTC_DATE");
+        NON_NULL_FUNCTION.add("UTC_TIME");
+        NON_NULL_FUNCTION.add("TSO_TIMESTAMP");
+
+        // Numeric Functions
+        NON_NULL_FUNCTION.add("RAND");
+
+        // Miscellaneous Functions
+        NON_NULL_FUNCTION.add("UUID");
+        NON_NULL_FUNCTION.add("UUID_SHORT");
     }
 
     public static boolean isDynamic(SqlFunction func) {
@@ -150,6 +178,10 @@ public class SqlFunction extends SqlOperator {
 
     public static boolean isCanPushdown(SqlFunction func) {
         return !NON_PUSHDOWN_FUNCTION.contains(func.getName());
+    }
+
+    public static boolean isNullable(SqlFunction func) {
+        return !NON_NULL_FUNCTION.contains(func.getName());
     }
 
     //~ Instance fields --------------------------------------------------------
@@ -489,6 +521,14 @@ public class SqlFunction extends SqlOperator {
             return false;
         }
         return super.isDeterministic();
+    }
+
+    @Override
+    public boolean isNullable() {
+        if (!isNullable(this)) {
+            return false;
+        }
+        return super.isNullable();
     }
 
     public static String replaceUdfName(String simpleName) {

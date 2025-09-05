@@ -74,7 +74,7 @@ public class LogicalShowReplicaCheckProgressHandler extends HandlerCommon {
         try {
             res = PooledHttpHelper.doPost(url, ContentType.APPLICATION_JSON, JSON.toJSONString(params), 10000);
         } catch (Exception e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e, e.getMessage());
         }
 
         ResultCode<?> httpResult = JSON.parseObject(res, ResultCode.class);
@@ -98,7 +98,7 @@ public class LogicalShowReplicaCheckProgressHandler extends HandlerCommon {
                 new Object[] {r.getDbName(), r.getTbName(), r.getStage(), r.getStatus(), r.getSummary()}));
             return result;
         } catch (Exception e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e, e.getMessage());
         }
     }
 

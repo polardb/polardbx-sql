@@ -98,6 +98,11 @@ public class DynamicParamExpression extends AbstractExpression {
 
     }
 
+    public static DynamicParamExpression create(int index, ExprContextProvider contextProvider, int subIndex,
+                                                int skIndex) {
+        return new DynamicParamExpression(index, contextProvider, subIndex, skIndex);
+    }
+
     @Override
     public Object eval(Row row, ExecutionContext ec) {
         if (index == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {

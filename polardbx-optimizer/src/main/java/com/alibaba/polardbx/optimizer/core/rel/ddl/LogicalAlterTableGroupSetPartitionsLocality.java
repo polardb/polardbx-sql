@@ -18,11 +18,13 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -91,12 +93,16 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
         }
 
         PartitionSpec partitionSpec = partitionInfo.getPartitionBy().getPartitionByPartName(partition);
+        if (partitionSpec.isLogical()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                String.format("invalid alter locality operation on logical partition[%s]", partition));
+        }
         String originalPartitionGroupLocality = partitionSpec.getLocality();
         LocalityDesc originalPartitionGroupLocalityDesc = LocalityInfoUtils.parse(originalPartitionGroupLocality);
-
+        String grpKey = partitionSpec.getLocation().getGroupKey();
+        String realTopology = DbTopologyManager.getStorageInstIdByGroupName(schemaName, grpKey);
         Set<String> targetDnList = targetLocalityDesc.getDnSet();
-        Set<String> orignialDnList = originalPartitionGroupLocalityDesc.getDnSet();
-        Boolean withRebalance;
+        Set<String> originalDnList = originalPartitionGroupLocalityDesc.getDnSet();
         String rebalanceSql = "";
         // validate locality
         // generate drain node list
@@ -109,19 +115,28 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
 //                String.format("invalid locality: '%s', conflict with locality of database [%s]: '%s'",
 //                    targetLocality, schemaName, localityDescOfDb));
 //        }
-        if (targetDnList.containsAll(orignialDnList) || targetDnList.isEmpty()) {
-            withRebalance = false;
-        } else {
-            withRebalance = true;
-            rebalanceSql = String.format("schedule rebalance tablegroup `%s` policy = 'data_balance'", tableGroupName);
+        Boolean skipRebalance = false;
+        // originalDnList is empty, then we judge this by realTopology.
+        if (GeneralUtil.isEmpty(originalDnList)) {
+            if (targetDnList.contains(realTopology)) {
+                skipRebalance = true;
+            }
+            // targetDnList is empty
+        } else if (targetDnList.isEmpty()) {
+            skipRebalance = true;
+            // originalDnList is not empty and targetDnList is not empty.
+        } else if (!GeneralUtil.isEmpty(originalDnList) && !GeneralUtil.isEmpty(targetDnList)) {
+            if (targetDnList.containsAll(originalDnList) && targetDnList.contains(realTopology)) {
+                skipRebalance = true;
+            }
         }
-
+        rebalanceSql = String.format("schedule rebalance tablegroup `%s` policy = 'data_balance'", tableGroupName);
         preparedData = new AlterTableGroupSetPartitionsLocalityPreparedData();
         preparedData.setTargetLocality(targetLocality);
         preparedData.setPartition(partition);
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setSchemaName(schemaName);
-        preparedData.setWithRebalance(withRebalance);
+        preparedData.setWithRebalance(!skipRebalance);
         preparedData.setRebalanceSql(rebalanceSql);
     }
 

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
 import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcRepartitionMarkTask;
@@ -35,6 +36,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
@@ -49,6 +51,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLE;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLEGROUP;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLE_SET_TABLEGROUP;
+
 /**
  * @author wumu
  */
@@ -57,15 +63,18 @@ public class AlterPartitionCountJobFactory extends DdlJobFactory {
     private final String primaryTableName;
     private final Map<String, String> tableNameMap;
     private final Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData;
+    private final Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareDataForLocalIndex;
     private final ExecutionContext executionContext;
 
     public AlterPartitionCountJobFactory(String schemaName, String primaryTableName, Map<String, String> tableNameMap,
                                          Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData,
+                                         Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareDataForLocalIndex,
                                          ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.primaryTableName = primaryTableName;
         this.tableNameMap = tableNameMap;
         this.globalIndexPrepareData = globalIndexPrepareData;
+        this.globalIndexPrepareDataForLocalIndex = globalIndexPrepareDataForLocalIndex;
         this.executionContext = executionContext;
     }
 
@@ -106,12 +115,27 @@ public class AlterPartitionCountJobFactory extends DdlJobFactory {
 
         // create gsi
         List<ExecutableDdlJob4CreatePartitionGsi> createGsiJobs = new ArrayList<>();
-        globalIndexPrepareData.forEach((createGlobalIndexPreparedData, physicalPlanData) -> {
+        for (Map.Entry<CreateGlobalIndexPreparedData, PhysicalPlanData> entry : globalIndexPrepareData.entrySet()) {
+            PhysicalPlanData physicalPlanDataForLocalIndex = globalIndexPrepareDataForLocalIndex.get(entry.getKey());
             CreateGsiJobFactory createGsiJobFactory =
-                CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, null, executionContext);
+                CreateGsiJobFactory.create(entry.getKey(), entry.getValue(), physicalPlanDataForLocalIndex,
+                    executionContext);
+            createGsiJobFactory.stayAtBackFill = true;
+            ExecutableDdlJob createGsiJob = createGsiJobFactory.create();
+            if (entry.getKey().getRelatedTableGroupInfo().values().stream().anyMatch(o -> o.booleanValue())
+                || entry.getKey().isNeedToGetTableGroupLock()) {
+                return createGsiJob;
+            }
+            createGsiJobs.add((ExecutableDdlJob4CreatePartitionGsi) createGsiJob);
+
+        }
+        /*globalIndexPrepareData.forEach((createGlobalIndexPreparedData, physicalPlanData) -> {
+            PhysicalPlanData physicalPlanDataForLocalIndex = globalIndexPrepareDataForLocalIndex.get(createGlobalIndexPreparedData);
+            CreateGsiJobFactory createGsiJobFactory =
+                CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, physicalPlanDataForLocalIndex, executionContext);
             createGsiJobFactory.stayAtBackFill = true;
             createGsiJobs.add((ExecutableDdlJob4CreatePartitionGsi) createGsiJobFactory.create());
-        });
+        });*/
 
         // cut over
         AlterPartitionCountCutOverTask cutOverTask =
@@ -121,7 +145,12 @@ public class AlterPartitionCountJobFactory extends DdlJobFactory {
 
         // cdc
         if (executionContext.getDdlContext().isSubJob()) {
-            throw new RuntimeException("unexpected parent ddl job");
+            DdlContext rootDdlContext = getRootParentDdlContext(executionContext.getDdlContext());
+            DdlType rootDdlType = rootDdlContext.getDdlType();
+            if (ALTER_TABLE_SET_TABLEGROUP != rootDdlType && ALTER_TABLE != rootDdlType
+                && ALTER_TABLEGROUP != rootDdlType) {
+                throw new RuntimeException("unexpected parent ddl job " + rootDdlContext.getDdlType());
+            }
         }
         DdlTask cdcDdlMarkTask = new CdcRepartitionMarkTask(
             schemaName, primaryTableName, SqlKind.ALTER_TABLE, CdcDdlMarkVisibility.Protected);
@@ -189,5 +218,13 @@ public class AlterPartitionCountJobFactory extends DdlJobFactory {
     @Override
     protected void sharedResources(Set<String> resources) {
 
+    }
+
+    private DdlContext getRootParentDdlContext(DdlContext ddlContext) {
+        if (ddlContext.getParentDdlContext() != null) {
+            return getRootParentDdlContext(ddlContext.getParentDdlContext());
+        } else {
+            return ddlContext;
+        }
     }
 }

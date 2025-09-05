@@ -25,7 +25,6 @@ import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
@@ -52,6 +51,8 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
     private final boolean shareReadView;
     private final String trxPolicy;
     private final String asyncCommit;
+
+    final String DISABLE_MPP_HINT = "/*+TDDL:ENABLE_MPP=false SHOW_ALL_PARAMS=true*/";
 
     private static final String SELECT_FROM =
         "/*TDDL:enable_mpp=false*/SELECT pk, varchar_test, integer_test, char_test, blob_test, " +
@@ -343,5 +344,94 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
         String randomHint = "/*" + UUID.randomUUID() + "*/";
         sql = randomHint + SELECT_FROM + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+    }
+
+    @Test
+    public void testXaRecoverTaskParamChange() throws Throwable {
+        long interval = 6;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global XA_RECOVER_INTERVAL = " + interval);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET SHOW_ALL_PARAMS=true");
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, DISABLE_MPP_HINT
+                + "select * from information_schema.global_variables where variable_name like '%XA_RECOVER_INTERVAL%';");
+        while (rs.next()) {
+            System.out.println(rs.getString(1));
+            System.out.println(rs.getString(2));
+            if (rs.getString(1).equalsIgnoreCase("XA_RECOVER_INTERVAL")) {
+                Assert.assertTrue(rs.getString(2).equalsIgnoreCase(String.valueOf(interval)));
+            }
+        }
+        testRecoverTime(interval, 2 * interval + 1);
+        interval = 7;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set global XA_RECOVER_INTERVAL = " + interval);
+        testRecoverTime(interval, 2 * interval + 1);
+    }
+
+    /**
+     * Should at least wait minTime, but no longer than maxTime.
+     */
+    private void testRecoverTime(long minTime, long maxTime) throws Throwable {
+        tableDataPrepare(baseOneTableName, MAX_DATA_SIZE,
+            TableColumnGenerator.getBaseMinColum(), PK_COLUMN_NAME, mysqlConnection,
+            tddlConnection, columnDataGenerator);
+        long before = 0, after = 0, beforeCommitError = 0, afterCommitError = 0;
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "SHOW TRANS STATS")) {
+            if (rs.next()) {
+                before = rs.getLong("RECOVER_COMMIT_BRANCH_COUNT");
+                beforeCommitError = rs.getLong("COMMIT_ERROR_COUNT");
+            }
+        }
+
+        String hint = "/* +TDDL:cmd_extra(FAILURE_INJECTION='SYNC_COMMIT,FAIL_AFTER_PRIMARY_COMMIT') */";
+        String sql = "update " + baseOneTableName + " set integer_test=?, date_test=?,float_test=?";
+        List<Object> param = new ArrayList<Object>();
+        param.add(columnDataGenerator.integer_testValue);
+        param.add(columnDataGenerator.date_testValue);
+        param.add(columnDataGenerator.float_testValue);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set TRANSACTION_POLICY = " + trxPolicy);
+
+        tddlConnection.setAutoCommit(false);
+        mysqlConnection.setAutoCommit(false);
+        JdbcUtil.setShareReadView(shareReadView, tddlConnection);
+
+        try {
+            executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
+            sql = SELECT_FROM + baseOneTableName;
+            selectContentSameAssert(hint + sql, null, mysqlConnection, tddlConnection);
+            printTrxInfo(tddlConnection);
+        } catch (Exception e) {
+            Assert.fail(e.getMessage());
+        }
+        boolean exception = false;
+        long start = System.currentTimeMillis();
+        try {
+            tddlConnection.commit();
+        } catch (Exception ex) {
+            // ignore
+            exception = true;
+        }
+        Assert.assertTrue(exception);
+        mysqlConnection.commit();
+        tddlConnection.setAutoCommit(true);
+        mysqlConnection.setAutoCommit(true);
+        String randomHint = "/*" + UUID.randomUUID() + "*/";
+        sql = randomHint + SELECT_FROM + baseOneTableName + " FOR UPDATE";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+        long duration = System.currentTimeMillis() - start;
+        System.out.println("wait " + duration + " ms");
+        Assert.assertTrue(duration >= minTime * 1000);
+        Assert.assertTrue(duration <= maxTime * 1000);
+
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "SHOW TRANS STATS")) {
+            if (rs.next()) {
+                after = rs.getLong("RECOVER_COMMIT_BRANCH_COUNT");
+                afterCommitError = rs.getLong("COMMIT_ERROR_COUNT");
+            }
+        }
+
+        Assert.assertTrue(
+            "after.COMMIT_ERROR_COUNT should > before.COMMIT_ERROR_COUNT, but before is "
+                + beforeCommitError + ", and after is " + afterCommitError,
+            afterCommitError > beforeCommitError);
     }
 }

@@ -21,6 +21,8 @@ import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
 
+import java.nio.ByteBuffer;
+
 public class EnumColumnProvider extends StringColumnProvider {
     @Override
     public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
@@ -29,8 +31,8 @@ public class EnumColumnProvider extends StringColumnProvider {
             return;
         }
 
-        byte[] bytes = row.getBytes(columnId);
-        int intVal = ColumnProvider.intFromByte(bytes, bytes.length);
+        ByteBuffer bytes = row.getBytes(columnId);
+        int intVal = ColumnProvider.intFromByte(bytes);
         blockBuilder.writeString(((EnumType) dataType).convertTo(intVal));
     }
 }

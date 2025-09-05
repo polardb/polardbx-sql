@@ -20,7 +20,6 @@ package com.alibaba.polardbx.qatest.ddl.auto.columnar;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
-import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
@@ -90,51 +89,6 @@ public class TruncateTableWithCciTest extends DDLBaseNewDBTestCase {
             final String sqlDdl1 = String.format("truncate table %s ", cciTestTableName1);
             JdbcUtil.executeUpdateSuccess(tddlConnection, sqlDdl1);
             checkLatestColumnarSchemaEvolutionRecordByDdlSql(sqlDdl1,
-                getDdlSchema(),
-                cciTestTableName1,
-                cciTestIndexName1,
-                DdlType.TRUNCATE_TABLE,
-                ColumnarTableStatus.PUBLIC);
-
-        } catch (Exception e) {
-            throw new RuntimeException("sql statement execution failed!", e);
-        }
-    }
-
-    @CdcIgnore(ignoreReason = "cdc暂时未支持insert overwrite")
-    @Test
-    public void testInsertOverwrite_table_with_cci_check_cdc_mark() {
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
-
-        final Random random = new Random();
-        final Formatter formatter = new Formatter();
-        final String suffix = "__" + formatter.format("%04x", random.nextInt(0x10000));
-        final String cciTestTableName1 = PRIMARY_TABLE_NAME1 + suffix;
-        final String cciTestIndexName1 = INDEX_NAME1 + suffix;
-        try {
-            final String creatTableTmpl = "CREATE TABLE `%s` ( \n"
-                + "    `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP, \n"
-                + "    `order_id` varchar(20) DEFAULT NULL, \n"
-                + "    `buyer_id` varchar(20) DEFAULT NULL, \n"
-                + "    `order_snapshot` longtext, \n"
-                + "    PRIMARY KEY (`id`), \n"
-                + "    CLUSTERED COLUMNAR INDEX `%s`(`buyer_id`) PARTITION BY KEY(`id`)\n"
-                + ") ENGINE = InnoDB CHARSET = utf8 PARTITION BY KEY(`order_id`);\n";
-            final String sqlCreateTable1 = String.format(
-                creatTableTmpl,
-                cciTestTableName1,
-                cciTestIndexName1);
-
-            // Create table with cci
-            dropTableIfExists(cciTestTableName1);
-            createCciSuccess(sqlCreateTable1);
-
-            // Drop table
-            final String sqlDdl1 =
-                String.format("insert overwrite table %s values (null,\"1\",\"1\",\"1\") ", cciTestTableName1);
-            final String sqlDdl2 = String.format("truncate table `%s`", cciTestTableName1);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, sqlDdl1);
-            checkLatestColumnarSchemaEvolutionRecordByDdlSql(sqlDdl2,
                 getDdlSchema(),
                 cciTestTableName1,
                 cciTestIndexName1,

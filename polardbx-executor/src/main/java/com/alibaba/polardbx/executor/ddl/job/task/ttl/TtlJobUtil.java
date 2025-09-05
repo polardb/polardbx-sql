@@ -4,6 +4,7 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.druid.util.StringUtils;
@@ -11,6 +12,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.exception.TtlJobRuntimeException;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.log.TtlLoggerUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.ttl.scheduler.TtlScheduledJobStatManager;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
@@ -30,13 +32,16 @@ import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.IndexType;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
@@ -49,8 +54,10 @@ import com.alibaba.polardbx.optimizer.ttl.TtlTimeUnit;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.sql.SqlAlterTableRepartition;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -323,22 +330,12 @@ public class TtlJobUtil {
         RelDataTypeFactory type = PartitionPrunerUtils.getTypeFactory();
         RelDataType tbRelRowType = arcTmpTableMeta.getPhysicalRowType(type);
         PartitionPruneStep pruneStep = PartitionPruneStepBuilder.genPointSelectPruneStepInfoForTtlRouting(pointValue,
-            pointValueOpTypes, ec, newEcOutput, arcTmpTblPartInfo, tbRelRowType);
+            pointValueOpTypes, ec, newEcOutput, arcTmpTblPartInfo, PartKeyLevel.PARTITION_KEY, tbRelRowType);
 
         PartPrunedResult prunedResult = PartitionPruner.doPruningByStepInfo(pruneStep, newEcOutput[0]);
-        List<PhysicalPartitionInfo> phyPartList = prunedResult.getPrunedParttions();
+        List<PhysicalPartitionInfo> phyPartList = prunedResult.getPrunedPartitions();
 
         return phyPartList;
-    }
-
-    public static String getLastPartBoundValueStrByTtlTmpTblPartInfo(ExecutionContext ec,
-                                                                     TableMeta arcTmpTableMeta,
-                                                                     String ttlTimezone) {
-
-        PartitionInfo partInfo = arcTmpTableMeta.getPartitionInfo();
-        int partCnt = partInfo.getPartitionBy().getPartitions().size();
-
-        return "";
     }
 
     public static LocalDateTime plusDeltaIntervals(LocalDateTime normalizedDatetime,
@@ -382,14 +379,16 @@ public class TtlJobUtil {
             allPublishedIndexes = ttlTblMeta.getGsiPublished();
         }
 
-        for (Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> gsiIdxItem : allPublishedIndexes.entrySet()) {
-            String gsiTblName = gsiIdxItem.getKey().toLowerCase();
-            GsiMetaManager.GsiIndexMetaBean gsiBean = gsiIdxItem.getValue();
-            if (!gsiTblName.startsWith(arcTmpTblName)) {
-                continue;
+        if (allPublishedIndexes != null) {
+            for (Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> gsiIdxItem : allPublishedIndexes.entrySet()) {
+                String gsiTblName = gsiIdxItem.getKey().toLowerCase();
+                GsiMetaManager.GsiIndexMetaBean gsiBean = gsiIdxItem.getValue();
+                if (!gsiTblName.startsWith(arcTmpTblName)) {
+                    continue;
+                }
+                actualTblNameOfCci = gsiBean.indexName;
+                break;
             }
-            actualTblNameOfCci = gsiBean.indexName;
-            break;
         }
         return actualTblNameOfCci;
     }
@@ -405,7 +404,7 @@ public class TtlJobUtil {
         return false;
     }
 
-    public static long fetchArcTmlTableDataLength(ExecutionContext ec,
+    public static long fetchArcCciTableDataLength(ExecutionContext ec,
                                                   TtlJobContext jobContext,
                                                   List<String> targetPartNames) {
         String arcTmpTblSchema = jobContext.getTtlInfo().getTtlInfoRecord().getArcTmpTblSchema();
@@ -814,11 +813,14 @@ public class TtlJobUtil {
     }
 
     public static void updateJobStage(TtlJobContext jobContext, String stageMsg) {
-        String dbName = jobContext.getTtlInfo().getTtlInfoRecord().getTableSchema();
-        String tbName = jobContext.getTtlInfo().getTtlInfoRecord().getTableName();
+        TtlDefinitionInfo ttlInfo = jobContext.getTtlInfo();
+        String dbName = ttlInfo.getTtlInfoRecord().getTableSchema();
+        String tbName = ttlInfo.getTtlInfoRecord().getTableName();
         TtlScheduledJobStatManager.TtlJobStatInfo jobStatInfo = TtlScheduledJobStatManager.getInstance()
             .getTtlJobStatInfo(dbName, tbName);
         jobStatInfo.setCurrJobStage(stageMsg);
+        jobStatInfo.setCurrJobEndTs(System.currentTimeMillis());
+
     }
 
     public static void statTaskTimeCost(TtlJobContext jobContext, long beginTsNano) {
@@ -843,7 +845,7 @@ public class TtlJobUtil {
         if (TtlConfigUtil.isIgnoreMaintainWindowInTtlJob()) {
             return true;
         }
-        return InstConfUtil.isInMaintenanceTimeWindow();
+        return InstConfUtil.isInTtlJobMaintenanceTimeWindow();
     }
 
     public static int decidePreBuiltPartCnt(int preBuiltPartCntForFuture,
@@ -895,5 +897,102 @@ public class TtlJobUtil {
             TtlLoggerUtil.TTL_TASK_LOGGER.warn(ex);
         }
         return forceIndexExpr;
+    }
+
+    public static TableMeta getArchiveCciTableMeta(String ttlTblSchema, String ttlTblName,
+                                                   ExecutionContext executionContext) {
+        TableMeta ttlTblMeta = executionContext.getSchemaManager(ttlTblSchema).getTable(ttlTblName);
+        String tblNameOfArcCci = TtlJobUtil.getActualTableNameForArcCci(ttlTblMeta, executionContext);
+        String arcTblSchema = ttlTblMeta.getTtlDefinitionInfo().getArchiveTableSchema();
+        TableMeta cciTblMeta = executionContext.getSchemaManager(arcTblSchema).getTableWithNull(tblNameOfArcCci);
+        return cciTblMeta;
+    }
+
+    public static String fetchStringFromQueryValue(List<Map<String, Object>> boundResult, String colName) {
+        String expiredLowerBoundStr = null;
+        Object expiredLowerBoundObj = boundResult.get(0).get(colName);
+        if (expiredLowerBoundObj instanceof io.airlift.slice.Slice) {
+            //expiredLowerBoundStr = ((Slice) expiredLowerBoundObj).toString();
+            byte[] valBytes = ((io.airlift.slice.Slice) expiredLowerBoundObj).getBytes();
+            try {
+                expiredLowerBoundStr = new String(valBytes, "utf8");
+            } catch (UnsupportedEncodingException e) {
+                throw new TtlJobRuntimeException(e);
+            }
+        } else if (expiredLowerBoundObj instanceof String) {
+            expiredLowerBoundStr = (String) expiredLowerBoundObj;
+        } else if (expiredLowerBoundObj instanceof OriginalTimestamp) {
+            expiredLowerBoundStr =
+                ((OriginalTimestamp) expiredLowerBoundObj).getMysqlDateTime().toDatetimeString(0);
+        } else if (expiredLowerBoundObj instanceof Long) {
+            expiredLowerBoundStr = String.valueOf(expiredLowerBoundObj);
+        }
+
+        return expiredLowerBoundStr;
+    }
+
+    protected static String formatNumberStringByPartInterval(ExecutionContext ec,
+                                                             TtlDefinitionInfo ttlInfo,
+                                                             String numberString) {
+        ColumnMeta ttlColMeta = ttlInfo.getTtlColMeta(ec);
+        DataType ttlColDt = ttlColMeta.getDataType();
+        PartitionField partColFld = PartitionFieldBuilder.createField(ttlColDt);
+        partColFld.store(numberString, DataTypes.StringType);
+        Long numLongVal = partColFld.longValue();
+        Long artPartInterval = Long.valueOf(ttlInfo.getTtlInfoRecord().getArcPartInterval());
+        Long modRes = numLongVal % artPartInterval;
+        Long formatedNumLongVal = numLongVal - modRes;
+        String formatedNumLStrVal = String.valueOf(formatedNumLongVal);
+        return formatedNumLStrVal;
+    }
+
+    public static String formatPivotPointStringByTtlUnitIfNeed(ExecutionContext ec,
+                                                               TtlDefinitionInfo ttlInfo,
+                                                               String datetimeString) {
+        ColumnMeta ttlColMeta = ttlInfo.getTtlColMeta(ec);
+        DataType ttlColDt = ttlColMeta.getDataType();
+        if (!DataTypeUtil.isDateType(ttlColDt)) {
+            return formatNumberStringByPartInterval(ec, ttlInfo, datetimeString);
+        }
+
+        /**
+         *
+         * <pre>
+         * set TIME_ZONE='xxx';
+         * SELECT
+         *  DATE_FORMAT( ?, %s ) as formated_datetime
+         * formatter is like %Y-%m-%d 00:00:00.000000
+         * </pre>
+         *
+         */
+        String timeZoneStr = ttlInfo.getTtlInfoRecord().getTtlTimezone();
+        String tarTimeUnitStr = TtlTimeUnit.of(ttlInfo.getTtlInfoRecord().getArcPartUnit()).getUnitName();
+        String formatedDatetimeValueQuery =
+            TtlTaskSqlBuilder.buildSelectFormatedDatetimeValueSql(ttlInfo, ec, datetimeString, tarTimeUnitStr);
+
+        final IServerConfigManager serverConfigManager = TtlJobUtil.getServerConfigManager();
+        String ttlTblSchemaName = ttlInfo.getTtlInfoRecord().getTableSchema();
+
+        Map<String, Object> sessionVariables = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        sessionVariables.put("time_zone", timeZoneStr);
+
+        String datetimeStringFormatedResult = TtlJobUtil.wrapWithDistributedTrx(
+            serverConfigManager,
+            ttlTblSchemaName,
+            sessionVariables,
+            (transConn) -> {
+                List<Map<String, Object>> currentDtFormatedByArcPartUnitResult =
+                    TtlJobUtil.execLogicalQueryOnInnerConnection(serverConfigManager,
+                        ttlTblSchemaName,
+                        transConn,
+                        ec,
+                        formatedDatetimeValueQuery);
+                String formatedResult = TtlJobUtil.fetchStringFromQueryValue(currentDtFormatedByArcPartUnitResult,
+                    TtlTaskSqlBuilder.COL_NAME_FOR_SELECT_TTL_COL_FORMATED_CURRENT_DATETIME);
+                return formatedResult;
+            }
+        );
+
+        return datetimeStringFormatedResult;
     }
 }

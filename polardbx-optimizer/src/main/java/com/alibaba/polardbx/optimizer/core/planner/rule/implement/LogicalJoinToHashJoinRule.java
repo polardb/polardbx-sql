@@ -61,6 +61,10 @@ public abstract class LogicalJoinToHashJoinRule extends RelOptRule {
             if (join.getJoinType() != JoinRelType.LEFT && join.getJoinType() != JoinRelType.RIGHT) {
                 return false;
             }
+            if (!PlannerContext.getPlannerContext(join).getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_REVERSE_HASH_JOIN)) {
+                return false;
+            }
         }
         return enable(PlannerContext.getPlannerContext(call));
     }

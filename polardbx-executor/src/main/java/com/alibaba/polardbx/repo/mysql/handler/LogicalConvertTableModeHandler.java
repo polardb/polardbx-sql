@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.DrdsToAutoTableCreationSqlUtil;
@@ -66,8 +67,15 @@ public class LogicalConvertTableModeHandler extends HandlerCommon {
                         .getInt(ConnectionParams.CREATE_DATABASE_MAX_PARTITION_FOR_DEBUG));
             final int maxPartitionColumnNum =
                 executionContext.getParamManager().getInt(ConnectionParams.MAX_PARTITION_COLUMN_COUNT);
-            autoModeSql = DrdsToAutoTableCreationSqlUtil.convertDrdsModeCreateTableSqlToAutoModeSql(sourceSql, false,
-                maxPhyPartitionNum, maxPartitionColumnNum);
+            final boolean executeAfterConvertDrdsToAutoMode = executionContext.getParamManager()
+                .getBoolean(ConnectionParams.EXECUTE_AFTER_DRDS_AUTO_MODE_CONVERSION);
+            autoModeSql = DrdsToAutoTableCreationSqlUtil.convertDrdsModeCreateTableSqlToAutoModeSql(sourceSql,
+                executeAfterConvertDrdsToAutoMode,
+                maxPhyPartitionNum, maxPartitionColumnNum, executionContext);
+            if (executeAfterConvertDrdsToAutoMode) {
+                DdlHelper.getServerConfigManager()
+                    .executeBackgroundSql(autoModeSql, executionContext.getSchemaName(), null);
+            }
         } catch (Exception e) {
             errorHappened = true;
             errorMsg = e.getMessage();

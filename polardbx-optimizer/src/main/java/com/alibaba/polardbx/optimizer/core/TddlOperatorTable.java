@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.core.function.MySQLMatchAgainst;
 import com.alibaba.polardbx.optimizer.core.function.SqlBitAndFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlBitOrFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlBitXorFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlCartesianFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlConcatFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlDateDiffFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlDateFormatFunction;
@@ -36,6 +37,7 @@ import com.alibaba.polardbx.optimizer.core.function.SqlJsonArrayAggFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlJsonArrayGlobalAggFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlJsonObjectAggFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlJsonObjectGlobalAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlListFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlLocateFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericConvFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericCrc32Function;
@@ -55,6 +57,7 @@ import com.alibaba.polardbx.optimizer.core.function.SqlTrimFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlValuesFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlWeekYearFunction;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.trx.SqlTimeToTsoFunction;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.trx.SqlTsoToTimeFunction;
 import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlBinaryOperator;
@@ -67,6 +70,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlOperatorBinding;
+import org.apache.calcite.sql.SqlPreFilterFunction;
 import org.apache.calcite.sql.SqlPrefixOperator;
 import org.apache.calcite.sql.SqlSyntax;
 import org.apache.calcite.sql.SqlWriter;
@@ -296,6 +300,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         SqlFunctionCategory.STRING);
     public static SqlFunction CRC32 = new SqlNumericCrc32Function("CRC32");
     public static SqlFunction TIME_TO_TSO = new SqlTimeToTsoFunction("TIME_TO_TSO");
+    public static SqlFunction TSO_TO_TIME = new SqlTsoToTimeFunction("TSO_TO_TIME");
     public static SqlFunction CURDATE = new SqlFunction("CURDATE",
         SqlKind.OTHER_FUNCTION,
         MySQLStandardTypeInference.DATE_0,
@@ -1008,6 +1013,10 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
      * Other functions
      */
     public static SqlFunction HYPERLOGLOG = new SqlHyperloglogFunction();
+
+    public static SqlFunction CARTESIAN = new SqlCartesianFunction();
+
+    public static SqlFunction LIST = new SqlListFunction();
 
     public static SqlFunction PARTIAL_HYPERLOGLOG = new SqlPartialHyperloglogFunction();
     public static SqlFunction FINAL_HYPERLOGLOG = new SqlFinalHyperloglogFunction();
@@ -2432,6 +2441,8 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         OperandTypes.NILADIC,
         SqlFunctionCategory.SYSTEM);
 
+    public static SqlFunction PRE_FILTER = new SqlPreFilterFunction();
+
     public static SqlFunction LBAC_CHECK = new SqlFunction("LBAC_CHECK",
         SqlKind.OTHER_FUNCTION,
         ReturnTypes.BIGINT,
@@ -2472,16 +2483,9 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     @Override
     public void lookupOperatorOverloads(SqlIdentifier opName, SqlFunctionCategory category, SqlSyntax syntax,
                                         List<SqlOperator> operatorList) {
-        // check nextval and currval
-        if ((opName.names.size() == 2 && opName.names.get(1).equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME))
-            || (opName.names.size() == 3 && opName.names.get(2).equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME))) {
-            operatorList.add(NEXTVAL);
-        } else if ((opName.names.size() == 2 && opName.names.get(1).equalsIgnoreCase(SqlFunction.CURRVAL_FUNC_NAME))
-            || (opName.names.size() == 3 && opName.names.get(2).equalsIgnoreCase(SqlFunction.CURRVAL_FUNC_NAME))) {
-            operatorList.add(CURRVAL);
-        } else {
-            super.lookupOperatorOverloads(opName, category, syntax, operatorList);
-        }
+
+        super.lookupOperatorOverloads(opName, category, syntax, operatorList);
+
     }
 
     public static final Set<SqlOperator> VECTORIZED_BINARY_COMPARISON_OPERATORS = ImmutableSet.of(

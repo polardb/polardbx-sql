@@ -39,9 +39,6 @@ public class RequestSnapshotSeqSyncAction implements IGmsSyncAction {
         for (Iterator<Map.Entry<String, ExecutorContext>> iterator =
              executorContextMap.entrySet().iterator(); iterator.hasNext(); ) {
             Map.Entry<String, ExecutorContext> entry = iterator.next();
-            if (SystemDbHelper.isDBBuildInExceptCdc(entry.getKey())) {
-                continue;
-            }
             ITransactionManager manager = entry.getValue().getTransactionManager();
             if (manager instanceof TransactionManager) {
                 if (minSnapshotTime == null) {

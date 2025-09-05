@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.MemoryCountable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import org.junit.Assert;
 import org.junit.Before;
@@ -24,9 +25,13 @@ public class DoubleBlockTest extends BaseBlockTest {
             blockBuilder.writeDouble(i * 1.23D);
         }
         blockBuilder.appendNull();
+
+        MemoryCountable.checkDeviation(blockBuilder, .05d, true);
         DoubleBlock fromBlock = (DoubleBlock) blockBuilder.build();
+        MemoryCountable.checkDeviation(fromBlock, .05d, true);
 
         DoubleBlock newBlock = DoubleBlock.from(fromBlock, fromBlock.positionCount, null);
+        MemoryCountable.checkDeviation(newBlock, .05d, true);
         int[] hashCodes = fromBlock.hashCodeVector();
         int[] newHashCodes = new int[hashCodes.length];
         newBlock.hashCodeVector(newHashCodes, newHashCodes.length);
@@ -43,6 +48,7 @@ public class DoubleBlockTest extends BaseBlockTest {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.checksum(i), newBlock.checksum(i));
         }
         DoubleBlock newBlock2 = DoubleBlock.from(fromBlock, sel.length, sel);
+        MemoryCountable.checkDeviation(newBlock2, .05d, true);
         for (int i = 0; i < sel.length; i++) {
             int j = sel[i];
             if (fromBlock.isNull(j)) {
@@ -60,7 +66,9 @@ public class DoubleBlockTest extends BaseBlockTest {
         for (int i = 0; i < count; i++) {
             fromBlock.writePositionTo(i, blockBuilder2);
         }
+        MemoryCountable.checkDeviation(blockBuilder2, .05d, true);
         DoubleBlock newBlock3 = (DoubleBlock) blockBuilder2.build();
+        MemoryCountable.checkDeviation(newBlock3, .05d, true);
         for (int i = 0; i < count; i++) {
             if (fromBlock.isNull(i)) {
                 Assert.assertTrue(newBlock3.isNull(i));
@@ -73,6 +81,7 @@ public class DoubleBlockTest extends BaseBlockTest {
         }
 
         DoubleBlock newBlock4 = new DoubleBlock(DataTypes.DoubleType, count);
+        MemoryCountable.checkDeviation(newBlock4, .05d, true);
         fromBlock.copySelected(false, null, count, newBlock4);
         for (int i = 0; i < count; i++) {
             if (fromBlock.isNull(i)) {
@@ -82,6 +91,7 @@ public class DoubleBlockTest extends BaseBlockTest {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.getDouble(i), newBlock4.getDouble(i), 1e-10);
         }
         DoubleBlock newBlock5 = new DoubleBlock(DataTypes.DoubleType, count);
+        MemoryCountable.checkDeviation(newBlock5, .05d, true);
         fromBlock.copySelected(true, sel, sel.length, newBlock5);
         for (int i = 0; i < sel.length; i++) {
             int j = sel[i];
@@ -96,6 +106,7 @@ public class DoubleBlockTest extends BaseBlockTest {
         // just compare reference since it is a shallow copy
         fromBlock.shallowCopyTo(newBlock6);
         Assert.assertSame(fromBlock.doubleArray(), newBlock6.doubleArray());
+        MemoryCountable.checkDeviation(newBlock6, .05d, true);
 
         // compact should work
         fromBlock.compact(sel);
@@ -110,6 +121,7 @@ public class DoubleBlockTest extends BaseBlockTest {
             Assert.assertEquals("Failed at pos: " + i, fromBlock.hashCodeUseXxhash(i), newBlock3.hashCodeUseXxhash(j));
             Assert.assertEquals("Failed at pos: " + i, fromBlock.checksum(i), newBlock3.checksum(j));
         }
+        MemoryCountable.checkDeviation(fromBlock, .05d, true);
     }
 
 }

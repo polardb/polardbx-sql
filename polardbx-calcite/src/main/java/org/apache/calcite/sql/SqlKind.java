@@ -117,6 +117,8 @@ public enum SqlKind {
      */
     OTHER_FUNCTION,
 
+    PRE_FILTER,
+
     USER_DEFINED_FUNCTION,
 
     /**
@@ -308,6 +310,14 @@ public enum SqlKind {
      * entering RelNode land.
      */
     NOT_IN("NOT IN"),
+
+    /**
+     * The "EXPAND IN" operator.
+     *
+     * <p>Only occurs in SqlNode trees. Is expanded to (IN ...) before
+     * entering RelNode land.
+     */
+    EXPAND_IN("EXPAND IN"),
 
     /**
      * The "NOT EXISTS" operator.
@@ -1660,6 +1670,8 @@ public enum SqlKind {
 
     SHOW_BINLOG_EVENTS,
 
+    SHOW_BINLOG_DUMP_STATUS,
+
     CHANGE_MASTER,
 
     START_MASTER,
@@ -1709,6 +1721,7 @@ public enum SqlKind {
     UNLOCK_TABLE,
 
     CHECK_TABLE,
+    CHECK_TABLEGROUP,
 
     CHECK_COLUMNAR_PARTITION,
 
@@ -2141,7 +2154,8 @@ public enum SqlKind {
     );
 
     public static final EnumSet<SqlKind> LOGICAL_SHOW_BINLOG =
-        EnumSet.of(SHOW_BINARY_LOGS, SHOW_BINLOG_EVENTS, SHOW_MASTER_STATUS, SHOW_BINARY_STREAMS, SHOW_CDC_STORAGE);
+        EnumSet.of(SHOW_BINARY_LOGS, SHOW_BINLOG_EVENTS, SHOW_MASTER_STATUS, SHOW_BINARY_STREAMS, SHOW_CDC_STORAGE,
+            SHOW_BINLOG_DUMP_STATUS);
 
     public static final EnumSet<SqlKind> LOGICAL_REPLICATION = EnumSet.of(CHANGE_MASTER,
         START_SLAVE, STOP_SLAVE, CHANGE_REPLICATION_FILTER, SHOW_SLAVE_STATUS, RESET_SLAVE, REPLICA_HASH_CHECK,
@@ -2183,7 +2197,8 @@ public enum SqlKind {
         CONVERT_ALL_SEQUENCES,
         BASELINE,
         MOVE_DATABASE,
-        REBALANCE
+        REBALANCE,
+        CHECK_TABLEGROUP
     );
 
     public static final EnumSet<SqlKind> SQL_SET_QUERY = EnumSet.of(SQL_SET,
@@ -2454,7 +2469,7 @@ public enum SqlKind {
      */
     public static final Set<SqlKind> COMPARISON =
         EnumSet.of(
-            IN, EQUALS, NOT_EQUALS,
+            IN, EQUALS, NOT_EQUALS, EXPAND_IN,
             LESS_THAN, GREATER_THAN,
             GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL);
 

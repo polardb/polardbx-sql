@@ -34,9 +34,13 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.RowSet;
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
@@ -188,6 +192,18 @@ public class LogicalModifyHandler extends HandlerCommon {
             primaryLmv = checkLogicalModifyPlanAndBuildLmvForReturning(modify);
         }
 
+        boolean noGsiWithoutLocalIndexBackfilling = true;
+        if(tableMeta.getGsiTableMetaBean() != null) {
+            Map<String, GsiMetaManager.GsiIndexMetaBean> indexMetas = tableMeta.getGsiTableMetaBean().indexMap;
+            for (String gsi : indexMetas.keySet()) {
+                if (indexMetas.get(gsi).nonUnique && indexMetas.get(gsi).indexStatus.isBackfillStatus()) {
+                    if (indexMetas.get(gsi).lackLocalIndexStatus.equals(LackLocalIndexStatus.LACKING)) {
+                        noGsiWithoutLocalIndexBackfilling = false;
+                        break;
+                    }
+                }
+            }
+        }
         boolean canUseReturning = primaryLmv != null
             && executorContext.getStorageInfoManager().supportsReturning()
             && executionContext.getParamManager().getBoolean(ConnectionParams.DML_USE_RETURNING)
@@ -197,7 +213,8 @@ public class LogicalModifyHandler extends HandlerCommon {
             && !checkForeignKey
             && isAllDnUseXDataSource(topologyHandler)
             // forbid delete returning with multi table or with alias, DN will execute error
-            && ((SqlDelete)primaryLmv.getSqlTemplate(executionContext)).singleTable();
+            && ((SqlDelete) primaryLmv.getSqlTemplate(executionContext)).singleTable()
+            && noGsiWithoutLocalIndexBackfilling;
 
         int affectRows = 0;
         Cursor selectCursor = null;

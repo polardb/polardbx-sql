@@ -29,14 +29,7 @@ import lombok.Getter;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.CN_CPU;
-import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.CN_NETWORK;
-import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_CPU;
-import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_IO;
-import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_NETWORK;
-import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_STORAGE;
 import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_SYSTEM_LOCK;
 
 @Getter
@@ -47,20 +40,26 @@ public class DiscardTableSpaceDdlTask extends BasePhyDdlTask {
 
     private String storageInst;
 
+    private List<Pair<String, Integer>> hostIpAndPorts;
+
     @JSONCreator
     public DiscardTableSpaceDdlTask(String schemaName, String logicalTableName, String storageInst,
-                                    PhysicalPlanData physicalPlanData) {
+                                    PhysicalPlanData physicalPlanData, List<Pair<String, Integer>> hostIpAndPorts) {
         super(schemaName, physicalPlanData);
         this.logicalTableName = logicalTableName;
         this.storageInst = storageInst;
-        setResourceAcquired(buildResourceRequired(storageInst));
+        this.hostIpAndPorts = hostIpAndPorts;
+        setResourceAcquired(buildResourceRequired(storageInst, hostIpAndPorts));
         onExceptionTryRecoveryThenRollback();
     }
 
-    DdlEngineResources buildResourceRequired(String storageInst) {
+    DdlEngineResources buildResourceRequired(String storageInst, List<Pair<String, Integer>> hostIpAndPorts) {
         DdlEngineResources resourceRequired = new DdlEngineResources();
         String owner = "DiscardTableSpace:" + logicalTableName + ":" + storageInst;
-        resourceRequired.request(storageInst + DN_SYSTEM_LOCK, 80L, owner);
+        for (Pair<String, Integer> hostIpAndPort : hostIpAndPorts) {
+            String fullDnResourceName = DdlEngineResources.concateDnResourceName(hostIpAndPort, storageInst);
+            resourceRequired.requestForce(fullDnResourceName + DN_SYSTEM_LOCK, 55L, owner);
+        }
         return resourceRequired;
     }
 

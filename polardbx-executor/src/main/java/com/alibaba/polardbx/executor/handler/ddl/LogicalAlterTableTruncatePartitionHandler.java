@@ -91,7 +91,7 @@ public class LogicalAlterTableTruncatePartitionHandler extends LogicalCommonDdlH
                 partitionInfo.getTableGroupId());
 
         AlterTableGroupUtils.alterTableGroupTruncatePartitionCheck(sqlAlterTableTruncatePartition, tableGroupConfig,
-            executionContext);
+            executionContext, true, logicalTableName);
 
         return super.validatePlan(logicalDdlPlan, executionContext);
     }

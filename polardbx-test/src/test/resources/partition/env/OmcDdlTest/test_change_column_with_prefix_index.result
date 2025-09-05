@@ -1,0 +1,167 @@
+## DISABLE_FAST_SQL_PARSER
+set @sql_mode_tmp1 = @@sql_mode
+set sql_mode=''
+drop table if exists omc_with_prefix_idx_t2
+create table omc_with_prefix_idx_t2 (
+  a int,
+  b bigint,
+  c varchar(30),
+  d varchar(100),
+  index idx_bcd(b,c(20),d),
+  index idx_bcd_prefix(b,c(10),d(20)),
+  global index gsi_dbc(a,b,c(20),d) partition by key(a),
+primary key(a)
+) engine = InnoDB
+partition by key(a)
+insert into omc_with_prefix_idx_t2 values (1, 101, 'a', '1111111'),
+(2, 102, 'b', '2222222'),
+(3, 103, 'c', '3333333'),
+(4, 201, 'd', '4444444'),
+(5, 202, 'e', '5555555'),
+(6, 203, 'f', '6666666'),
+(7, 301, 'g', '7777777')
+select * from omc_with_prefix_idx_t2 order by a
+a,b,c,d
+1,101,a,1111111
+2,102,b,2222222
+3,103,c,3333333
+4,201,d,4444444
+5,202,e,5555555
+6,203,f,6666666
+7,301,g,7777777
+alter table omc_with_prefix_idx_t2 change column b bb varchar(200), ALGORITHM=OMC
+show full create table omc_with_prefix_idx_t2
+Table,Create Table
+omc_with_prefix_idx_t2,CREATE TABLE `omc_with_prefix_idx_t2` (
+	`a` int(11) NOT NULL,
+	`bb` varchar(200) DEFAULT NULL,
+	`c` varchar(30) DEFAULT NULL,
+	`d` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_dbc_$ */ `gsi_dbc` (`a`, `bb`, `c`(20), `d`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	LOCAL KEY `idx_bcd` (`bb`, `c`(20), `d`),
+	LOCAL KEY `idx_bcd_prefix` (`bb`, `c`(10), `d`(20))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table omc_with_prefix_idx_t2 change column c cc varchar(40), ALGORITHM=OMC
+show full create table omc_with_prefix_idx_t2
+Table,Create Table
+omc_with_prefix_idx_t2,CREATE TABLE `omc_with_prefix_idx_t2` (
+	`a` int(11) NOT NULL,
+	`bb` varchar(200) DEFAULT NULL,
+	`cc` varchar(40) DEFAULT NULL,
+	`d` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_dbc_$ */ `gsi_dbc` (`a`, `bb`, `cc`(20), `d`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	LOCAL KEY `idx_bcd` (`bb`, `cc`(20), `d`),
+	LOCAL KEY `idx_bcd_prefix` (`bb`, `cc`(10), `d`(20))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table omc_with_prefix_idx_t2 change column cc cc2 char(50), ALGORITHM=OMC
+show full create table omc_with_prefix_idx_t2
+Table,Create Table
+omc_with_prefix_idx_t2,CREATE TABLE `omc_with_prefix_idx_t2` (
+	`a` int(11) NOT NULL,
+	`bb` varchar(200) DEFAULT NULL,
+	`cc2` char(50) DEFAULT NULL,
+	`d` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_dbc_$ */ `gsi_dbc` (`a`, `bb`, `cc2`(20), `d`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	LOCAL KEY `idx_bcd` (`bb`, `cc2`(20), `d`),
+	LOCAL KEY `idx_bcd_prefix` (`bb`, `cc2`(10), `d`(20))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table omc_with_prefix_idx_t2 change column cc2 cc3 text, ALGORITHM=OMC
+show full create table omc_with_prefix_idx_t2
+Table,Create Table
+omc_with_prefix_idx_t2,CREATE TABLE `omc_with_prefix_idx_t2` (
+	`a` int(11) NOT NULL,
+	`bb` varchar(200) DEFAULT NULL,
+	`cc3` text,
+	`d` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_dbc_$ */ `gsi_dbc` (`a`, `bb`, `cc3`(20), `d`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	LOCAL KEY `idx_bcd` (`bb`, `cc3`(20), `d`),
+	LOCAL KEY `idx_bcd_prefix` (`bb`, `cc3`(10), `d`(20))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table omc_with_prefix_idx_t2 change column cc3 cc varchar(15), ALGORITHM=OMC
+show full create table omc_with_prefix_idx_t2
+Table,Create Table
+omc_with_prefix_idx_t2,CREATE TABLE `omc_with_prefix_idx_t2` (
+	`a` int(11) NOT NULL,
+	`bb` varchar(200) DEFAULT NULL,
+	`cc` varchar(15) DEFAULT NULL,
+	`d` varchar(100) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_dbc_$ */ `gsi_dbc` (`a`, `bb`, `cc`, `d`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	LOCAL KEY `idx_bcd` (`bb`, `cc`, `d`),
+	LOCAL KEY `idx_bcd_prefix` (`bb`, `cc`(10), `d`(20))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table omc_with_prefix_idx_t2 change column cc c varchar(5), change column d dd int after c, ALGORITHM=OMC
+show full create table omc_with_prefix_idx_t2
+Table,Create Table
+omc_with_prefix_idx_t2,CREATE TABLE `omc_with_prefix_idx_t2` (
+	`a` int(11) NOT NULL,
+	`bb` varchar(200) DEFAULT NULL,
+	`c` varchar(5) DEFAULT NULL,
+	`dd` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_dbc_$ */ `gsi_dbc` (`a`, `bb`, `c`, `dd`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	LOCAL KEY `idx_bcd` (`bb`, `c`, `dd`),
+	LOCAL KEY `idx_bcd_prefix` (`bb`, `c`, `dd`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+alter table omc_with_prefix_idx_t2 change column bb b bigint, ALGORITHM=OMC
+show full create table omc_with_prefix_idx_t2
+Table,Create Table
+omc_with_prefix_idx_t2,CREATE TABLE `omc_with_prefix_idx_t2` (
+	`a` int(11) NOT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` varchar(5) DEFAULT NULL,
+	`dd` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_dbc_$ */ `gsi_dbc` (`a`, `b`, `c`, `dd`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	LOCAL KEY `idx_bcd` (`b`, `c`, `dd`),
+	LOCAL KEY `idx_bcd_prefix` (`b`, `c`, `dd`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+select * from omc_with_prefix_idx_t2 order by a
+a,b,c,dd
+1,101,a,1111111
+2,102,b,2222222
+3,103,c,3333333
+4,201,d,4444444
+5,202,e,5555555
+6,203,f,6666666
+7,301,g,7777777
+set sql_mode = @sql_mode_tmp1;

@@ -1,0 +1,102 @@
+## DISABLE_FAST_SQL_PARSER
+DROP TABLE IF EXISTS t_order;
+
+delete from metadb.columnar_config where table_id = 0 and config_key = 'SNAPSHOT_RETENTION_DAYS';
+delete from metadb.columnar_config where table_id = 0 and config_key = 'columnar_purge_save_ms';
+delete from metadb.columnar_config where table_id = 0 and config_key = 'AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL';
+
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE t_order (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext DEFAULT NULL,
+`order_detail` longtext DEFAULT NULL,
+PRIMARY KEY (`id`),
+KEY `l_i_order` (`order_id`),
+CLUSTERED COLUMNAR INDEX `seller_snapshot` (`seller_id`) partition by hash(`order_id`) partitions 16
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`order_id`) partitions 16;
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+## IGNORE_RESULT: $#'type', 'snapshot'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'type', 'snapshot');
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+## IGNORE_RESULT: $#'SNAPSHOT_RETENTION_DAYS', 14#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'SNAPSHOT_RETENTION_DAYS', 14);
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+## IGNORE_RESULT: $#'auto_gen_columnar_snapshot_interval', 300#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'auto_gen_columnar_snapshot_interval', 300);
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+## IGNORE_RESULT: $#'Type', 'Default'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'Type', 'Default');
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+## IGNORE_RESULT: $#'type', 'snapshot'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'type', 'snapshot');
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+CALL polardbx.columnar_set_config('auto_gen_Columnar_Snapshot_interval', '100');
+CALL polardbx.columnar_set_config('SNAPSHOT_RETENTION_dayS', '8');
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+## IGNORE_RESULT: $#'type', 'default'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'type', 'default');
+
+## IGNORE_RESULT: $#'type', 'snapshot'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'type', 'snapshot');
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+## ERROR_MSG: $# config error by TYPE is not supported to set global, please specify a particular columnar index #$
+CALL polardbx.columnar_set_config('type', 'snapshot');
+
+## ERROR_MSG: $# Value too small, should >= 5 #$
+CALL polardbx.columnar_set_config('auto_gen_columnar_snapshot_interval', '3');
+
+## ERROR_MSG: $# Value should larger than 0 #$
+CALL polardbx.columnar_set_config('SNAPSHOT_RETENTION_DAYS', '0');
+
+## IGNORE_RESULT: $#'type', 'default'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'type', 'default');
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+
+CALL polardbx.columnar_set_config('columnar_purge_save_ms', '31622400000');
+
+## IGNORE_RESULT: $#'type', 'snapshot'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'type', 'snapshot');
+
+SHOW FULL CREATE TABLE t_order;
+SHOW CREATE TABLE t_order;
+  
+  
+## ERROR_MSG: $# config error by DICTIONARY_COLUMNS is not supported to set dynamically #$
+## IGNORE_RESULT: $#'t_order', 'seller_snapshot', 'DICTIONARY_COLUMNS', 'seller_id'#$
+CALL polardbx.columnar_set_config('$db_name$', 't_order', 'seller_snapshot', 'DICTIONARY_COLUMNS', 'seller_id');
+  
+## ERROR_MSG: $# config error by DICTIONARY_COLUMNS is not supported to set dynamically #$
+CALL polardbx.columnar_set_config('DICTIONARY_COLUMNS', 'seller_id');
+
+CALL polardbx.columnar_set_config('columnar_purge_save_ms', '86400');
+
+DROP TABLE t_order;

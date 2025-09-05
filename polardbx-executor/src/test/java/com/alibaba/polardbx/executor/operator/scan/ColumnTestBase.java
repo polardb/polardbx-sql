@@ -308,9 +308,9 @@ public abstract class ColumnTestBase {
         }
     }
 
-    private Block allocateBlock(ColumnReader columnReader, DataType inputType, boolean compatible,
-                                TimeZone timeZone, OrcProto.ColumnEncoding encoding,
-                                int positionCount) {
+    protected Block allocateBlock(ColumnReader columnReader, DataType inputType, boolean compatible,
+                                  TimeZone timeZone, OrcProto.ColumnEncoding encoding,
+                                  int positionCount) {
         // NOTE: we need more type-specified implementations
         switch (inputType.fieldType()) {
         case MYSQL_TYPE_LONGLONG: {

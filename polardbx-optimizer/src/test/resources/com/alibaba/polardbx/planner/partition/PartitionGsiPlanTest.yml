@@ -609,7 +609,7 @@
     select * from test_index join test_index_join on test_index.k1 = test_index_join.k where test_index_join.id = 1;
 
   plan: |
-    project(id0="id0", k1="k1", k2="k2", value="value", id="id", k="k")
+    project(id="id0", k1="k1", k2="k2", value="value", id0="id", k="k")
       bkajoin(condition="k = k1", type="inner")
         logicalview(tables="test_index_join[p4]", sql="select `id`, `k` from `test_index_join` as `test_index_join` where (`id` = 1)")
         project(id="id", k1="k1", k2="k2", value="value")

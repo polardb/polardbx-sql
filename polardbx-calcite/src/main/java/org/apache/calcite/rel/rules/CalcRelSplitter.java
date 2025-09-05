@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.rel.rules;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
@@ -402,21 +403,27 @@ public abstract class CalcRelSplitter {
       }
     }
 
-    // For dynamic rex node (constant value), pull up its level to avoid project calculation.
-    int maxLevel = Integer.MIN_VALUE;
-    int[] maxRefLevel = new int[exprLevels.length];
-    Arrays.fill(maxRefLevel, Integer.MAX_VALUE);
-    for (int i = 0; i < exprLevels.length; i++) {
-      maxLevel = Math.max(maxLevel, exprLevels[i]);
-      for (int j : RexUtil.LocalRefFinder.findAllLocalRefs(exprs[i])) {
-        maxRefLevel[j] = Math.min(maxRefLevel[j], exprLevels[i]);
+    if (DynamicConfig.getInstance().isEnableProjectToWindowOpt()) {
+      // For dynamic rex node (constant value), pull up its level to avoid project calculation.
+      int maxLevel = Integer.MIN_VALUE;
+      int[] maxRefLevel = new int[exprLevels.length];
+      Arrays.fill(maxRefLevel, Integer.MAX_VALUE);
+      for (int i = 0; i < exprLevels.length; i++) {
+        maxLevel = Math.max(maxLevel, exprLevels[i]);
+        for (int j : RexUtil.LocalRefFinder.findAllLocalRefs(exprs[i])) {
+          maxRefLevel[j] = Math.min(maxRefLevel[j], exprLevels[i]);
+        }
       }
-    }
 
-    for (int i = 0; i < exprs.length; i++) {
-      RexNode rexNode = exprs[i];
-      if (rexNode instanceof RexDynamicParam) {
-        exprLevels[i] = Math.min(maxRefLevel[i], maxLevel);
+      for (int i = 0; i < exprs.length; i++) {
+        RexNode rexNode = exprs[i];
+        if (rexNode instanceof RexDynamicParam && maxRefLevel[i]<= maxLevel) {
+          if (relTypes[levelTypeOrdinals[maxRefLevel[i]]].canImplement(
+              rexNode,
+              false)) {
+            exprLevels[i] = maxRefLevel[i];
+          }
+        }
       }
     }
     return levelCount;

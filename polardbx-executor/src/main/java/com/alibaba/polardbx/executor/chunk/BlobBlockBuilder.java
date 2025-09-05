@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.google.common.base.Preconditions;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.sql.Blob;
 
@@ -25,9 +26,15 @@ import java.sql.Blob;
  *
  */
 public class BlobBlockBuilder extends ReferenceBlockBuilder<Blob> {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(BlobBlockBuilder.class).instanceSize();
 
     public BlobBlockBuilder(int capacity) {
         super(capacity);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + values.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

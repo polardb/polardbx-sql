@@ -22,11 +22,11 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangeCrossDBPreemptiveSyncAction;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 @Getter
 @TaskName(name = "AtomicTablesSyncTask")
@@ -34,29 +34,22 @@ public class AtomicTablesSyncTask extends BaseSyncTask {
 
     private List<String> multiSchemas;
     private List<List<String>> logicalTables;
-    final Long initWait;
-    final Long interval;
-    final TimeUnit timeUnit;
+    private PreemptiveTime preemptiveTime;
 
     public AtomicTablesSyncTask(List<String> multiSchemas,
                                 List<List<String>> logicalTables,
-                                Long initWait,
-                                Long interval,
-                                TimeUnit timeUnit) {
+                                PreemptiveTime preemptiveTime){
         super(multiSchemas.get(0));
         this.multiSchemas = multiSchemas;
         this.logicalTables = logicalTables;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         try {
             SyncManagerHelper.sync(
-                new TablesMetaChangeCrossDBPreemptiveSyncAction(schemaName, multiSchemas, logicalTables, initWait,
-                    interval, timeUnit),
+                new TablesMetaChangeCrossDBPreemptiveSyncAction(schemaName, multiSchemas, logicalTables, preemptiveTime),
                 SyncScope.ALL,
                 true);
         } catch (Throwable t) {
@@ -71,9 +64,8 @@ public class AtomicTablesSyncTask extends BaseSyncTask {
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         try {
             SyncManagerHelper.sync(
-                new TablesMetaChangeCrossDBPreemptiveSyncAction(schemaName, multiSchemas, logicalTables, initWait,
-                    interval, timeUnit),
-                SyncScope.ALL,
+                new TablesMetaChangeCrossDBPreemptiveSyncAction(schemaName, multiSchemas, logicalTables, preemptiveTime),
+                    SyncScope.ALL,
                 true);
         } catch (Throwable t) {
             LOGGER.error(String.format(

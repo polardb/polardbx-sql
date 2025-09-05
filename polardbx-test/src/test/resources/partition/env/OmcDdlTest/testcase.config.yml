@@ -1,0 +1,5 @@
+test_modify_column_with_prefix_index
+test_change_column_with_prefix_index
+test_drds_modify_column_with_prefix_index
+test_drds_change_column_with_prefix_index
+test_binary_blob_with_prefix_index

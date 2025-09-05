@@ -28,6 +28,11 @@ public class BloomFilterIndex extends BaseColumnIndex {
     }
 
     @Override
+    public long getSizeInBytes() {
+        return 0;
+    }
+
+    @Override
     public boolean checkSupport(int columnId, SqlTypeName columnType) {
         return false;
     }

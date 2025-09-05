@@ -6,6 +6,7 @@ import com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -115,12 +116,12 @@ public class LogicalAlterTableHandlerTest {
             when(tableGroupConfig.getTables()).thenReturn(ImmutableList.of("t1"));
 
             mockedAlterRepartitionUtils.when(
-                    () -> AlterRepartitionUtils.generateSqlPartitionBy(any(), any(), any(), any()))
+                    () -> AlterRepartitionUtils.generateSqlPartitionBy(any()))
                 .thenReturn(sqlPartitionBy);
 
             mockedAlterRepartitionUtils.when(
-                    () -> AlterRepartitionUtils.initIndexInfo(anyString(), anyList(), anyList(), anyBoolean(), anyBoolean(),
-                        any(), any(), any(SqlPartitionBy.class), any(), anyBoolean()))
+                    () -> AlterRepartitionUtils.initIndexInfo(anyString(), anyList(), anyList(), anyList(), anyBoolean(),
+                        anyBoolean(), anyBoolean(), any(), any(), any(SqlPartitionBy.class), any(), anyBoolean()))
                 .thenReturn(sqlIndexDefinition);
 
             mockedTddlSqlToRelConverter.when(() -> TddlSqlToRelConverter.unwrapGsiName(any())).thenReturn("g1");
@@ -172,7 +173,7 @@ public class LogicalAlterTableHandlerTest {
             GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean1 =
                 new GsiMetaManager.GsiIndexMetaBean(null, "d1", "t1", true, "d1", "t1",
                     null, null, null, null, null, null, null,
-                    IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE);
+                    IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
             Assert.assertTrue(gsiIndexMetaBean1.getIndexColumns() == null);
             Assert.assertTrue(gsiIndexMetaBean1.getCoveringColumns() == null);
         }

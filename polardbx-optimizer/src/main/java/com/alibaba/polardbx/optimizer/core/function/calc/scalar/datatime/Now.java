@@ -63,7 +63,7 @@ public class Now extends AbstractScalarFunction {
 
         // round to scale.
         MysqlDateTime t = MySQLTimeTypeUtil.fromZonedDatetime(zonedDateTime);
-        t = MySQLTimeCalculator.roundDatetime(t, scale);
+        t = MySQLTimeCalculator.timeTruncate(t, scale);
         return DataTypeUtil.fromMySQLDatetime(resultType, t, TimestampUtils.getTimeZone(ec));
     }
 

@@ -1,7 +1,7 @@
 package com.alibaba.polardbx.executor.columnar.pruning.index;
 
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import org.junit.Assert;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
@@ -213,5 +213,14 @@ public class StringSortKeyIndexTest {
         sortKeyIndex.pruneRange("aa", "a", rs);
         rs.stream().forEachOrdered(System.out::println);
         Assert.assertTrue(rs.getCardinality() == 0);
+    }
+
+    @Test
+    public void testSize() {
+        long expectedSize = 0;
+        for (String datum : data) {
+            expectedSize += datum.getBytes().length;
+        }
+        Assert.assertEquals(expectedSize, sortKeyIndex.getSizeInBytes());
     }
 }

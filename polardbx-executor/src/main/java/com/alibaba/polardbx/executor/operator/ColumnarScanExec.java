@@ -146,6 +146,9 @@ public class ColumnarScanExec extends SourceExec {
 
     protected Set<String> filterSet;
 
+    // for dynamic param of IN expression.
+    protected Map<Integer, Map<String, List>> rewriterParams;
+
     public ColumnarScanExec(OSSTableScan ossTableScan, ExecutionContext context, List<DataType> outputDataTypes) {
         super(context);
         this.ossTableScan = ossTableScan;
@@ -179,7 +182,7 @@ public class ColumnarScanExec extends SourceExec {
         this.memoryAllocator = memoryPool.getMemoryAllocatorCtx();
 
         String fileListStr = context.getParamManager().getString(ConnectionParams.FILE_LIST);
-        if (!"ALL".equalsIgnoreCase(fileListStr)) {
+        if (fileListStr != null && !"ALL".equalsIgnoreCase(fileListStr)) {
             filterSet = Arrays.stream(fileListStr.split(","))
                 .map(String::trim)
                 .collect(Collectors.toSet());
@@ -188,6 +191,10 @@ public class ColumnarScanExec extends SourceExec {
 
     public void setFragmentRFManager(FragmentRFManager fragmentRFManager) {
         this.fragmentRFManager = fragmentRFManager;
+    }
+
+    public void setRewriterParams(Map<Integer, Map<String, List>> rewriterParams) {
+        this.rewriterParams = rewriterParams;
     }
 
     protected List<String> getOrcFiles(OssSplit ossSplit) {
@@ -199,6 +206,11 @@ public class ColumnarScanExec extends SourceExec {
         splitList.add(split);
         OssSplit ossSplit = (OssSplit) split.getConnectorSplit();
         List<String> orcFileNames = getOrcFiles(ossSplit);
+
+        // only accept single physical table in one split.
+        final String phyTableOfSplit =
+            (ossSplit.getPhyTableNameList() != null && ossSplit.getPhyTableNameList().size() == 1)
+                ? ossSplit.getPhyTableNameList().get(0) : null;
 
         // partition info of this split
         int partNum = ossSplit.getPartIndex();
@@ -255,6 +267,7 @@ public class ColumnarScanExec extends SourceExec {
                 .setRatio(DEFAULT_RATIO)
                 .setInputTypes(inputTypes)
                 .setContext(context)
+                .rewriteIn(rewriterParams, phyTableOfSplit)
                 .build();
 
             // Collect input refs for filter (predicate) and project
@@ -312,6 +325,7 @@ public class ColumnarScanExec extends SourceExec {
                         .partNum(partNum)
                         .nodePartCount(nodePartCount)
                         .memoryAllocator(memoryAllocator)
+                        .isFlashback(ossTableScan.isFlashbackQuery())
                         .build()
                     );
                 }
@@ -370,7 +384,11 @@ public class ColumnarScanExec extends SourceExec {
                                                       FileSystem fileSystem,
                                                       Configuration configuration,
                                                       ColumnarManager columnarManager) {
-        if (ossTableScan.isFlashbackQuery()) {
+        // 只有在绕过 CSV 缓存的情况下，才允许同时绕过 Delete bitmap 缓存
+        boolean forceDisableDelCache =
+            !context.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_CSV_CACHE)
+                && !context.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_DEL_CACHE);
+        if (ossTableScan.isFlashbackQuery() || forceDisableDelCache) {
             OssSplit.DeltaReadOption deltaReadOption = ossSplit.getDeltaReadOption();
 
             return new FlashbackScanPreProcessor(
@@ -383,7 +401,7 @@ public class ColumnarScanExec extends SourceExec {
                 context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE),
                 tableMeta.getAllColumns(),
                 ossTableScan.getOrcNode().getOriFilters(),
-                ossSplit.getParams(),
+                context.getParams().getCurrentParameter(),
 
                 // for mock
                 DEFAULT_GROUPS_RATIO,
@@ -391,7 +409,7 @@ public class ColumnarScanExec extends SourceExec {
 
                 // for columnar mode.
                 columnarManager,
-                ossSplit.getCheckpointTso(),
+                deltaReadOption == null ? ossSplit.getCheckpointTso() : (Long) deltaReadOption.getCheckpointTso(),
                 tableMeta.getColumnarFieldIdList(),
                 deltaReadOption == null ? null : deltaReadOption.getAllDelPositions()
             );
@@ -406,8 +424,7 @@ public class ColumnarScanExec extends SourceExec {
                 context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE),
                 tableMeta.getAllColumns(),
                 ossTableScan.getOrcNode().getOriFilters(),
-                ossSplit.getParams(),
-
+                context.getParams().getCurrentParameter(),
                 // for mock
                 DEFAULT_GROUPS_RATIO,
                 DEFAULT_DELETION_RATIO,

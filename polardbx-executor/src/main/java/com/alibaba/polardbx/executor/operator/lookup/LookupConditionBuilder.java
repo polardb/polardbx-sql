@@ -18,11 +18,14 @@ package com.alibaba.polardbx.executor.operator.lookup;
 
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.operator.util.ChunkHashSet;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.join.LookupEquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
@@ -38,6 +41,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
+import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlLiteral;
@@ -76,7 +80,9 @@ public class LookupConditionBuilder {
     final LogicalView v;
 
     final int[] lookupColumnPositions;
+    final List<DataType> lookupOriginTypes;
     protected final ExecutionContext ec;
+    protected final ChunkConverter chunkConverter;
 
     /**
      * Join keys (jk) are used in sharding, while lookup predicates (p) are used in building IN expression.
@@ -89,6 +95,10 @@ public class LookupConditionBuilder {
         this.p = p;
         this.v = v;
         this.lookupColumnPositions = buildLookupColumnPositions();
+        this.lookupOriginTypes = extractOriginTypes();
+        this.chunkConverter =
+            Converters.createChunkConverter(
+                lookupOriginTypes, Arrays.asList(p.getDataTypes()), ec);
         this.ec = ec;
     }
 
@@ -100,6 +110,22 @@ public class LookupConditionBuilder {
         } else {
             return buildMultiCondition(distinctLookupKeys);
         }
+    }
+
+    public List<SqlNode> buildMultiSingleCondition(Chunk joinKeysChunk) {
+        Chunk lookupKeys = extractLookupKeys(joinKeysChunk);
+        Iterable<Tuple> distinctLookupKeys = distinctLookupKeysChunk(lookupKeys);
+        List<SqlNode> result = new ArrayList<>();
+        if (p.size() == 1) {
+            for (Tuple tuple : distinctLookupKeys) {
+                result.add(buildSimpleCondition(p.getColumn(0), Lists.newArrayList(tuple.get(0))));
+            }
+        } else {
+            for (Tuple tuple : distinctLookupKeys) {
+                result.add(buildMultiCondition(Lists.newArrayList(tuple)));
+            }
+        }
+        return result;
     }
 
     /**
@@ -263,7 +289,16 @@ public class LookupConditionBuilder {
         for (int i = 0; i < p.size(); i++) {
             lookupColumns[i] = joinKeysChunk.getBlock(lookupColumnPositions[i]);
         }
-        return new Chunk(lookupColumns);
+        return chunkConverter.apply(new Chunk(lookupColumns));
+    }
+
+    List<DataType> extractOriginTypes() {
+        List<DataType> dataTypeList = new ArrayList<>();
+        List<DataType> joinDataTypes = jk.stream().map(t -> t.getUnifiedType()).collect(Collectors.toList());
+        for (int i = 0; i < p.size(); i++) {
+            dataTypeList.add(joinDataTypes.get(lookupColumnPositions[i]));
+        }
+        return dataTypeList;
     }
 
     Iterable<Tuple> distinctLookupKeysChunk(Chunk lookupKeysChunk) {

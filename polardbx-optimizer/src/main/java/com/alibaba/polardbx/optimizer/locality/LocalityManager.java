@@ -175,31 +175,9 @@ public class LocalityManager extends AbstractLifecycle {
     public void deleteLocalityOfTable(long tableId) {
         LocalityId id = LocalityId.ofTable(tableId);
         deleteLocalityInDatabase(id);
-        localityCache.remove(id);
-    }
-
-    public void setLocalityOfTableGroup(String schema, long tgId, String locality) {
-        LocalityId id = LocalityId.ofTableGroup(tgId);
-        LocalityInfo info = new LocalityInfo(id, locality);
-        storeLocalityInDatabase(info);
-        this.localityCache.put(id, info);
-    }
-
-    public LocalityInfo getLocalityOfTableGroup(String dbName, long tgId) {
-        LocalityId id = LocalityId.from(LocalityInfoRecord.LOCALITY_TYPE_TABLEGROUP, tgId);
-        LocalityInfo localityInfo = localityCache.get(id);
-        return (localityInfo == null) ? new LocalityInfo(id, "") : localityInfo;
-    }
-
-    public LocalityInfo getLocalityOfPartition(String dbName, String tableGroup, long pgId) {
-        //TODO: support locality partition
-        throw new RuntimeException("TODO");
-    }
-
-    public LocalityInfo getLocalityOfPartitionGroup(String dbName, long pgId) {
-        LocalityId id = LocalityId.from(LocalityInfoRecord.LOCALITY_TYPE_PARTITIONGROUP, pgId);
-        LocalityInfo localityInfo = localityCache.get(id);
-        return (localityInfo == null) ? new LocalityInfo(id, "") : localityInfo;
+        if(localityCache.containsKey(id)) {
+            localityCache.remove(id);
+        }
     }
 
     public void setLocalityOfPartitionGroup(String dbName, long pgId, String locality) {
@@ -207,18 +185,6 @@ public class LocalityManager extends AbstractLifecycle {
         LocalityInfo info = new LocalityInfo(id, locality);
         storeLocalityInDatabase(info);
         this.localityCache.put(id, info);
-    }
-
-    public void deleteLocalityOfTableGroup(long dbId, long tgId) {
-        LocalityId id = LocalityId.ofTableGroup(tgId);
-        localityCache.remove(id);
-        deleteLocalityInDatabase(id);
-    }
-
-    public void deleteLocalityOfTableGroup(long tgId) {
-        LocalityId id = LocalityId.ofTableGroup(tgId);
-        localityCache.remove(id);
-        deleteLocalityInDatabase(id);
     }
 
     public void deleteLocalityOfPartitionGroup(long pgId) {

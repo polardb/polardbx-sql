@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVS
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -80,12 +81,12 @@ public class StatisticDataTableSource implements StatisticDataSource {
     }
 
     @Override
-    public void batchReplace(List<SystemTableTableStatistic.Row> rowList) {
+    public void batchReplace(List<SystemTableTableStatistic.Row> rowList) throws SQLException {
         systemTableTableStatistic.batchReplace(rowList);
     }
 
     @Override
-    public void batchReplace(ArrayList<SystemTableColumnStatistic.Row> rowList) {
+    public void batchReplace(ArrayList<SystemTableColumnStatistic.Row> rowList) throws SQLException {
         systemTableColumnStatistic.batchReplace(rowList);
     }
 

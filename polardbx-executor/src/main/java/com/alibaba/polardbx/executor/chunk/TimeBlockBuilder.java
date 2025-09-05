@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FastMemoryCounter;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
@@ -27,6 +29,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.sql.Time;
 import java.sql.Types;
@@ -38,20 +41,34 @@ import java.util.TimeZone;
  *
  */
 public class TimeBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(TimeBlockBuilder.class).instanceSize();
 
-    final LongArrayList packed;
+    final MemoryCountableLongArrayList packed;
+
+    @FieldMemoryCounter(value = false)
     final DataType<? extends Time> dataType;
+
+    @FieldMemoryCounter(value = false)
     final ExecutionContext context;
+
     // timezone is mutable
+    @FieldMemoryCounter(value = false)
     TimeZone timezone;
 
     public TimeBlockBuilder(int capacity, DataType<? extends Time> dataType, ExecutionContext context) {
         super(capacity);
-        this.packed = new LongArrayList(capacity);
+        this.packed = new MemoryCountableLongArrayList(capacity);
         this.dataType = dataType;
         this.context = context;
         // 当前执行器以外的时区处理逻辑，都认为时间戳以默认时区表示
         this.timezone = InternalTimeZone.DEFAULT_TIME_ZONE;
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE
+            + FastMemoryCounter.sizeOf(packed)
+            + FastMemoryCounter.sizeOf(valueIsNull);
     }
 
     @Override

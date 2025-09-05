@@ -71,6 +71,9 @@ public class ColumnarTableMappingAccessorTest {
             res = accessor.queryPurgeTablesWhichHavePurgeFilesByTsoAndType(199L, "snapshot");
             Assert.assertEquals(1, res.size());
 
+            res = accessor.queryLimitOne();
+            Assert.assertEquals(1, res.size());
+
             metaDbUtilMockedStatic.when(() -> MetaDbUtil.update(Mockito.anyString(), Mockito.anyMap(),
                 Mockito.any())).thenReturn(10);
             int count =

@@ -16,7 +16,7 @@ import org.apache.calcite.sql.SqlKind;
 import java.sql.Connection;
 import java.util.List;
 
-import static com.alibaba.polardbx.common.columnar.ColumnarUtils.AddCDCMarkEvent;
+import static com.alibaba.polardbx.common.columnar.ColumnarUtils.AddCDCMarkEventForColumnar;
 import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.COLUMNAR_FLUSH;
 import static com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils.POLARDBX_INNER_PROCEDURE;
 
@@ -40,7 +40,7 @@ public class ColumnarFlushProcedure extends BaseInnerProcedure {
             sql = "call " + POLARDBX_INNER_PROCEDURE + "." + COLUMNAR_FLUSH + "(" + indexId + ")";
         }
 
-        Long tso = AddCDCMarkEvent(sql, SqlKind.PROCEDURE_CALL.name());
+        Long tso = AddCDCMarkEventForColumnar(sql, SqlKind.PROCEDURE_CALL.name());
 
         if (tso == null || tso <= 0) {
             throw new RuntimeException(sql + " is failed, because tso: " + tso);

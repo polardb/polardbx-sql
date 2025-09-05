@@ -24,6 +24,7 @@ import io.airlift.slice.Slice;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.ByteBuffer;
 
 import static com.alibaba.polardbx.common.datatype.Decimal.MAX_128_BIT_PRECISION;
 import static com.alibaba.polardbx.common.datatype.Decimal.MAX_64_BIT_PRECISION;
@@ -952,10 +953,18 @@ public class DecimalConverter {
         }
     }
 
+    /**
+     * DO NOT REMOVE THIS METHOD
+     * keep compatible for columnar API
+     */
     public static long getUnscaledDecimal(byte[] buffer, int precision, int scale) {
+        return getUnscaledDecimal(ByteBuffer.wrap(buffer), precision, scale);
+    }
+
+    public static long getUnscaledDecimal(ByteBuffer buffer, int precision, int scale) {
         int position = 0;
         int origin = 0;
-        int limit = buffer.length;
+        int limit = buffer.remaining();
         int intg = precision - scale;
         int intg0 = intg / 9;
         int frac0 = scale / 9;
@@ -972,10 +981,10 @@ public class DecimalConverter {
         }
     }
 
-    public static Decimal getDecimal(byte[] buffer, int precision, int scale) {
+    public static Decimal getDecimal(ByteBuffer buffer, int precision, int scale) {
         int position = 0;
         int origin = 0;
-        int limit = buffer.length;
+        int limit = buffer.remaining();
         int intg = precision - scale;
         int intg0 = intg / 9;
         int frac0 = scale / 9;
@@ -985,8 +994,10 @@ public class DecimalConverter {
         if (position + binSize > origin + limit) {
             throw new IllegalArgumentException("limit excceed: " + (position + binSize - origin));
         } else {
-            String str = getDecimalString(buffer, position, intg, scale, intg0, frac0, intg0x, frac0x);
-            return Decimal.fromString(str);
+            BigDecimal decimal =
+                new BigDecimal(getDecimalString(buffer, position, intg, scale, intg0, frac0, intg0x, frac0x))
+                    .setScale(scale, RoundingMode.HALF_UP);
+            return Decimal.fromBigDecimal(decimal);
         }
     }
 
@@ -995,9 +1006,10 @@ public class DecimalConverter {
      *
      * @see LogBuffer#getDecimal0(int, int, int, int, int, int, int)
      */
-    static String getDecimalString(byte[] buffer, int begin, int intg, int frac, int intg0, int frac0,
+    static String getDecimalString(ByteBuffer buffer, int begin, int intg, int frac, int intg0, int frac0,
                                    int intg0x, int frac0x) {
-        final int mask = ((buffer[begin] & 0x80) == 0x80) ? 0 : -1;
+        int bufPos = buffer.position();
+        final int mask = ((buffer.get(bufPos + begin) & 0x80) == 0x80) ? 0 : -1;
         int from = begin;
 
         /* max string length */
@@ -1010,8 +1022,9 @@ public class DecimalConverter {
             buf[pos++] = ('-');
         }
 
-        final byte[] d_copy = buffer;
-        d_copy[begin] ^= 0x80; /* clear sign */
+        byte signByte = buffer.get(bufPos + begin);
+        signByte ^= (byte) 0x80;
+        buffer.put(bufPos + begin, signByte); /* clear sign */
         int mark = pos;
 
         if (intg0x != 0) {
@@ -1019,16 +1032,16 @@ public class DecimalConverter {
             int x = 0;
             switch (i) {
             case 1:
-                x = d_copy[from] /* one byte */;
+                x = buffer.get(bufPos + from) /* one byte */;
                 break;
             case 2:
-                x = getInt16BE(d_copy, from);
+                x = getInt16BE(buffer, bufPos + from);
                 break;
             case 3:
-                x = getInt24BE(d_copy, from);
+                x = getInt24BE(buffer, bufPos + from);
                 break;
             case 4:
-                x = getInt32BE(d_copy, from);
+                x = getInt32BE(buffer, bufPos + from);
                 break;
             }
             from += i;
@@ -1049,7 +1062,7 @@ public class DecimalConverter {
         }
 
         for (final int stop = from + intg0 * SIZE_OF_INT32; from < stop; from += SIZE_OF_INT32) {
-            int x = getInt32BE(d_copy, from);
+            int x = getInt32BE(buffer, bufPos + from);
             x ^= mask;
             if (x < 0 || x > DIG_MAX) {
                 throw new IllegalArgumentException("bad format, x exceed: " + x + ", " + DIG_MAX);
@@ -1089,7 +1102,7 @@ public class DecimalConverter {
             mark = pos;
 
             for (final int stop = from + frac0 * SIZE_OF_INT32; from < stop; from += SIZE_OF_INT32) {
-                int x = getInt32BE(d_copy, from);
+                int x = getInt32BE(buffer, bufPos + from);
                 x ^= mask;
                 if (x < 0 || x > DIG_MAX) {
                     throw new IllegalArgumentException("bad format, x exceed: " + x + ", " + DIG_MAX);
@@ -1113,16 +1126,16 @@ public class DecimalConverter {
                 int x = 0;
                 switch (i) {
                 case 1:
-                    x = d_copy[from] /* one byte */;
+                    x = buffer.get(bufPos + from) /* one byte */;
                     break;
                 case 2:
-                    x = getInt16BE(d_copy, from);
+                    x = getInt16BE(buffer, bufPos + from);
                     break;
                 case 3:
-                    x = getInt24BE(d_copy, from);
+                    x = getInt24BE(buffer, bufPos + from);
                     break;
                 case 4:
-                    x = getInt32BE(d_copy, from);
+                    x = getInt32BE(buffer, bufPos + from);
                     break;
                 }
                 x ^= mask;
@@ -1147,20 +1160,22 @@ public class DecimalConverter {
             }
         }
 
-        d_copy[begin] ^= 0x80; /* restore sign */
+        signByte ^= (byte) 0x80;
+        buffer.put(bufPos + begin, signByte); /* restore sign */
         return String.valueOf(buf, 0, pos);
     }
 
-    private static int getInt16BE(byte[] buffer, int pos) {
-        return buffer[pos] << 8 | 255 & buffer[pos + 1];
+    private static int getInt16BE(ByteBuffer buffer, int pos) {
+        return buffer.get(pos) << 8 | 255 & buffer.get(pos + 1);
     }
 
-    private static int getInt24BE(byte[] buffer, int pos) {
-        return buffer[pos] << 16 | (255 & buffer[pos + 1]) << 8 | 255 & buffer[pos + 2];
+    private static int getInt24BE(ByteBuffer buffer, int pos) {
+        return buffer.get(pos) << 16 | (255 & buffer.get(pos + 1)) << 8 | 255 & buffer.get(pos + 2);
     }
 
-    private static int getInt32BE(byte[] buffer, int pos) {
-        return buffer[pos] << 24 | (255 & buffer[pos + 1]) << 16 | (255 & buffer[pos + 2]) << 8 | 255 & buffer[pos + 3];
+    private static int getInt32BE(ByteBuffer buffer, int pos) {
+        return buffer.get(pos) << 24 | (255 & buffer.get(pos + 1)) << 16 | (255 & buffer.get(pos + 2)) << 8
+            | 255 & buffer.get(pos + 3);
     }
 
 }

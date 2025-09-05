@@ -19,18 +19,25 @@ package com.alibaba.polardbx.executor.gsi.backfill;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.MDC;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.ddl.workqueue.OmcThreadPoll;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
+import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -42,20 +49,27 @@ import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.util.Pair;
 
+import java.sql.Connection;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_LOCK_DEADLOCK;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_LOCK_WAIT_TIMEOUT;
+import static com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillStatus.UNFINISHED;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DEADLOCK;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_LOCK_TIMEOUT;
 
@@ -74,7 +88,10 @@ public class OmcMirrorCopyExtractor extends Extractor {
     final List<String> primaryKeys;
     final Set<Integer> selectKeySet;
 
+    final long batchFileSize;
+
     public OmcMirrorCopyExtractor(String schemaName, String sourceTableName, String targetTableName, long batchSize,
+                                  long batchFileSize,
                                   long speedMin,
                                   long speedLimit,
                                   long parallelism,
@@ -95,6 +112,8 @@ public class OmcMirrorCopyExtractor extends Extractor {
             null, planSelectBatchWithMax, planSelectBatchWithMin, planSelectBatchWithMinAndMax, planSelectMaxPk,
             planSelectSample, primaryKeysId);
 
+        this.batchFileSize = batchFileSize;
+
         this.planInsertSelectWithMin = planInsertSelectWithMin;
         this.planInsertSelectWithMax = planInsertSelectWithMax;
         this.planInsertSelectWithMinAndMax = planInsertSelectWithMinAndMax;
@@ -107,11 +126,17 @@ public class OmcMirrorCopyExtractor extends Extractor {
     }
 
     public static OmcMirrorCopyExtractor create(String schemaName, String sourceTableName, String targetTableName,
-                                                long batchSize, long speedMin, long speedLimit, long parallelism,
                                                 Map<String, String> tableNameMapping,
                                                 Map<String, Set<String>> sourcePhyTables,
                                                 boolean useChangeSet, boolean useBinary, boolean onlineModifyColumn,
                                                 ExecutionContext ec) {
+        final long batchSize = ec.getParamManager().getLong(ConnectionParams.OMC_BACKFILL_BATCH_SIZE_MAX);
+        final long batchFileSize = ec.getParamManager().getLong(ConnectionParams.OMC_BACKFILL_BATCH_FILE_SIZE);
+        final long speedLimit = ec.getParamManager().getLong(ConnectionParams.OMC_BACKFILL_SPEED_LIMITATION);
+        final long speedMin = ec.getParamManager().getLong(ConnectionParams.OMC_BACKFILL_SPEED_MIN);
+        final long parallelism = ec.getParamManager().getLong(ConnectionParams.OMC_BACKFILL_PARALLELISM);
+        final boolean useInsertIgnore = ec.getParamManager().getBoolean(ConnectionParams.ENABLE_INSERT_IGNORE_FOR_OMC);
+
         Extractor.ExtractorInfo info =
             Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true, false,
                 onlineModifyColumn);
@@ -128,12 +153,13 @@ public class OmcMirrorCopyExtractor extends Extractor {
         List<String> primaryKeys = info.getPrimaryKeys();
 
         SqlSelect.LockMode lockMode = useChangeSet ? SqlSelect.LockMode.UNDEF : SqlSelect.LockMode.SHARED_LOCK;
-        boolean isInsertIgnore = !useChangeSet;
+        boolean isInsertIgnore = !useChangeSet || useInsertIgnore;
 
         return new OmcMirrorCopyExtractor(schemaName,
             sourceTableName,
             targetTableName,
             batchSize,
+            batchFileSize,
             speedMin,
             speedLimit,
             parallelism,
@@ -164,12 +190,109 @@ public class OmcMirrorCopyExtractor extends Extractor {
     }
 
     @Override
+    public void foreachBatch(ExecutionContext ec,
+                             BatchConsumer consumer) {
+        // For each physical table there is a backfill object which represents a row in
+        // system table
+
+        // set KILL_CLOSE_STREAM = true
+        ec.getExtraCmds().put(ConnectionParams.KILL_CLOSE_STREAM.toString(), true);
+        // set RC
+        ec.setTxIsolation(Connection.TRANSACTION_READ_COMMITTED);
+
+        // interrupted
+        AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
+
+        AtomicReference<Exception> excep = new AtomicReference<>(null);
+
+        // Re-balance by physicalDb.
+        List<List<GsiBackfillManager.BackfillObjectBean>> tasks = reporter.getBackfillBean().backfillObjects.values()
+            .stream()
+            .filter(v -> v.get(0).status.is(UNFINISHED))
+            .collect(Collectors.toList());
+        Collections.shuffle(tasks);
+
+        if (!tasks.isEmpty()) {
+            SQLRecorderLogger.ddlLogger.warn(
+                MessageFormat.format("[{0}] OMC Backfill job: {1} start with {2} task(s)",
+                    ec.getTraceId(), tasks.get(0).get(0).jobId, tasks.size()));
+        }
+
+        List<Pair<String, Runnable>> allTasksByStorageInstId = new ArrayList<>();
+        Map<String, String> physicalDbStorageInstIdMapping =
+            DbTopologyManager.getGroupNameToStorageInstIdMap(schemaName);
+        Map<String, List<FutureTask<Void>>> allFutureTasksByGroup = new TreeMap<>(String::compareToIgnoreCase);
+        final Map mdcContext = MDC.getCopyOfContextMap();
+        tasks.forEach(v -> {
+            FutureTask<Void> task = new FutureTask<>(
+                () -> {
+                    MDC.setContextMap(mdcContext);
+                    foreachPhyTableBatch(v.get(0).physicalDb, v.get(0).physicalTable, v, ec, consumer, interrupted);
+                }, null);
+
+            allFutureTasksByGroup.putIfAbsent(v.get(0).physicalDb, new ArrayList<>());
+            allFutureTasksByGroup.get(v.get(0).physicalDb).add(task);
+        });
+
+        for (Map.Entry<String, List<FutureTask<Void>>> entry : allFutureTasksByGroup.entrySet()) {
+            String groupName = entry.getKey();
+            if (!physicalDbStorageInstIdMapping.containsKey(groupName)) {
+                throw new TddlRuntimeException(
+                    ErrorCode.ERR_FAST_CHECKER,
+                    String.format("OMC failed to get group-storageInstId mapping, group [%s]", groupName)
+                );
+            }
+            String storageInstId = physicalDbStorageInstIdMapping.get(groupName);
+            for (FutureTask<Void> task : entry.getValue()) {
+                allTasksByStorageInstId.add(Pair.of(storageInstId, task));
+            }
+        }
+
+        OmcThreadPoll.getInstance().submitTasks(allTasksByStorageInstId);
+
+        List<FutureTask<Void>> allFutureTasks = allTasksByStorageInstId
+            .stream()
+            .map(Pair::getValue)
+            .map(task -> (FutureTask<Void>) task)
+            .collect(Collectors.toList());
+
+        for (FutureTask<Void> futureTask : allFutureTasks) {
+            try {
+                futureTask.get();
+            } catch (Exception e) {
+                if (null == excep.get()) {
+                    excep.set(e);
+                }
+
+                // set interrupt
+                interrupted.set(true);
+            }
+        }
+
+        if (excep.get() != null) {
+            throw GeneralUtil.nestedException(excep.get());
+        }
+
+        throttle.stop();
+
+        // After all physical table finished
+        reporter.updateBackfillStatus(ec, GsiBackfillManager.BackfillStatus.SUCCESS);
+    }
+
+    @Override
     protected void foreachPhyTableBatch(String dbIndex, String phyTable,
                                         List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
                                         ExecutionContext ec,
                                         BatchConsumer loader,
                                         AtomicReference<Boolean> interrupted) {
         String physicalTableName = TddlSqlToRelConverter.unwrapPhysicalTableName(phyTable);
+
+        if (ec.getParamManager().getBoolean(ConnectionParams.ENABLE_OMC_CHECK_TX_ISOLATION)
+            && ec.getTxIsolation() != Connection.TRANSACTION_READ_COMMITTED) {
+            // gh-ost 必须使用 rr 保证没有脏数据，但 polardbx 实现不同不依赖 rr，为了减少锁冲突，这里强制使用 rc
+            throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
+                "Must use READ-COMMITTED isolation in Online Modify Column");
+        }
 
         // Load upper bound
         List<ParameterContext> upperBoundParam =
@@ -186,101 +309,101 @@ public class OmcMirrorCopyExtractor extends Extractor {
         List<Map<Integer, ParameterContext>> lastBatch = null;
         AtomicReference<Boolean> finished = new AtomicReference<>(false);
         long actualBatchSize = batchSize;
+        long tableAvgRowLength = getTableAvgRowLength(dbIndex, physicalTableName);
+        if (tableAvgRowLength != 0) {
+            long idealBatchSize = batchFileSize / tableAvgRowLength;
+            if (idealBatchSize <= 0) {
+                actualBatchSize = 1;
+            } else {
+                actualBatchSize = Math.min(idealBatchSize, batchSize);
+            }
+        }
+
+        SQLRecorderLogger.ddlLogger.warn(
+            MessageFormat.format("[{0}] Start backfill row for {1}[{2}] actualBatchSize: {3}",
+                ec.getTraceId(), dbIndex, phyTable, actualBatchSize));
+
         do {
-            try {
-                if (rateLimiter != null) {
-                    rateLimiter.acquire((int) actualBatchSize);
-                }
-                long start = System.currentTimeMillis();
+            if (rateLimiter != null) {
+                rateLimiter.acquire((int) actualBatchSize);
+            }
+            long start = System.currentTimeMillis();
 
-                // Dynamic adjust lower bound of rate.
-                final long dynamicRate = DynamicConfig.getInstance().getGeneralDynamicSpeedLimitation();
-                if (dynamicRate > 0) {
-                    throttle.resetMaxRate(dynamicRate);
-                }
-
-                // For next batch, build select plan and parameters
-                final PhyTableOperation selectPlan = buildSelectPlanWithParam(dbIndex,
-                    physicalTableName,
-                    actualBatchSize,
-                    Stream.concat(lastPk.stream(), upperBoundParam.stream()).collect(Collectors.toList()),
-                    GeneralUtil.isNotEmpty(lastPk),
-                    withUpperBound);
-
-                List<ParameterContext> finalLastPk = lastPk;
-                lastBatch = GsiUtils.retryOnException(
-                    // 1. Lock rows within trx1 (single db transaction)
-                    // 2. Fill into index table within trx2 (XA transaction)
-                    // 3. Trx1 commit, if (success) {trx2 commit} else {trx2 rollback}
-                    () -> GsiUtils.wrapWithSingleDbTrx(tm, ec,
-                        (selectEc) -> extract(dbIndex, physicalTableName, selectPlan, selectEc, finalLastPk,
-                            upperBoundParam, currentSuccessRowCount, finished)),
-                    e -> (GsiUtils.vendorErrorIs(e, SQLSTATE_DEADLOCK, ER_LOCK_DEADLOCK)
-                        || GsiUtils.vendorErrorIs(e, SQLSTATE_LOCK_TIMEOUT, ER_LOCK_WAIT_TIMEOUT))
-                        || e.getMessage().contains("Loader check error."),
-                    (e, retryCount) -> deadlockErrConsumer(selectPlan, ec, e, retryCount));
-
-                // For status recording
-                List<ParameterContext> beforeLastPk = lastPk;
-
-                // Build parameter for next batch
-                lastPk = buildSelectParam(lastBatch, primaryKeysId);
-
-                successRowCount += currentSuccessRowCount.get();
-
-                reporter.updatePositionMark(ec, backfillObjects, successRowCount, lastPk, beforeLastPk,
-                    finished.get(), primaryKeysIdMap);
-                // 估算速度
-                ec.getStats().backfillRows.addAndGet(currentSuccessRowCount.get());
-                DdlEngineStats.METRIC_BACKFILL_ROWS_FINISHED.update(currentSuccessRowCount.get());
-
-                if (!finished.get()) {
-                    throttle.feedback(new com.alibaba.polardbx.executor.backfill.Throttle.FeedbackStats(
-                        System.currentTimeMillis() - start, start, currentSuccessRowCount.get()));
-                }
-//                DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
-
-                if (rateLimiter != null) {
-                    // Limit rate.
-                    rateLimiter.setRate(throttle.getNewRate());
-                }
-
-                // Check DDL is ongoing.
-                if (CrossEngineValidator.isJobInterrupted(ec) || Thread.currentThread().isInterrupted()
-                    || interrupted.get()) {
-                    long jobId = ec.getDdlJobId();
-                    throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                        "The job '" + jobId + "' has been cancelled");
-                }
-                if (actualBatchSize < batchSize) {
-                    actualBatchSize = Math.min(actualBatchSize * 2, batchSize);
-                }
-            } catch (TddlRuntimeException e) {
-                boolean retry = (e.getErrorCode() == ErrorCode.ERR_X_PROTOCOL_BAD_PACKET.getCode() ||
-                    (e.getErrorCode() == 1153 && e.getMessage().toLowerCase().contains("max_allowed_packet")) ||
-                    (e.getSQLState() != null && e.getSQLState().equalsIgnoreCase("S1000") && e.getMessage()
-                        .toLowerCase().contains("max_allowed_packet"))) && actualBatchSize > 1;
-                if (retry) {
-                    actualBatchSize = Math.max(actualBatchSize / 8, 1);
-                } else {
-                    throw e;
-                }
+            // Dynamic adjust lower bound of rate.
+            final long dynamicRate = DynamicConfig.getInstance().getGeneralDynamicSpeedLimitation();
+            if (dynamicRate > 0) {
+                throttle.resetMaxRate(dynamicRate);
             }
 
-            // for sliding window of split
-            checkAndSplitBackfillObject(
-                dbIndex, phyTable, successRowCount, ec, rangeBackfillStartTime, lastBatch, backfillObjects);
+            // For next batch, build select plan and parameters
+            final PhyTableOperation selectPlan = buildSelectPlanWithParam(dbIndex,
+                physicalTableName,
+                actualBatchSize,
+                Stream.concat(lastPk.stream(), upperBoundParam.stream()).collect(Collectors.toList()),
+                GeneralUtil.isNotEmpty(lastPk),
+                withUpperBound);
+
+            List<ParameterContext> finalLastPk = lastPk;
+            lastBatch = GsiUtils.retryOnException(
+                // 1. Lock rows within trx1 (single db transaction)
+                // 2. Fill into index table within trx2 (XA transaction)
+                // 3. Trx1 commit, if (success) {trx2 commit} else {trx2 rollback}
+                () -> GsiUtils.wrapWithSingleDbTrx(tm, ec,
+                    (selectEc) -> extract(dbIndex, physicalTableName, selectPlan, selectEc, finalLastPk,
+                        upperBoundParam, currentSuccessRowCount, finished)),
+                e -> (GsiUtils.vendorErrorIs(e, SQLSTATE_DEADLOCK, ER_LOCK_DEADLOCK)
+                    || GsiUtils.vendorErrorIs(e, SQLSTATE_LOCK_TIMEOUT, ER_LOCK_WAIT_TIMEOUT))
+                    || e.getMessage().contains("Loader check error."),
+                (e, retryCount) -> deadlockErrConsumer(selectPlan, ec, e, retryCount));
+
+            // For status recording
+            List<ParameterContext> beforeLastPk = lastPk;
+
+            // Build parameter for next batch
+            if (!lastBatch.isEmpty()) {
+                lastPk = buildSelectParam(lastBatch, primaryKeysId);
+            } else {
+                // 最后一个batch 完成，lastBatch 为空，last pk 即为 upperBoundParam
+                lastPk = upperBoundParam;
+            }
+
+            successRowCount += currentSuccessRowCount.get();
+
+            reporter.updatePositionMark(ec, backfillObjects, successRowCount, lastPk, beforeLastPk,
+                finished.get(), primaryKeysIdMap);
+            // 估算速度
+            ec.getStats().backfillRows.addAndGet(currentSuccessRowCount.get());
+            DdlEngineStats.METRIC_BACKFILL_ROWS_FINISHED.update(currentSuccessRowCount.get());
+
+            if (!finished.get()) {
+                throttle.feedback(new com.alibaba.polardbx.executor.backfill.Throttle.FeedbackStats(
+                    System.currentTimeMillis() - start, start, currentSuccessRowCount.get()));
+            }
+//                DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
+
+            if (rateLimiter != null) {
+                // Limit rate.
+                rateLimiter.setRate(throttle.getNewRate());
+            }
+
+            // Check DDL is ongoing.
+            if (CrossEngineValidator.isJobInterrupted(ec) || Thread.currentThread().isInterrupted()
+                || interrupted.get()) {
+                long jobId = ec.getDdlJobId();
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                    "The job '" + jobId + "' has been cancelled");
+            }
         } while (!finished.get());
 
 //        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
         reporter.addBackfillCount(successRowCount);
 
-        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Last backfill row for {1}[{2}][{3}]: {4}",
+        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Last backfill pk for {1}[{2}][{3}]: {4}",
             ec.getTraceId(),
             dbIndex,
             phyTable,
             successRowCount,
-            GsiUtils.rowToString(lastBatch.isEmpty() ? null : lastBatch.get(lastBatch.size() - 1))));
+            GsiUtils.rowToString(lastPk)));
     }
 
     protected List<Map<Integer, ParameterContext>> extract(String dbIndex, String phyTableName,

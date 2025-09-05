@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.gsi.GsiManager;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.LackLocalIndexStatus;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.junit.Before;
@@ -64,12 +65,12 @@ public class ColumnarCheckTableTest {
     GsiMetaManager.GsiIndexMetaBean indexMetaBean =
         new GsiMetaManager.GsiIndexMetaBean(null, schemaName, tableName, true, schemaName, indexName,
             Collections.emptyList(), null, null, null, null, null, null,
-            IndexStatus.PUBLIC, 1, true, true, IndexVisibility.VISIBLE);
+            IndexStatus.PUBLIC, 1, true, true,  IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
 
     GsiMetaManager.GsiIndexMetaBean indexMetaBean1 =
         new GsiMetaManager.GsiIndexMetaBean(null, schemaName, tableName, true, schemaName, indexName,
             Collections.emptyList(), null, null, null, null, null, null,
-            IndexStatus.PUBLIC, 1, true, false, IndexVisibility.VISIBLE);
+            IndexStatus.PUBLIC, 1, true, false,  IndexVisibility.VISIBLE, LackLocalIndexStatus.NO_LACKIING);
 
     GsiMetaManager.GsiTableMetaBean tableMetaBean = new GsiMetaManager.GsiTableMetaBean(null,
         schemaName, tableName, GsiMetaManager.TableType.SHARDING, null, null, null,

@@ -99,10 +99,10 @@ import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_END;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_SKIPPED;
-import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_START;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.DATA_MAX_LEN;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.buildSketchKey;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.digestForStatisticTrace;
+import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.doesColumnNameMatchAnyUniqueKey;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.CACHE_LINE;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.CORRECTIONS;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.HISTOGRAM;
@@ -124,7 +124,6 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
     private final Map<String, Map<String, CacheLine>> statisticCache = new ConcurrentHashMap<>();
 
     public static StatisticDataSource sds;
-
     private static ThreadPoolExecutor executor;
 
     private final Map<String, Long> cardinalitySketch = Maps.newConcurrentMap();
@@ -249,12 +248,6 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
     }
 
     public CacheLine getCacheLine(String schema, String logicalTableName, boolean byPassGsi) {
-
-        int idx = logicalTableName.indexOf(CandidateIndex.WHAT_IF_GSI_INFIX);
-        if (idx != -1) {
-            logicalTableName = logicalTableName.substring(0, idx);
-        }
-
         if (!byPassGsi) {
             logicalTableName = getSourceTableName(schema, logicalTableName);
         }
@@ -277,6 +270,11 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         if (schema == null || logicalTableName == null) {
             return logicalTableName;
         }
+        int idx = logicalTableName.indexOf(CandidateIndex.WHAT_IF_GSI_INFIX);
+        if (idx != -1) {
+            logicalTableName = logicalTableName.substring(0, idx);
+        }
+
         TableMeta tableMeta = null;
         try {
             tableMeta =
@@ -389,6 +387,19 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             return sr;
         }
         CacheLine cacheLine = getCacheLine(schema, logicalTableName);
+
+        // If the column names can fully match all columns of any unique key,
+        // then redirect the current interface's NDV (Number of Distinct Values) request to the rowcount interface.
+        boolean matchUniqKey = doesColumnNameMatchAnyUniqueKey(schema, logicalTableName, columnName);
+        if (matchUniqKey) {
+            StatisticResult rowCountResult = getRowCount(schema, logicalTableName, isNeedTrace);
+            StatisticTrace trace = isNeedTrace ?
+                StatisticUtils.buildTrace(schema + "," + logicalTableName + "," + columnName,
+                    "getCardinality", rowCountResult.getLongValue(), CACHE_LINE, cacheLine.getLastModifyTime()
+                    , "ndv by rowcount").addChild(rowCountResult.getTrace()) : null;
+            return StatisticResult.build(CACHE_LINE).setValue(rowCountResult.getLongValue(), trace);
+        }
+
         Long cardinality = cardinalitySketch.get(buildSketchKey(schema, logicalTableName, columnName));
 
         if (fromOptimizer) {
@@ -594,6 +605,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
 
     public StatisticResult getFrequency(String schema, String logicalTableName, String columnName, String value,
                                         boolean isNeedTrace) {
+        logicalTableName = getSourceTableName(schema, logicalTableName);
         DataType dataType = dataTypeCheck(schema, logicalTableName, columnName);
         value = truncateStringTypeValue(schema, logicalTableName, columnName, value);
         StatisticResult statisticResult = getFrequencyInner(schema, logicalTableName, columnName, value, isNeedTrace);
@@ -1422,24 +1434,25 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
     }
 
     public void updateAllShardParts(String schema, String tableName, String columnName, ExecutionContext ec,
-                                    ThreadPoolExecutor sketchHllExecutor) {
+                                    ThreadPoolExecutor sketchHllExecutor) throws Exception {
         try {
             getSds().updateColumnCardinality(schema, tableName, columnName, ec, sketchHllExecutor);
             String key = buildSketchKey(schema, tableName, columnName);
-            cardinalitySketch.put(key, getSds().syncCardinality().get(key));
+            Long cardinality = getSds().syncCardinality().get(key);
+            if (cardinality == null) {
+                cardinality = -1L;
+            }
+            cardinalitySketch.put(key, cardinality);
             FeatureStats.getInstance().increment(HLL_TASK_SUCC);
         } catch (Exception sqlException) {
             FeatureStats.getInstance().increment(HLL_TASK_FAIL);
             logger.error("error when updateAllShardParts:" + tableName + "," + columnName, sqlException);
+            throw sqlException;
         }
     }
 
-    public void rebuildShardParts(String schema, String tableName, String columnName, ExecutionContext ec) {
-        rebuildShardParts(schema, tableName, columnName, null, null);
-    }
-
     public void rebuildShardParts(String schema, String tableName, String columnName, ExecutionContext ec,
-                                  ThreadPoolExecutor sketchHllExecutor) {
+                                  ThreadPoolExecutor sketchHllExecutor) throws Exception {
         try {
             getSds().rebuildColumnCardinality(schema, tableName, columnName, ec, sketchHllExecutor);
             cardinalitySketch.putAll(getSds().syncCardinality());
@@ -1447,6 +1460,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         } catch (Exception sqlException) {
             FeatureStats.getInstance().increment(HLL_TASK_FAIL);
             logger.error("error when rebuildShardParts:" + tableName + "," + columnName, sqlException);
+            throw sqlException;
         }
     }
 
@@ -1687,7 +1701,11 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             JSONObject histogramMapJsonObject = cacheLineJson.getJSONObject("histogramMap");
             for (String columnName : histogramMapJsonObject.keySet()) {
                 columnName = columnName.toLowerCase(Locale.ROOT);
-                Histogram histogram = Histogram.deserializeFromJson(histogramMapJsonObject.getString(columnName));
+                String histogramString = histogramMapJsonObject.getString(columnName);
+                if (StringUtils.isEmpty(histogramString)) {
+                    continue;
+                }
+                Histogram histogram = Histogram.deserializeFromJson(histogramString);
                 if (histogram != null) {
                     histogramMap.put(columnName, histogram);
                 }
@@ -1698,7 +1716,11 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             JSONObject topNMapJsonObject = cacheLineJson.getJSONObject("topNMap");
             for (String columnName : topNMapJsonObject.keySet()) {
                 columnName = columnName.toLowerCase(Locale.ROOT);
-                TopN topN = TopN.deserializeFromJson(topNMapJsonObject.getString(columnName));
+                String topNString = topNMapJsonObject.getString(columnName);
+                if (StringUtils.isEmpty(topNString)) {
+                    continue;
+                }
+                TopN topN = TopN.deserializeFromJson(topNString);
                 if (topN != null) {
                     topNMap.put(columnName, topN);
                 }
@@ -1862,28 +1884,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         if (SystemDbHelper.isDBBuildIn(schema)) {
             return StatisticResult.build().setValue(false, null);
         }
-
-        int idx = table.indexOf(CandidateIndex.WHAT_IF_GSI_INFIX);
-        if (idx != -1) {
-            table = table.substring(0, idx);
-        }
-
-        TableMeta tableMeta = null;
-        try {
-            tableMeta =
-                OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(table);
-        } catch (Throwable t) {
-            // pass
-        }
-        if (tableMeta != null && tableMeta.isGsi()) {
-            GsiMetaManager.GsiTableMetaBean tableMetaBean = tableMeta.getGsiTableMetaBean();
-            if (tableMetaBean != null
-                && tableMetaBean.gsiMetaBean != null
-                && tableMetaBean.gsiMetaBean.tableName != null
-                && tableMetaBean.gsiMetaBean.indexStatus == IndexStatus.PUBLIC) {
-                table = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
-            }
-        }
+        table = getSourceTableName(schema, table);
 
         CacheLine cacheLine = this.getCacheLine(schema, table);
         if (CollectionUtils.isEmpty(columns)) {

@@ -50,6 +50,8 @@ import org.apache.calcite.sql.SqlDropDatabase;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlMoveDatabase;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.Pair;
+import org.apache.commons.collections.SetUtils;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -60,6 +62,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author chenghui.lch
@@ -390,6 +393,79 @@ public class ScaleOutPlanUtil {
                     "it's not allow to run the ddl command when ScaleOut task is in progress");
             }
         }
+    }
+
+    public static Map<Pair<String, String>, List<Pair<String, String>>> generateSrcTarPhyTableMapForMoveTable(
+        Map<String, Set<String>> srcPhyDbAndTables,
+        Map<String, Set<String>> tarPhyDbAndTables,
+        Map<String, String> srcTargetGroupMap) {
+        Map<Pair<String, String>, List<Pair<String, String>>> resultMap = new HashMap<>();
+        if (GeneralUtil.isEmpty(srcTargetGroupMap) ||
+            GeneralUtil.isEmpty(srcPhyDbAndTables) ||
+            GeneralUtil.isEmpty(tarPhyDbAndTables)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                "srcTargetGroupMap or srcPhyDbAndTables or tarPhyDbAndTables is empty");
+        }
+        if (srcPhyDbAndTables.size() != tarPhyDbAndTables.size()
+            || tarPhyDbAndTables.size() != srcTargetGroupMap.size()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                "srcPhyDbAndTables or tarPhyDbAndTables or srcTargetGroupMap size is not equal");
+        }
+        for (Map.Entry<String, String> entry : srcTargetGroupMap.entrySet()) {
+            Set<String> srcPhyDbTables = srcPhyDbAndTables.get(entry.getKey());
+            Set<String> tarPhyDbTables = tarPhyDbAndTables.get(entry.getValue());
+            if (!SetUtils.isEqualSet(srcPhyDbTables, tarPhyDbTables)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                    "srcPhyDbTables or tarPhyDbTables is not equal");
+            }
+            for (String phyTable : srcPhyDbTables) {
+                Pair<String, String> srcTablePair = Pair.of(entry.getKey(), phyTable);
+                List<Pair<String, String>> tarTablePairList = new ArrayList<>();
+                if (!tarPhyDbTables.contains(phyTable)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                        "expected table exist in targPhyDbTables " + phyTable + " but not exist: " + tarPhyDbTables);
+                }
+                tarTablePairList.add(Pair.of(entry.getValue(), phyTable));
+                resultMap.put(srcTablePair, tarTablePairList);
+            }
+        }
+        return resultMap;
+    }
+
+    public static Map<Pair<String, String>, List<Pair<String, String>>> generateSrcTarPhyTableMapForMovePartition(
+        Map<String, Set<String>> srcPhyDbAndTables,
+        Map<String, Set<String>> tarPhyDbAndTables,
+        Map<String, List<String>> phyTableToGroupMap) {
+        Map<Pair<String, String>, List<Pair<String, String>>> resultMap = new HashMap<>();
+        if (GeneralUtil.isEmpty(phyTableToGroupMap) ||
+            GeneralUtil.isEmpty(srcPhyDbAndTables) ||
+            GeneralUtil.isEmpty(tarPhyDbAndTables)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                "srcTargetGroupMap or srcPhyDbAndTables or phyTableToGroupMap is empty");
+        }
+        AtomicInteger srcTablesCount = new AtomicInteger(0);
+        AtomicInteger tarTablesCount = new AtomicInteger(0);
+        srcPhyDbAndTables.values().stream().forEach(o -> srcTablesCount.addAndGet(o.size()));
+        tarPhyDbAndTables.values().stream().forEach(o -> tarTablesCount.addAndGet(o.size()));
+        if (srcTablesCount.get() != tarTablesCount.get()
+            || srcTablesCount.get() != phyTableToGroupMap.size()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                "srcPhyDbAndTables or tarPhyDbAndTables or phyTableToGroupMap size is not equal");
+        }
+        for (String phyTable : phyTableToGroupMap.keySet()) {
+            String srcPhyTable = phyTable;
+            String srcDb = phyTableToGroupMap.get(srcPhyTable).get(0);
+            String dstDb = phyTableToGroupMap.get(srcPhyTable).get(1);
+            if (!srcPhyDbAndTables.containsKey(srcDb) || !srcPhyDbAndTables.get(srcDb).contains(srcPhyTable)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                    "srcPhyDbAndTable doesn't exist " + srcPhyTable);
+            }
+            Pair<String, String> srcTarGroupPair = Pair.of(srcDb, srcPhyTable);
+            List<Pair<String, String>> srcTarPhyTableList = new ArrayList<>();
+            srcTarPhyTableList.add(Pair.of(dstDb, srcPhyTable));
+            resultMap.put(srcTarGroupPair, srcTarPhyTableList);
+        }
+        return resultMap;
     }
 
 }

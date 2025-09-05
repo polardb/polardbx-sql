@@ -1,0 +1,55 @@
+## DISABLE_FAST_SQL_PARSER
+
+set ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX = true;
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+
+create table test_cci_date_by_day(
+a int not null auto_increment,
+b date default '0000-00-00',
+primary key(a)
+)
+ttl = ttl_definition( TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 2 ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a) partitions 2;
+show create table test_cci_date_by_day;
+create table test_cci_date_by_day_bk like test_cci_date_by_day engine='columnar' archive_mode='ttl';
+show create table test_cci_date_by_day;
+insert into test_cci_date_by_day values
+(1, '1970-01-01'),
+(2, '2024-06-25'),
+(3, '2024-06-26'),
+(4, '2024-06-27'),
+(5, '2024-06-28'),
+(6, '2024-06-29'),
+(7, '2024-06-30'),
+(8, '2024-07-01'),
+(9, '2024-07-02'),
+(10, '2024-07-03');
+alter table test_cci_date_by_day modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE=4;
+alter table test_cci_date_by_day cleanup expired data;
+show create table test_cci_date_by_day;
+select * from test_cci_date_by_day order by a;
+select * from test_cci_date_by_day_bk order by a;
+insert into test_cci_date_by_day values
+(11, '1970-01-01'),
+(12, '2024-06-25'),
+(13, '2024-06-26'),
+(14, '2024-06-27'),
+(15, '2024-06-28'),
+(16, '2024-06-29'),
+(17, '2024-06-30'),
+(18, '2024-07-01'),
+(19, '2024-07-02'),
+(20, '2024-07-03');
+select sleep(5);
+reload columnarmanager snapshot;
+select * from test_cci_date_by_day_bk order by a;
+select * from test_cci_date_by_day_bk where b = '2024-06-25' order by a;
+select * from test_cci_date_by_day_bk where b = '2024-06-26' order by a;
+select * from test_cci_date_by_day_bk where b <= '2024-06-30' order by a;
+select * from test_cci_date_by_day_bk where b > '2024-06-30' order by a;
+select * from test_cci_date_by_day_bk where b <= '2024-07-03' and b > '2024-06-26' order by a;
+select * from test_cci_date_by_day_bk where b between '2024-06-26' and '2024-07-03' order by a;
+select * from test_cci_date_by_day_bk where b in ('2024-06-25', '1970-01-01', '2024-07-03', '2024-07-02') order by a;
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+drop table test_cci_date_by_day;

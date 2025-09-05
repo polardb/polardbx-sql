@@ -74,6 +74,7 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexType;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.Relationship;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
@@ -104,6 +105,7 @@ import com.google.common.collect.Lists;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import com.google.common.collect.ImmutableList;
 import lombok.val;
+import org.apache.calcite.avatica.util.TimeUnit;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
@@ -133,7 +135,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -532,13 +533,13 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 2. Allow two concurrent version exists, which is not safe for single-versioned TableRule & PartitionInfoManager
      */
     public void tonewversion(String tableName) {
-        tonewversionImpl(Arrays.asList(tableName), false, null, null, null, -1, true, false, false);
+        tonewversionImpl(Arrays.asList(tableName), false, null, null, true, false, false);
     }
 
     public void tonewversion(String tableName,
-                             boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
+                             boolean preemptive, PreemptiveTime preemptiveTime,
                              boolean allowTwoVersion, boolean forceSyncFailed) {
-        tonewversionImpl(Arrays.asList(tableName), preemptive, initWait, interval, timeUnit, -1, allowTwoVersion,
+        tonewversionImpl(Arrays.asList(tableName), preemptive, preemptiveTime, null, allowTwoVersion,
             false, forceSyncFailed);
     }
 
@@ -547,10 +548,13 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      */
     @Override
     public void toNewVersionInTrx(List<String> tableNameList,
-                                  boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
-                                  long connId, boolean allowTwoVersion, boolean sameTableGroup,
+                                  boolean preemptive, PreemptiveTime preemptiveTime,
+                                  Long connId, boolean allowTwoVersion, boolean sameTableGroup,
                                   boolean forceSyncFailed) {
-        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
+        if (connId != null && connId > 0) {
+            throw new RuntimeException("The connId used for toNewVersion must be less than 0.");
+        }
+        tonewversionImpl(tableNameList, preemptive, preemptiveTime, connId, allowTwoVersion,
             sameTableGroup, forceSyncFailed);
     }
 
@@ -559,14 +563,15 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 1. Be preemptive to avoid deadlock within multiple tables
      */
     @Override
-    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion,
+    public void toNewVersionInTrx(List<String> tableNameList, Long connId, boolean allowTwoVersion,
                                   boolean forceSyncFailed) {
         ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
         boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
-        Long initWait = paramManager.getLong(ConnectionParams.TG_PREEMPTIVE_MDL_INITWAIT);
-        Long interval = paramManager.getLong(ConnectionParams.TG_PREEMPTIVE_MDL_INTERVAL);
+        PreemptiveTime preemptiveTime =
+            PreemptiveTime.getPreemptiveTimeFromExecutionContext(paramManager,
+                ConnectionParams.TG_PREEMPTIVE_MDL_INITWAIT, ConnectionParams.TG_PREEMPTIVE_MDL_INTERVAL);
 
-        toNewVersionInTrx(tableNameList, enablePreemptiveMdl, initWait, interval, TimeUnit.MILLISECONDS, connId,
+        toNewVersionInTrx(tableNameList, enablePreemptiveMdl, preemptiveTime, connId,
             allowTwoVersion, tableNameList.size() > 1, forceSyncFailed);
     }
 
@@ -588,7 +593,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 return;
             }
 
-            toNewVersionInTrx(Collections.singletonList(tableName), -1, allowTwoVersion, false);
+            toNewVersionInTrx(Collections.singletonList(tableName), null, allowTwoVersion, false);
         }
 
     }
@@ -668,6 +673,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                             meta.keySubParts = new ArrayList<>();
                             meta.values = primaryKeys;
                             meta.unique = record.nonUnique == 0;
+                            meta.indexType = record.indexType;
                             localIndexMetaMap.put(indexName, meta);
                         }
                         meta.keys.add(record.columnName);
@@ -1256,7 +1262,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
          */
 
         logTblMeta.setTtlDefinitionInfo(
-            TtlDefinitionInfo.createFrom(tblInfoMgr.getTtlInfoRecord(schemaName, logicalTableName), pkColNames)
+            TtlDefinitionInfo.createFrom(tblInfoMgr.getTtlInfoRecord(schemaName, logicalTableName))
         );
 
         if (logTblMeta.getTtlDefinitionInfo() != null) {
@@ -1265,12 +1271,13 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
              * Label archive cci of ttl20
              */
             Map<String, GsiMetaManager.GsiIndexMetaBean> cciPublished = logTblMeta.getColumnarIndexPublished();
-            Map<String, GsiMetaManager.GsiIndexMetaBean> arcCciPublished = logTblMeta.getArchiveColumnarIndexPublished();
+            Map<String, GsiMetaManager.GsiIndexMetaBean> arcCciPublished =
+                logTblMeta.getArchiveColumnarIndexPublished();
             TtlDefinitionInfo ttlInfo = logTblMeta.getTtlDefinitionInfo();
-            if (ttlInfo != null && ttlInfo.needPerformExpiredDataArchivingByCci()) {
+            if (ttlInfo != null && ttlInfo.needPerformExpiredDataArchiving()) {
                 if (cciPublished != null && arcCciPublished != null && !cciPublished.isEmpty()) {
                     String rawCciName = ttlInfo.getTtlInfoRecord().getArcTmpTblName();
-                    for ( Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> cciItem : cciPublished.entrySet() ) {
+                    for (Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> cciItem : cciPublished.entrySet()) {
                         String cciItemKey = cciItem.getKey();
                         String fullCciName = cciItemKey.toLowerCase();
                         GsiMetaManager.GsiIndexMetaBean cciBean = cciItem.getValue();
@@ -1388,9 +1395,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      */
 
     private void tonewversionImpl(List<String> tableNameList,
-                                  boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                                  long connId, boolean allowTwoVersion, boolean sameTableGroup,
-                                  boolean forceSyncFailed) {
+                                  boolean preemptive, PreemptiveTime preemptiveTime,
+                                  Long connId, boolean allowTwoVersion, boolean sameTableGroup,
+                                  Boolean forceSyncFailed) {
+
         synchronized (OptimizerContext.getContext(schemaName)) {
             GmsTableMetaManager newSchemaManager;
             GmsTableMetaManager oldSchemaManager;
@@ -1460,7 +1468,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
             // Insert mdl barrier
             {
-                mdlCriticalSection(preemptive, initWait, interval, timeUnit, connId, oldSchemaManager,
+                mdlCriticalSection(preemptive, preemptiveTime, connId, oldSchemaManager,
                     staleTables.keySet(), isNewPartitionDb, sameTableGroup, (x) -> {
                         oldSchemaManager.expire();
                         if (!allowTwoVersion) {
@@ -1470,7 +1478,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
                         }
                         return null;
-                    });
+                    },1L);
             }
         }
     }
@@ -1519,31 +1527,25 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         return staleTables;
     }
 
-    public void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit, long connId,
-                                   GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
-                                   boolean isNewPartDb, boolean sameTableGroup, Function<Void, Void> duringBarrier) {
-        mdlCriticalSection(preemptive, initWait, interval, timeUnit, connId, oldSchemaManager,
-            tableNameList, isNewPartDb, sameTableGroup, duringBarrier, 1L);
-    }
-
     /**
      * Insert an MDL barrier for tables to clear cross status transaction.
      */
-    public void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit, long connId,
+    public void mdlCriticalSection(boolean preemptive, PreemptiveTime preemptiveTime, Long connId,
                                    GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
                                    boolean isNewPartDb, boolean sameTableGroup, Function<Void, Void> duringBarrier,
                                    long trxId) {
         final MdlContext context;
-        if (connId > 0) {
+        if (connId != null) {
             // to new version while lock tables, using connection id
-            context = preemptive ? MdlManager.addContext(connId, schemaName, initWait, interval, timeUnit) :
+            // connId 最好为负数，避免跟连接上的 MdlContext 冲突
+            context = preemptive ? MdlManager.addContext(connId, schemaName, preemptiveTime) :
                 MdlManager.addContext(connId);
         } else if (preemptive) {
-            context = MdlManager.addContext(schemaName, initWait, interval, timeUnit);
+            context = MdlManager.addContext(schemaName, preemptiveTime);
         } else {
             context = MdlManager.addContext(schemaName, false);
         }
-        String contextName = connId > 0 ? String.valueOf(connId) : schemaName;
+        String contextName = connId != null ? String.valueOf(connId) : schemaName;
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
             "Mdl {0}  {1}.addContext({2})", Thread.currentThread().getName(), this.hashCode(), contextName));
 
@@ -1710,6 +1712,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         List<String> keys;
         List<Long> keySubParts;
         List<String> values;
+        String indexType;
     }
 
     @Override
@@ -2109,7 +2112,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         return new IndexMeta(tableName,
             toColumnMetaExt(secondaryIndexMeta.keys, secondaryIndexMeta.keySubParts, columnMetas, tableName),
             toColumnMeta(secondaryIndexMeta.values, columnMetas, tableName),
-            IndexType.NONE,
+            IndexType.FULLTEXT.name().equalsIgnoreCase(secondaryIndexMeta.indexType) ?
+                IndexType.FULLTEXT : IndexType.NONE,
             Relationship.NONE,
             strongConsistent,
             secondaryIndexMeta.unique,

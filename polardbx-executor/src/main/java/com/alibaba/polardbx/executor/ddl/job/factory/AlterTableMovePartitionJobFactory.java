@@ -72,7 +72,7 @@ import java.util.TreeSet;
 public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFactory {
 
     final Map<String, List<PhyDdlTableOperation>> discardTableSpacePhysicalPlansMap;
-    final Map<String, Map<String, Pair<String, String>>> tbPtbGroupMap;
+    final Map<String, Map<String, org.apache.calcite.util.Pair<String, String>>> tbPtbGroupMap;
     final Map<String, String> sourceAndTarDnMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     final Map<String, Pair<String, String>> storageInstAndUserInfos = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -80,8 +80,8 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
                                              Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                              Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
                                              Map<String, List<PhyDdlTableOperation>> discardTableSpacePhysicalPlansMap,
-                                             Map<String, Map<String, Pair<String, String>>> tbPtbGroupMap,
-                                             Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                             Map<String, Map<String, org.apache.calcite.util.Pair<String, String>>> tbPtbGroupMap,
+                                             Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                              Map<String, Map<String, Set<String>>> targetTablesTopology,
                                              Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                              Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -172,7 +172,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
         DdlBackfillCostRecordTask costRecordTask = null;
         if (ddlContext != null && !ddlContext.isSubJob()) {
             costRecordTask = new DdlBackfillCostRecordTask(schemaName);
-            final BalanceStats balanceStats = Balancer.collectBalanceStatsOfTable(schemaName, tableName);
+            final BalanceStats balanceStats = Balancer.collectBalanceStatsOfTable(schemaName, tableName, executionContext);
             List<PartitionStat> partitionStats = balanceStats.getPartitionStats();
             Long diskSize = 0L;
             Long rows = 0L;
@@ -240,7 +240,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
         CostEstimableDdlTask.CostInfo costInfo = null;
         if (ddlContext != null && !ddlContext.isSubJob()) {
             final BalanceStats balanceStats =
-                Balancer.collectBalanceStatsOfTable(schemaName, preparedData.getTableName());
+                Balancer.collectBalanceStatsOfTable(schemaName, preparedData.getTableName(), executionContext);
             List<PartitionStat> partitionStats = balanceStats.getPartitionStats();
             Long diskSize = 0L;
             Long rows = 0L;
@@ -281,7 +281,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
         DdlBackfillCostRecordTask costRecordTask = null;
         if (ddlContext != null && !ddlContext.isSubJob()) {
             costRecordTask = new DdlBackfillCostRecordTask(schemaName);
-            final BalanceStats balanceStats = Balancer.collectBalanceStatsOfTable(schemaName, tableName);
+            final BalanceStats balanceStats = Balancer.collectBalanceStatsOfTable(schemaName, tableName, executionContext);
             List<PartitionStat> partitionStats = balanceStats.getPartitionStats();
             Long diskSize = 0L;
             Long rows = 0L;
@@ -363,6 +363,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
         return executableDdlJob;
     }
 
+    @Override
     public void constructSubTasks(String schemaName, ExecutableDdlJob executableDdlJob, DdlTask tailTask,
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
         EmptyTask emptyTask = new EmptyTask(schemaName);
@@ -370,7 +371,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
         TableMeta tm = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
         final boolean useChangeSet = ChangeSetUtils.isChangeSetProcedure(executionContext);
         AlterTableGroupSubTaskJobFactory subTaskJobFactory;
-        if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm)) {
+        if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm) && !tm.containFullTextIndex()) {
             subTaskJobFactory =
                 new AlterTableMovePartitionChangeSetSubTaskJobFactory(ddl,
                     (AlterTableMovePartitionPreparedData) preparedData,
@@ -390,6 +391,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
                 new AlterTableMovePartitionSubTaskJobFactory(ddl, (AlterTableMovePartitionPreparedData) preparedData,
                     tablesPrepareData.get(preparedData.getTableName()),
                     newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
+                    tbPtbGroupMap.get(preparedData.getTableName()),
                     tablesTopologyMap.get(preparedData.getTableName()),
                     targetTablesTopology.get(preparedData.getTableName()),
                     sourceTablesTopology.get(preparedData.getTableName()),
@@ -442,7 +444,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
                     pipeLine.get(1));
 
                 PhysicalBackfillTask physicalBackfillTask = (PhysicalBackfillTask) pipeLine.get(1);
-                Map<String, List<List<String>>> targetTables = new HashMap<>();
+                TreeMap<String, List<List<String>>> targetTables = new TreeMap<>();
                 String tarGroupKey = physicalBackfillTask.getSourceTargetGroup().getValue();
                 String phyTableName = physicalBackfillTask.getPhysicalTableName();
 
@@ -500,7 +502,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
                                           ExecutionContext executionContext) {
         AlterTableMovePartitionBuilder alterTableMovePartitionBuilder =
             new AlterTableMovePartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableMovePartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableMovePartitionBuilder.getTargetTablesTopology();
@@ -514,7 +516,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
             alterTableMovePartitionBuilder.getOrderedTargetTablesLocations();
         Map<String, List<PhyDdlTableOperation>> discardTableSpacePhysicalPlansMap =
             alterTableMovePartitionBuilder.getDiscardTableSpacePhysicalPlansMap();
-        Map<String, Map<String, Pair<String, String>>> tbPtbGroupMap =
+        Map<String, Map<String, org.apache.calcite.util.Pair<String, String>>> tbPtbGroupMap =
             alterTableMovePartitionBuilder.getTbPtbGroupMap();
         return new AlterTableMovePartitionJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
             newPartitionsPhysicalPlansMap, discardTableSpacePhysicalPlansMap, tbPtbGroupMap,

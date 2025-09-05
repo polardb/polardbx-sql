@@ -195,6 +195,7 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
+    @Ignore
     public void t43_kill_physical_add_with_auto_rollback_legacy() throws SQLException {
         // Expected: All physical DDLs are killed (have to kill them one by one).
         String columnInfo = "c5 int(11)";

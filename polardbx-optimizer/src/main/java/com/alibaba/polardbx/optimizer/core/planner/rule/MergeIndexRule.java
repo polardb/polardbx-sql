@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -23,6 +24,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToBKAJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -133,6 +135,12 @@ public class MergeIndexRule extends RelOptRule {
         LogicalTableLookup logicalTableLookup = RelUtils.createTableLookup(LogicalView.create(logicalTableScan,
                 logicalTableScan.getTable()),
             mergeIndexScan, indexTable);
+        if (PlannerContext.getPlannerContext(logicalTableScan).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_INDEX_SELECTION_PRUNE)) {
+            if (LogicalJoinToBKAJoinRule.buildNewCondition(logicalTableLookup.getJoin()) == null) {
+                return;
+            }
+        }
 
         LogicalFilter newFilter = logicalFilter.copy(logicalFilter.getTraitSet(), logicalTableLookup, condition);
         work = true;

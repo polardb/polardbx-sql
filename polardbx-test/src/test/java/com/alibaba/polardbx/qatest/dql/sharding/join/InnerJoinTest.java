@@ -651,6 +651,22 @@ public class InnerJoinTest extends ReadBaseTestCase {
         Assert.assertTrue(explainResult.indexOf("NLJoin") == -1);
     }
 
+    @Test
+    public void bkaJoinLookupCondTest() {
+        String tableOne = "select_base_one_multi_db_multi_tb";
+        String tableTwo = "select_base_two_multi_db_multi_tb";
+        String tableThree = "select_base_three_multi_db_multi_tb";
+
+        String sql = String.format(" /*+ TDDL: bka_join(%s, %s)*/ "
+                + "select * from %s a, %s b, %s c where"
+                + " c.pk = b.pk and c.mediumint_test = b.mediumint_test and b.integer_test = a.mediumint_test and a.mediumint_test = 10;",
+            tableOne, tableTwo, tableOne, tableTwo, tableThree);
+
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        String explainResult = explainResultString("explain " + sql, null, tddlConnection);
+        Assert.assertTrue(explainResult.contains("BKAJoin"));
+    }
+
     private String explainResultString(String sql, List<Object> param, Connection tddlConnection) {
         PreparedStatement tddlPs = JdbcUtil.preparedStatementSet(sql, param, tddlConnection);
         StringBuilder actualExplainResult = new StringBuilder();

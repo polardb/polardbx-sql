@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -31,10 +30,14 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNullExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddConstraint;
@@ -60,7 +63,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTabl
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterPartitionTableTruncatePartitionBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
@@ -70,7 +72,6 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableAddLogicalForeignKeyJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGeneratedColumnJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableOnlineModifyColumnJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableWithFileStoreJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.DropIndexJobFactory;
@@ -104,6 +105,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4AlterTable;
 import com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableAllocateLocalPartitionHandler;
@@ -223,6 +225,7 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_KEY_NAME;
+import static com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder.getPhysicalPlanDataForLocalIndex;
 import static com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils.generateSqlPartitionKey;
 import static com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils.getShardColumnsFromPartitionBy;
 
@@ -292,6 +295,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
 
         if (logicalAlterTable.validateOnlineModify(executionContext, false)
             || logicalAlterTable.autoConvertToOmc(executionContext)) {
+            executionContext.setForbidBuildLocalIndexLater(true);
             return buildRebuildTableJob(logicalAlterTable, true, executionContext, ddlVersionId);
         }
 
@@ -945,23 +949,52 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 return false;
             });
 
-            for (AlterTablePreparedData clusteredTable : alterOnGsi) {
-                clusteredTable.setColumnAfterAnother(new ArrayList<>());
-                clusteredTable.setIsGsi(true);
+            if (!alterOnGsi.isEmpty()) {
+                DdlTask phyDdlTask = null;
+                DdlTask changeMetaTask = null;
+                if (ddlJob instanceof ExecutableDdlJob4AlterTable) {
+                    phyDdlTask = ((ExecutableDdlJob4AlterTable) ddlJob).getBeforeChangeMetaTask();
+                    changeMetaTask = ((ExecutableDdlJob4AlterTable) ddlJob).getChangeMetaTask();
+                }
+                ExecutableDdlJob clusterIndexJob = null;
+                for (AlterTablePreparedData clusteredTable : alterOnGsi) {
+                    clusteredTable.setColumnAfterAnother(new ArrayList<>());
+                    clusteredTable.setIsGsi(true);
 
-                DdlPhyPlanBuilder builder =
-                    AlterTableBuilder.create(logicalAlterTable.relDdl, clusteredTable, executionContext).build();
+                    DdlPhyPlanBuilder builder =
+                        AlterTableBuilder.create(logicalAlterTable.relDdl, clusteredTable, executionContext).build();
 
-                PhysicalPlanData clusterIndexPlan = builder.genPhysicalPlanData();
-                clusterIndexPlan.setSequence(null);
+                    PhysicalPlanData clusterIndexPlan = builder.genPhysicalPlanData();
+                    clusterIndexPlan.setSequence(null);
 
-                AlterTableJobFactory jobFactory =
-                    new AlterTableJobFactory(clusterIndexPlan, clusteredTable, logicalAlterTable, executionContext);
-                jobFactory.validateExistence(false);
-                jobFactory.withAlterGsi(true, alterTablePreparedData.getTableName());
+                    AlterTableJobFactory jobFactory =
+                        new AlterTableJobFactory(clusterIndexPlan, clusteredTable, logicalAlterTable, executionContext);
+                    jobFactory.validateExistence(false);
+                    jobFactory.withAlterGsi(true, alterTablePreparedData.getTableName());
 
-                ExecutableDdlJob clusterIndexJob = jobFactory.create();
-                ddlJob.appendJob(clusterIndexJob);
+                    ExecutableDdlJob currentClusterIndexJob = jobFactory.create();
+                    if (GeneralUtil.isNotEmpty(clusteredTable.getBackfillColumns())
+                        || logicalAlterTable.isAddGeneratedColumn() || logicalAlterTable.isDropGeneratedColumn()) {
+                        // 需要回填的列，需要在主表列可见之后进行backfill
+                        ddlJob.appendJob2(currentClusterIndexJob);
+                    } else if (phyDdlTask != null && changeMetaTask != null) {
+                        // 加列不需要回填，在主表列可见之前给 GSI 加列
+                        if (clusterIndexJob == null) {
+                            clusterIndexJob = currentClusterIndexJob;
+                        } else {
+                            clusterIndexJob.appendJob2(currentClusterIndexJob);
+                            clusterIndexJob.labelAsTail(currentClusterIndexJob.getTail());
+                        }
+                    } else {
+                        throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                            "The alter table tasks generation on the clustered gsi table fails");
+                    }
+                }
+                if (clusterIndexJob != null) {
+                    ddlJob.removeTaskRelationship(phyDdlTask, changeMetaTask);
+                    ddlJob.appendJobAfter2(phyDdlTask, clusterIndexJob);
+                    ddlJob.addTaskRelationship(clusterIndexJob.getTail(), changeMetaTask);
+                }
             }
         }
 
@@ -1018,20 +1051,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             SQLUtils.parseStatementsWithDefaultFeatures(primaryTableInfo.getKey(), JdbcConstants.MYSQL);
         final MySqlCreateTableStatement createTableStmt = (MySqlCreateTableStatement) statementList.get(0);
 
-        final boolean enableWithGenCol =
-            ec.getParamManager().getBoolean(ConnectionParams.ENABLE_OMC_WITH_GEN_COL);
-
         // Check if table has any generated column
         for (SQLColumnDefinition columnDefinition : createTableStmt.getColumnDefinitions()) {
             if (columnDefinition.getGeneratedAlawsAs() != null) {
-                if (!enableWithGenCol) {
-                    // For now, we do not allow OMC on table with generated column, because on mysql we can not add or
-                    // drop column before a generated column using inplace algorithm
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                        String.format("Can not modify column [%s] on table with generated column [%s].",
-                            columns, columnDefinition.getColumnName()));
-                }
-
                 String expr = columnDefinition.getGeneratedAlawsAs().toString();
                 Set<String> refCols = GeneratedColumnUtil.getReferencedColumns(expr);
 
@@ -1058,6 +1080,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         AlterTablePreparedData alterTablePreparedData = logicalAlterTable.getAlterTablePreparedData();
         AlterTableWithGsiPreparedData gsiData = logicalAlterTable.getAlterTableWithGsiPreparedData();
 
+        ec.setForbidBuildLocalIndexLater(true);
         DdlPhyPlanBuilder alterTableBuilder =
             AlterTableBuilder.create(logicalAlterTable.relDdl, alterTablePreparedData, ec).build();
         PhysicalPlanData physicalPlanData = alterTableBuilder.genPhysicalPlanData();
@@ -1101,6 +1124,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap = new LinkedHashMap<>();
 
         List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareData = new ArrayList<>();
+        List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareDataForLocalIndex =
+            new ArrayList<>();
         String targetPrimaryTableName = logicalAlterTable.getSqlAlterTable().getLogicalSecondaryTableName();
         for (CreateGlobalIndexPreparedData createGsiPreparedData : globalIndexesPreparedData) {
             createGsiPreparedData.getRelatedTableGroupInfo().putAll(relatedTableGroupInfo);
@@ -1116,6 +1141,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             }
             indexTablePreparedDataMap.put(createGsiPreparedData.getIndexTableName(), createGsiPreparedData);
             globalIndexPrepareData.add(new Pair<>(createGsiPreparedData, builder.genPhysicalPlanData()));
+            PhysicalPlanData physicalPlanDataForLocalIndex = getPhysicalPlanDataForLocalIndex(builder, false);
+            globalIndexPrepareDataForLocalIndex.add(new Pair<>(createGsiPreparedData, physicalPlanDataForLocalIndex));
+            // this.
         }
 
         RebuildTableJobFactory jobFactory = new RebuildTableJobFactory(
@@ -1123,6 +1151,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             logicalAlterTable.getTableName(),
             omc ? targetPrimaryTableName : logicalAlterTable.getTableName(),
             globalIndexPrepareData,
+            globalIndexPrepareDataForLocalIndex,
             rebuildTablePrepareData,
             physicalPlanData,
             ec
@@ -1203,6 +1232,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             return new TransientDdlJob();
         }
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData();
+        PhysicalPlanData physicalPlanDataForLocalIndex = getPhysicalPlanDataForLocalIndex(builder, false);
 
         // get foreign keys
         String schemaName = globalIndexPreparedData.getSchemaName();
@@ -1214,6 +1244,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             globalIndexPreparedData,
             repartitionPrepareData,
             physicalPlanData,
+            physicalPlanDataForLocalIndex,
             executionContext,
             logicalAlterTable.getCluster()
         ).create();
@@ -1606,8 +1637,10 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         Map<String, SQLColumnDefinition> dstColumnNewDef = rebuildTablePrepareData.getDstColumnNewDef();
         Map<String, String> backfillColumnMap = rebuildTablePrepareData.getBackfillColumnMap();
         List<String> modifyStringColumns = rebuildTablePrepareData.getModifyStringColumns();
+        Map<String, Long> columnLengthMap = rebuildTablePrepareData.getColumnLengthMap();
         List<String> addNewColumns = rebuildTablePrepareData.getAddNewColumns();
         List<String> dropOldColumns = rebuildTablePrepareData.getDropColumns();
+        List<String> modifyColumns = rebuildTablePrepareData.getModifyColumns();
 
         Pair<String, SqlCreateTable> primaryTableInfo = genPrimaryTableInfo(logicalDdlPlan, executionContext);
         oldPrimaryKeys.addAll(primaryTableInfo.getValue().getPrimaryKey().getColumns()
@@ -1651,6 +1684,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                     newColumnFirst.put(colName, true);
                 }
                 columnsDef.add(colName.toLowerCase());
+                modifyColumns.add(colName.toLowerCase());
             } else if (sqlAlterTableItem instanceof MySqlAlterTableChangeColumn) {
                 MySqlAlterTableChangeColumn changeColumn = (MySqlAlterTableChangeColumn) sqlAlterTableItem;
                 newColumnDefinition = changeColumn.getNewColumnDefinition();
@@ -1793,7 +1827,10 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 boolean isStringType = (columnDefinition.getDataType() instanceof SQLCharacterDataType);
 
                 if (dropColumns.contains(columnName)) {
-                    // ignore
+                    if (newColumnDefinitionMap.containsKey(columnName)) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
+                            String.format("Unknown column '%s' in '%s'", columnName, logicalDdlPlan.getTableName()));
+                    }
                 } else if (newColumnDefinitionMap.containsKey(columnName)) {
                     SQLColumnDefinition newColumnDefinition = newColumnDefinitionMap.get(columnName);
                     newTableElementList.add(newColumnDefinition);
@@ -1817,6 +1854,24 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                     if (isStringType) {
                         modifyStringColumns.add(columnName.toLowerCase());
                     }
+                    // for prefix global index
+                    if (newColumnDefinition.getDataType() instanceof SQLCharacterDataType) {
+                        columnLengthMap.put(columnName.toLowerCase(),
+                            (long) ((SQLCharacterDataType) newColumnDefinition.getDataType()).getLength());
+                    } else if (newColumnDefinition.getDataType() instanceof SQLDataTypeImpl) {
+                        SQLDataTypeImpl sqlDataTypeImpl = (SQLDataTypeImpl) newColumnDefinition.getDataType();
+                        String typeName = sqlDataTypeImpl.getName();
+                        if (typeName.toLowerCase().contains("binary")) {
+                            columnLengthMap.put(columnName.toLowerCase(),
+                                ((SQLIntegerExpr) sqlDataTypeImpl.getArguments().get(0)).getNumber().longValue());
+                        } else if (typeName.toLowerCase().contains("blob")) {
+                            columnLengthMap.put(columnName.toLowerCase(), -1L);
+                        } else {
+                            columnLengthMap.put(columnName.toLowerCase(), null);
+                        }
+                    } else {
+                        columnLengthMap.put(columnName.toLowerCase(), null);
+                    }
                 } else {
                     newTableElementList.add(tableElement);
                 }
@@ -1828,12 +1883,58 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 final Iterator<SQLSelectOrderByItem> it = columns.iterator();
                 while (it.hasNext()) {
                     SQLSelectOrderByItem column = it.next();
-                    String columnName = SQLUtils.normalizeNoTrim(column.getExpr().toString());
-                    if (dropColumns.contains(columnName)) {
-                        it.remove();
-                    } else if (newColumnDefinitionMapTmp.containsKey(columnName)) {
-                        SQLColumnDefinition newColumnDefinition = newColumnDefinitionMapTmp.get(columnName);
-                        column.setExpr(new SQLIdentifierExpr(newColumnDefinition.getColumnName()));
+                    SQLExpr sqlExpr = column.getExpr();
+                    if (sqlExpr instanceof SQLMethodInvokeExpr) {
+                        String columnName = SQLUtils.normalizeNoTrim(((SQLMethodInvokeExpr) sqlExpr).getMethodName());
+                        if (dropColumns.contains(columnName)) {
+                            it.remove();
+                        } else if (newColumnDefinitionMapTmp.containsKey(columnName)) {
+                            SQLColumnDefinition newColumnDefinition = newColumnDefinitionMapTmp.get(columnName);
+                            if (newColumnDefinition.getDataType() instanceof SQLCharacterDataType) {
+                                // 字符串列
+                                int indexPrefix =
+                                    ((SQLIntegerExpr) ((SQLMethodInvokeExpr) column.getExpr()).getArguments()
+                                        .get(0)).getNumber().intValue();
+                                int stringLength =
+                                    ((SQLCharacterDataType) newColumnDefinition.getDataType()).getLength();
+                                if (stringLength <= indexPrefix && stringLength > 0) {
+                                    column.setExpr(new SQLIdentifierExpr(newColumnDefinition.getColumnName()));
+                                } else {
+                                    ((SQLMethodInvokeExpr) sqlExpr).setMethodName(newColumnDefinition.getColumnName());
+                                }
+                            } else if (newColumnDefinition.getDataType() instanceof SQLDataTypeImpl) {
+                                SQLDataTypeImpl sqlDataTypeImpl = (SQLDataTypeImpl) newColumnDefinition.getDataType();
+                                String typeName = sqlDataTypeImpl.getName();
+                                if (typeName.toLowerCase().contains("binary")) {
+                                    // binary 类型
+                                    int indexPrefix =
+                                        ((SQLIntegerExpr) ((SQLMethodInvokeExpr) column.getExpr()).getArguments()
+                                            .get(0)).getNumber().intValue();
+                                    int stringLength =
+                                        ((SQLIntegerExpr) sqlDataTypeImpl.getArguments().get(0)).getNumber().intValue();
+                                    if (stringLength <= indexPrefix && stringLength > 0) {
+                                        column.setExpr(new SQLIdentifierExpr(newColumnDefinition.getColumnName()));
+                                    } else {
+                                        ((SQLMethodInvokeExpr) sqlExpr).setMethodName(
+                                            newColumnDefinition.getColumnName());
+                                    }
+                                } else if (typeName.toLowerCase().contains("blob")) {
+                                    // blob 类型，do nothing
+                                } else {
+                                    column.setExpr(new SQLIdentifierExpr(newColumnDefinition.getColumnName()));
+                                }
+                            } else {
+                                column.setExpr(new SQLIdentifierExpr(newColumnDefinition.getColumnName()));
+                            }
+                        }
+                    } else {
+                        String columnName = SQLUtils.normalizeNoTrim(sqlExpr.toString());
+                        if (dropColumns.contains(columnName)) {
+                            it.remove();
+                        } else if (newColumnDefinitionMapTmp.containsKey(columnName)) {
+                            SQLColumnDefinition newColumnDefinition = newColumnDefinitionMapTmp.get(columnName);
+                            column.setExpr(new SQLIdentifierExpr(newColumnDefinition.getColumnName()));
+                        }
                     }
                 }
                 newTableElementList.add(tableElement);
@@ -1848,7 +1949,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             if (newColumnDefinitionMap4AddColumn.containsKey(colName)) {
                 if (idx != newTableElementList.size()) {
                     // add column 存在重复
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    throw new TddlRuntimeException(ErrorCode.ERR_ONLINE_MODIFY_COLUMN,
                         String.format("Duplicate column name '%s'", colName));
                 } else if (!newColumnAfter4AddColumn.containsKey(colName)
                     && !newColumnFirst4AddColumn.containsKey(colName)) {
@@ -1915,11 +2016,13 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         List<String> dropColumns = rebuildTablePrepareData.getDropColumns();
 
         boolean isUnique = false;
+        boolean isClustered = false;
         List<SqlIndexDefinition> gsiList = new ArrayList<>();
         {
             String targetTableName;
             List<String> indexKeys = new ArrayList<>();
             List<String> coveringKeys = new ArrayList<>();
+            List<Long> subPartList = new ArrayList<>();
 
             TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
             PartitionInfo refPartitionInfo = tableMeta.getPartitionInfo();
@@ -1928,13 +2031,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 executionContext.getSchemaManager(schemaName).getTddlRuleManager().getTableGroupInfoManager()
                     .getTableGroupConfigById(refPartitionInfo.getTableGroupId());
             String tableGroupName = tableGroupConfig.getTableGroupRecord().getTg_name();
-            String firstTbInTg = tableGroupConfig.getTables().get(0);
-            PartitionInfo firstTblIgPartInfo =
-                executionContext.getSchemaManager(schemaName).getTable(firstTbInTg).getPartitionInfo();
 
             SqlPartitionBy sqlPartitionBy =
-                AlterRepartitionUtils.generateSqlPartitionBy(tableName, tableGroupName,
-                    refPartitionInfo, firstTblIgPartInfo);
+                AlterRepartitionUtils.generateSqlPartitionBy(refPartitionInfo);
             SqlConverter sqlConverter = SqlConverter.getInstance(logicalDdlPlan.getSchemaName(), executionContext);
             PlannerContext plannerContext = PlannerContext.getPlannerContext(logicalDdlPlan.getCluster());
             Map<SqlNode, RexNode> partRexInfoCtx = sqlConverter.getRexInfoFromPartition(sqlPartitionBy, plannerContext);
@@ -1978,9 +2077,12 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 GsiMetaManager.GsiTableMetaBean gsiMeta = tableMeta.getGsiTableMetaBean();
                 indexKeys.addAll(gsiMeta.gsiMetaBean.indexColumns
                     .stream().map(e -> e.columnName.toLowerCase()).collect(Collectors.toList()));
+                subPartList.addAll(gsiMeta.gsiMetaBean.indexColumns
+                    .stream().map(e -> e.subPart).collect(Collectors.toList()));
                 coveringKeys.addAll(gsiMeta.gsiMetaBean.coveringColumns
                     .stream().map(e -> e.columnName.toLowerCase()).collect(Collectors.toList()));
                 isUnique = !gsiMeta.gsiMetaBean.nonUnique;
+                isClustered = gsiMeta.gsiMetaBean.clusteredIndex;
             } else {
                 indexKeys.addAll(getShardColumnsFromPartitionBy(sqlPartitionBy));
                 ast.setLogicalSecondaryTableName(targetTableName);
@@ -2008,9 +2110,11 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 AlterRepartitionUtils.initIndexInfo(
                     targetTableName,
                     indexKeys,
+                    subPartList,
                     coveringKeys,
                     !tableMeta.isGsi(),
                     isUnique,
+                    isClustered,
                     primaryTableInfo.getKey(),
                     primaryTableInfo.getValue(),
                     sqlPartitionBy,
@@ -2037,13 +2141,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                     executionContext.getSchemaManager(schemaName).getTddlRuleManager().getTableGroupInfoManager()
                         .getTableGroupConfigById(indexTgId);
                 String tableGroupName = tableGroupConfig.getTableGroupRecord().getTg_name();
-                String firstTbInTg = tableGroupConfig.getTables().get(0);
-                PartitionInfo firstTablePartInfo =
-                    executionContext.getSchemaManager(schemaName).getTable(firstTbInTg).getPartitionInfo();
 
                 SqlPartitionBy sqlPartitionBy =
-                    AlterRepartitionUtils.generateSqlPartitionBy(indexName, tableGroupName, refPartitionInfo,
-                        firstTablePartInfo);
+                    AlterRepartitionUtils.generateSqlPartitionBy(refPartitionInfo);
 
                 SqlConverter sqlConverter = SqlConverter.getInstance(logicalDdlPlan.getSchemaName(), executionContext);
                 PlannerContext plannerContext = PlannerContext.getPlannerContext(logicalDdlPlan.getCluster());
@@ -2080,6 +2180,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 List<String> gsiCoveringKeys = gsiMeta.gsiMetaBean.getCoveringColumns()
                     .stream().map(e -> e.columnName.toLowerCase()).collect(Collectors.toList());
                 isUnique = !gsiMeta.gsiMetaBean.nonUnique;
+                isClustered = gsiMeta.gsiMetaBean.clusteredIndex;
 
                 List<String> partitionKeys = indexMeta.getPartitionInfo().getPartitionColumns();
 
@@ -2093,6 +2194,24 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 gsiIndexKeys = gsiIndexKeys.stream()
                     .filter(e -> !dropColumns.contains(e.toLowerCase()))
                     .map(e -> rebuildTablePrepareData.getBackfillColumnMap().getOrDefault(e.toLowerCase(), e))
+                    .collect(Collectors.toList());
+
+                List<Long> subPartList = gsiMeta.gsiMetaBean.getIndexColumns().stream()
+                    .filter(e -> !dropColumns.contains(e.columnName.toLowerCase()))
+                    .map(e -> {
+                        // 没修改的列，复用之前的 subpart 值
+                        if (!rebuildTablePrepareData.getColumnLengthMap().containsKey(e.columnName.toLowerCase())) {
+                            return e.subPart;
+                        }
+                        Long length = rebuildTablePrepareData.getColumnLengthMap().get(e.columnName.toLowerCase());
+                        // 有修改的列，如果新的定义的字符串长度大于 subpart 值，那么就接着用以前的 subpart
+                        // 如果新的定义不是字符串类型，那么 subpart 需要置为 null
+                        if (e.subPart != null && length != null && (length > e.subPart || length < 0)) {
+                            return e.subPart;
+                        } else {
+                            return null;
+                        }
+                    })
                     .collect(Collectors.toList());
 
                 gsiCoveringKeys = gsiCoveringKeys.stream()
@@ -2123,9 +2242,11 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                     AlterRepartitionUtils.initIndexInfo(
                         targetGsiName,
                         gsiIndexKeys,
+                        subPartList,
                         gsiCoveringKeys,
                         false,
                         isUnique,
+                        isClustered,
                         primaryTableInfo.getKey(),
                         primaryTableInfo.getValue(),
                         sqlPartitionBy,
@@ -2204,6 +2325,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 List<String> gsiCoveringKeys = gsiMeta.gsiMetaBean.coveringColumns
                     .stream().map(e -> e.columnName.toLowerCase()).collect(Collectors.toList());
                 boolean isUnique = !gsiMeta.gsiMetaBean.nonUnique;
+                boolean isClustered = gsiMeta.gsiMetaBean.clusteredIndex;
 
                 List<String> shardingKeys = tableRule.getShardColumns();
 
@@ -2217,6 +2339,24 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 gsiIndexKeys = gsiIndexKeys.stream()
                     .filter(e -> !dropColumns.contains(e.toLowerCase()))
                     .map(e -> rebuildTablePrepareData.getBackfillColumnMap().getOrDefault(e.toLowerCase(), e))
+                    .collect(Collectors.toList());
+
+                List<Long> subPartList = gsiMeta.gsiMetaBean.indexColumns.stream()
+                    .filter(e -> !dropColumns.contains(e.columnName.toLowerCase()))
+                    .map(e -> {
+                        // 没修改的列，复用之前的 subpart 值
+                        if (!rebuildTablePrepareData.getColumnLengthMap().containsKey(e.columnName.toLowerCase())) {
+                            return e.subPart;
+                        }
+                        Long length = rebuildTablePrepareData.getColumnLengthMap().get(e.columnName.toLowerCase());
+                        // 有修改的列，如果新的定义的字符串长度大于 subpart 值，那么就接着用以前的 subpart
+                        // 如果新的定义不是字符串类型，那么 subpart 需要置为 null
+                        if (e.subPart != null && length != null && (length > e.subPart || length < 0)) {
+                            return e.subPart;
+                        } else {
+                            return null;
+                        }
+                    })
                     .collect(Collectors.toList());
 
                 gsiCoveringKeys = gsiCoveringKeys.stream()
@@ -2233,8 +2373,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                     generateSqlPartitionKey(schemaName, indexName, executionContext);
 
                 gsiList.add(
-                    AlterRepartitionUtils.initIndexInfo4DrdsOmc(targetGsiName, gsiIndexKeys, gsiCoveringKeys, false,
-                        isUnique, primaryTableInfo.getKey(), primaryTableInfo.getValue(), sqlAlterTablePartitionKey));
+                    AlterRepartitionUtils.initIndexInfo4DrdsOmc(targetGsiName, gsiIndexKeys, subPartList,
+                        gsiCoveringKeys, false, isUnique, isClustered,
+                        primaryTableInfo.getKey(), primaryTableInfo.getValue(), sqlAlterTablePartitionKey));
             }
         }
 

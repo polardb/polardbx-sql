@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
@@ -118,30 +119,38 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
         Set<String> targetDnList = targetLocalityDesc.getDnSet();
         Set<String> fullTargetDnList = targetLocalityDesc.getFullDnSet();
 
-        Set<String> orignialDnList = originalLocalityDesc.getDnSet();
-        Boolean withRebalance;
+        Set<String> originalDnList = originalLocalityDesc.getDnSet();
+        Boolean skipRebalance = false;
         String rebalanceSql = "";
         // validate locality
         // generate drain node list
         // generate metadb task
         if (schemaDnList.containsAll(fullTargetDnList) && schemaDnList.containsAll(targetDnList)) {
-            if (targetDnList.isEmpty() || (targetDnList.containsAll(orignialDnList) && !orignialDnList.isEmpty())
-                || targetDnList.containsAll(dnList)) {
-                withRebalance = false;
-            } else {
-                withRebalance = true;
-                rebalanceSql =
-                    String.format("schedule rebalance tablegroup %s policy = 'data_balance'", tableGroupName);
+            // originalDnList is empty, then we judge this by realTopology.
+            if (originalDnList.isEmpty()) {
+                if (targetDnList.containsAll(dnList)) {
+                    skipRebalance = true;
+                }
+            // targetDnList is empty
+            } else if (targetDnList.isEmpty()) {
+                skipRebalance = true;
+                // originalDnList is not empty and targetDnList is not empty.
+            } else if (!GeneralUtil.isEmpty(originalDnList) && !GeneralUtil.isEmpty(targetDnList)) {
+                if ((targetDnList.containsAll(originalDnList) && targetDnList.containsAll(dnList))) {
+                    skipRebalance = true;
+                }
             }
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
                 String.format("invalid locality: \"%s\", incompactible with database %s!", targetLocality, schemaName));
         }
+        rebalanceSql =
+            String.format("schedule rebalance tablegroup %s policy = 'data_balance'", tableGroupName);
         preparedData = new AlterTableGroupSetLocalityPreparedData();
         preparedData.setTargetLocality(targetLocality);
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setSchemaName(schemaName);
-        preparedData.setWithRebalance(withRebalance);
+        preparedData.setWithRebalance(!skipRebalance);
         preparedData.setRebalanceSql(rebalanceSql);
         preparedData.setSourceSql(constructSourceSql());
     }

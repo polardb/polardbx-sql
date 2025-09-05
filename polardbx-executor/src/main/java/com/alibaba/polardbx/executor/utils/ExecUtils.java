@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
@@ -69,6 +71,8 @@ import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbConnectionProxy;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
@@ -83,6 +87,8 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.gms.topology.InstConfigRecord;
+import com.alibaba.polardbx.gms.topology.NodeInfoAccessor;
+import com.alibaba.polardbx.gms.topology.NodeInfoRecord;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
@@ -193,6 +199,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.alibaba.polardbx.common.TddlConstants.COLUMNAR_AUTO_SNAPSHOT_CONFIG;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.TRX_LOG_SOCKET_TIMEOUT;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
@@ -398,6 +405,17 @@ public class ExecUtils {
                 }
             }
         }
+    }
+
+    public static int getMppLimitNodes(boolean columnarMode, ParamManager paramManager, int maxParallelism) {
+        MppScope mppScope = ExecUtils.getMppSchedulerScope(!columnarMode);
+        if (columnarMode) {
+            InternalNodeManager nodeManager = ServiceProvider.getInstance().getServer().getNodeManager();
+            return nodeManager.getAllNodes().getAllWorkerCount(mppScope);
+        }
+        int polarXParallelism = ExecUtils.getPolarDBXCNCores(paramManager, mppScope);
+        return maxParallelism % polarXParallelism > 0 ? maxParallelism / polarXParallelism + 1 :
+            maxParallelism / polarXParallelism;
     }
 
     public static int getMppMinParallelism(ParamManager paramManager) {
@@ -1985,6 +2003,24 @@ public class ExecUtils {
         }
     }
 
+    /**
+     * Get leader key of master instance. This method is inefficient, do not call it too frequently.
+     */
+    public static String getMasterLeaderKey() {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            NodeInfoAccessor nodeInfoAccessor = new NodeInfoAccessor();
+            nodeInfoAccessor.setConnection(connection);
+            List<NodeInfoRecord> leaderNodes = nodeInfoAccessor.queryLatestLeaderActive();
+            if (null != leaderNodes && 1 == leaderNodes.size()) {
+                NodeInfoRecord leaderNode = leaderNodes.get(0);
+                return leaderNode.ip + TddlNode.SEPARATOR_INNER + leaderNode.port;
+            }
+        } catch (Throwable t) {
+            throw new RuntimeException("Failed to get master leader key.", t);
+        }
+        return null;
+    }
+
     public static String getLeaderKey(String schema) {
         InternalNodeManager manager = ServiceProvider.getInstance().getServer().getNodeManager();
         if (manager != null) {
@@ -2595,6 +2631,20 @@ public class ExecUtils {
             return !haveCciDoneDdl(schemaName, indexName);
         } catch (SQLException e) {
             return false;
+        }
+    }
+
+    public static Map<String, String> getColumnarAutoSnapshotConfig() {
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            ColumnarConfigAccessor accessor = new ColumnarConfigAccessor();
+            accessor.setConnection(metaDbConn);
+            List<ColumnarConfigRecord> records = accessor.queryGlobalByConfigKey(COLUMNAR_AUTO_SNAPSHOT_CONFIG);
+            return records.isEmpty() ?
+                null :
+                JSON.parseObject(records.get(0).configValue, new TypeReference<Map<String, String>>() {
+                });
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }

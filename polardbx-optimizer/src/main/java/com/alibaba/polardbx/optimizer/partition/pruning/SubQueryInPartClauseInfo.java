@@ -44,6 +44,7 @@ public class SubQueryInPartClauseInfo extends PartClauseInfo {
     protected RexDynamicParam subQueryDynamicParam;
 
     public SubQueryInPartClauseInfo() {
+        super();
         this.isSubQueryInExpr = true;
     }
 

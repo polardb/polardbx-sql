@@ -1,0 +1,51 @@
+DROP TABLE IF EXISTS re_single_t1
+CREATE TABLE IF NOT EXISTS re_single_t1 (
+	a int PRIMARY KEY,
+	b int
+) SINGLE DEFAULT CHARACTER SET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+WITH TABLEGROUP = single_tg IMPLICIT
+SHOW FULL CREATE TABLE re_single_t1
+Table,Create Table
+re_single_t1,CREATE TABLE `re_single_t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+/* tablegroup = `single_tg` */
+ALTER TABLE re_single_t1
+PARTITION BY KEY (a) PARTITIONS 1 WITH TABLEGROUP=mytg2637 IMPLICIT
+SHOW FULL CREATE TABLE re_single_t1
+Table,Create Table
+re_single_t1,CREATE TABLE `re_single_t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 1
+/* tablegroup = `mytg2637` */
+ALTER TABLE re_single_t1
+PARTITION BY KEY (a) PARTITIONS 1 WITH TABLEGROUP=mytg2637 IMPLICIT
+SHOW FULL CREATE TABLE re_single_t1
+Table,Create Table
+re_single_t1,CREATE TABLE `re_single_t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 1
+/* tablegroup = `mytg2637` */
+ALTER TABLE re_single_t1
+PARTITION BY KEY (a) PARTITIONS 1
+SHOW FULL CREATE TABLE re_single_t1
+Table,Create Table
+re_single_t1,CREATE TABLE `re_single_t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 1
+/* tablegroup = `mytg2637` */

@@ -17,19 +17,25 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.google.common.base.Preconditions;
-import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 /**
  * Byte Block Builder
  *
  */
 public class ByteBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(ByteBlockBuilder.class).instanceSize();
 
-    protected final ByteArrayList values;
+    protected final MemoryCountableByteArrayList values;
 
     public ByteBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new ByteArrayList(capacity);
+        this.values = new MemoryCountableByteArrayList(capacity);
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + values.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 
     @Override

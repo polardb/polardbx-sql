@@ -335,7 +335,7 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
             sqlHint =
                 "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=true, PHYSICAL_BACKFILL_SPEED_TEST=false)*/";
         }
-        String ignoreErr = "Please use SHOW DDL";
+        String ignoreErr = "The DDL job has been cancelled or interrupted";
         Set<String> ignoreErrs = new HashSet<>();
         ignoreErrs.add(ignoreErr);
         JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sqlHint + command,
@@ -372,14 +372,14 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
             createTableSql = createTableSql.replace("AUTO_INCREMENT=1", "AUTO_INCREMENT=100000");
         }
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTableSql);
-        String alterTableSetTg = "alter table " + logicalTableName + " set tablegroup=" + tableGroupName + " force";
+        String alterTableSetTg = "alter table `" + logicalTableName + "` set tablegroup=" + tableGroupName + " force";
         JdbcUtil.executeUpdateSuccess(tddlConnection, alterTableSetTg);
     }
 
     //for PARTITION_BY_BIGINT_KEY
     static public boolean initData1(String tableName, int rowCount, Connection connection) {
         IntStream.range(0, rowCount).forEach(
-            i -> executeDml(String.format("insert into %s(id) values(null);",
+            i -> executeDml(String.format("insert into `%s`(id) values(null);",
                 tableName), connection));
         return true;
     }
@@ -387,7 +387,7 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
     //for PARTITION_BY_INT_KEY
     static public boolean initData2(String tableName, int rowCount, Connection connection) {
         IntStream.range(0, rowCount).forEach(
-            i -> executeDml(String.format("insert into %s(c_int_32) values(%d);",
+            i -> executeDml(String.format("insert into `%s`(c_int_32) values(%d);",
                 tableName, i), connection));
         return true;
     }
@@ -396,7 +396,7 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
     static public boolean initData3(String tableName, int rowCount, Connection connection) {
         DateTime dateTime = new DateTime("2021-12-15T00:00:01Z");
         IntStream.range(0, rowCount).forEach(
-            i -> executeDml(String.format("insert into %s(c_datetime) values('%s');",
+            i -> executeDml(String.format("insert into `%s`(c_datetime) values('%s');",
                 tableName, dateTime.minusHours(24 * 3 * i).toString("yyyy-MM-dd HH:mm:ss")), connection));
         return true;
     }
@@ -404,14 +404,14 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
     // for PARTITION_BY_INT_BIGINT_LIST
     static public boolean initData4(String tableName, int rowCount, Connection connection) {
         IntStream.range(0, rowCount).forEach(
-            i -> executeDml(String.format("insert into %s(c_int_32) values(%d);",
+            i -> executeDml(String.format("insert into `%s`(c_int_32) values(%d);",
                 tableName, 1), connection));
         return true;
     }
 
     static public boolean initData5(String tableName, int rowCount, Connection connection) {
         IntStream.range(1, rowCount + 1).forEach(i -> executeDml(
-            String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
+            String.format("insert into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
                 tableName, i * 10 + 1, "'abc" + i + "'", "'def" + i + "'",
                 i == 3 ? "date_add('2008-12-01 00:00:00', interval " + i + " year)" :
                     "date_add('2010-01-01 00:00:00', interval " + i + " year)")
@@ -462,7 +462,7 @@ subpartition p3sp3 values in (31, 32, 33)
                 }
             }
             executeDml(
-                String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
+                String.format("insert into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
                     tableName, c_int_32, "'abc" + i + "'", "'def" + i + "'", "'" + year + "-12-01 00:00:00'")
                 , connection);
         });
@@ -535,7 +535,7 @@ subpartition p3sp3 values less than (2023)
                 c_int_32 = RandomUtils.nextInt(0, 31);
             }
             executeDml(
-                String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
+                String.format("insert into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
                     tableName, c_int_32, "'abc" + i + "'", "'def" + i + "'", "'" + year + "-12-01 00:00:00'")
                 , connection);
         });
@@ -608,7 +608,7 @@ subpartition p3sp3 values less than (30,'2013-01-01 00:00:00')
             if (!set.contains(id)) {
                 executeDml(
                     String.format(
-                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        "insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                         tableName, id, id, "'abc" + i + "'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
                     , connection);
                 set.add(id);
@@ -765,7 +765,7 @@ subpartition p3sp3 values in (31, 32, 33)
                 }
             }
             executeDml(
-                String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
+                String.format("insert into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
                     tableName, c_int_32, "'abc1'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
                 , connection);
         });
@@ -812,7 +812,7 @@ subpartition p3sp3 values less than (2023)
             if (!set.contains(id)) {
                 executeDml(
                     String.format(
-                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        "insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                         tableName, id, id, c_varchar, "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
                     , connection);
                 set.add(id);
@@ -890,7 +890,7 @@ subpartition p3sp3 values less than (2023)
             if (!set.contains(id)) {
                 executeDml(
                     String.format(
-                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        "insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                         tableName, id, id, c_varchar, "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
                     , connection);
                 set.add(id);
@@ -938,7 +938,7 @@ subpartition p3sp3 values less than (31,'2013-01-01 00:00:00')
             if (!set.contains(id)) {
                 executeDml(
                     String.format(
-                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        "insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                         tableName, id, c_int_32, "'abc1'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
                     , connection);
                 set.add(id);
@@ -1043,7 +1043,7 @@ subpartition p3sp3 values less than (2023)
             int id = 0;
 
             executeDml(
-                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                String.format("insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                     tableName, id, c_int_32, "'abc1'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
                 , connection);
         });
@@ -1090,7 +1090,7 @@ subpartition p3sp3 values in ((31,'def3'), (32,'def3'), (33,'def3'))
             int id = 0;
 
             executeDml(
-                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                String.format("insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                     tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
                 , connection);
         });
@@ -1137,7 +1137,7 @@ subpartition p3sp3 values in ((31,'def3'), (32,'def3'), (33,'def3'))
             int id = 0;
 
             executeDml(
-                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                String.format("insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                     tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
                 , connection);
         });
@@ -1173,7 +1173,7 @@ partition p3 values less than ('2023-01-01 00:00:00',31) subpartitions 3
             int id = 0;
 
             executeDml(
-                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                String.format("insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                     tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
                 , connection);
         });
@@ -1209,7 +1209,7 @@ partition p3 values less than (2023) subpartitions 3
             int id = 0;
 
             executeDml(
-                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                String.format("insert ignore into `%s`(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
                     tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
                 , connection);
         });
@@ -1480,7 +1480,7 @@ partition p3 values less than (2023) subpartitions 3
         private final int val2Max;
         private final String tableName;
         private String insertPatterm =
-            "trace insert ignore into %s(id,c_int_32,c_datetime, c_timestamp, c_timestamp_1, c_timestamp_3, c_timestamp_6) values(%s,%s,'%s', now(),now(),now(),now())";
+            "trace insert ignore into `%s`(id,c_int_32,c_datetime, c_timestamp, c_timestamp_1, c_timestamp_3, c_timestamp_6) values(%s,%s,'%s', now(),now(),now(),now())";
         private String updatePatterm = "update %s set c_int_32=%s where id=%s";
         private String deletePatterm = "delete from  %s where id=%s";
 
@@ -1672,6 +1672,10 @@ partition p3 values less than (2023) subpartitions 3
             add("t2");
             add("t3");
             add("t4");
+            add("t5-1");
+            add("!``$%&()*+,-./:;<=>?@[]^_{|}~``");
+            add("圣人立象以尽义(＾-＾)ノ聖を立てて義を尽くす");
+            add("pQ9mV8sG7zF6xH5rI4uJ3bK2yL1oN0wMcXaWdVeRf2yL1oN0wMcXaWdVeRfhulux");
         }};
 
         public PartitionRuleInfo(PartitionStrategy partitionStrategy,

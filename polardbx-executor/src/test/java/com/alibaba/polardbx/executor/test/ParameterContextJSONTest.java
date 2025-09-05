@@ -132,7 +132,7 @@ public class ParameterContextJSONTest {
         JdbcSplit source =
             new JdbcSplit(
                 "ca", "sc", "db0", hint, bytesSql, null, null, "127.1", null, ITransaction.RW.WRITE,
-                true, 1L, null, false);
+                true, 1L, null, false, null, null);
 
         String json = objectMapper.writeValueAsString(source);
         System.out.println(json);

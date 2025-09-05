@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.matrix.config;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
@@ -57,6 +58,7 @@ import com.alibaba.polardbx.executor.ddl.sync.JobRequest;
 import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.executor.gms.TableListListener;
 import com.alibaba.polardbx.executor.gsi.GsiManager;
+import com.alibaba.polardbx.executor.scheduler.AutoSnapshotManager;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
@@ -273,6 +275,7 @@ public class MatrixConfigHolder extends AbstractLifecycle {
 
         this.executorContext.setSyncPointExecutor(SyncPointExecutor.getInstance());
         DbGroupInfoManager.getInstance().reloadGroupsOfDb(schemaName);
+        AutoSnapshotManager.init();
         oc.setFinishInit(true);//Label oc of the db finish init
     }
 
@@ -615,6 +618,10 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         }
     }
 
+    /**
+     * Be very careful to directly use TConnection to execute query,
+     * because some initialized steps may not be performed correctly.
+     */
     public List<ErrorMessage> performAsyncDDLJob(Job job, String schemaName, JobRequest jobRequest) {
         try (TConnection conn = (TConnection) dataSource.getConnection()) {
 
@@ -647,6 +654,10 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         }
     }
 
+    /**
+     * Be very careful to directly use TConnection to execute query,
+     * because some initialized steps may not be performed correctly.
+     */
     public DdlContext restoreDDL(String schemaName, Long jobId) {
         ITransaction autoCommitTrans = null;
         try (TConnection conn = (TConnection) dataSource.getConnection()) {
@@ -660,9 +671,8 @@ public class MatrixConfigHolder extends AbstractLifecycle {
             executionContext.setStats(dataSource.getStatistics());
             executionContext.setPhysicalRecorder(dataSource.getPhysicalRecorder());
             executionContext.setConnection(conn);
-            // fastchecker 中需要共享readview
-            conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-            executionContext.setShareReadView(conn.getShareReadView());
+            // 设置隔离级别为 RC
+            conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
 
             DdlEngineDagExecutor.restoreAndRun(schemaName, jobId, executionContext);
             return executionContext.getDdlContext();
@@ -676,6 +686,10 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         }
     }
 
+    /**
+     * Be very careful to directly use TConnection to execute query,
+     * because some initialized steps may not be performed correctly.
+     */
     public void remoteExecuteDdlTask(String schemaName, Long jobId, Long taskId) {
         ITransaction autoCommitTrans = null;
         try (TConnection conn = (TConnection) dataSource.getConnection()) {
@@ -689,9 +703,8 @@ public class MatrixConfigHolder extends AbstractLifecycle {
             executionContext.setStats(dataSource.getStatistics());
             executionContext.setPhysicalRecorder(dataSource.getPhysicalRecorder());
             executionContext.setConnection(conn);
-            // fastchecker 中需要共享readview
-            conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-            executionContext.setShareReadView(conn.getShareReadView());
+            // 设置隔离级别为 RC
+            conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
 
             DdlEngineRemoteTaskExecutor.executeRemoteTask(schemaName, jobId, taskId, executionContext);
         } catch (Exception e) {
@@ -703,6 +716,10 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         }
     }
 
+    /**
+     * Be very careful to directly use TConnection to execute query,
+     * because some initialized steps may not be performed correctly.
+     */
     public void executeBackgroundSql(String sql, String schema, InternalTimeZone timeZone) {
         try (TConnection conn = (TConnection) dataSource.getConnection()) {
             if (timeZone != null) {
@@ -711,6 +728,11 @@ public class MatrixConfigHolder extends AbstractLifecycle {
             ExecutionContext executionContext = conn.getExecutionContext();
             executionContext.setSchemaName(schema);
             executionContext.setPrivilegeMode(false);
+            /**
+             * Generate txid before executing query.
+             * This ensures the connection will only generate exact ONE trx object.
+             */
+            executionContext.setTxId(TrxIdGenerator.getInstance().nextId());
             try (ITStatement stmt = conn.createStatement()) {
                 stmt.executeUpdate(sql);
             }
@@ -719,27 +741,10 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         }
     }
 
-    public int executeBackgroundDmlWithTConnection(String sql,
-                                                   String schema,
-                                                   InternalTimeZone timeZone,
-                                                   TConnection conn) {
-        try {
-            if (timeZone != null) {
-                conn.setTimeZone(timeZone);
-            }
-            ExecutionContext executionContext = conn.getExecutionContext();
-            executionContext.setSchemaName(schema);
-            executionContext.setPrivilegeMode(false);
-            int affectRows = 0;
-            try (ITStatement stmt = conn.createStatement()) {
-                affectRows = stmt.executeUpdate(sql);
-            }
-            return affectRows;
-        } catch (SQLException e) {
-            throw GeneralUtil.nestedException(e);
-        }
-    }
-
+    /**
+     * Be very careful to directly use TConnection to execute query,
+     * because some initialized steps may not be performed correctly.
+     */
     public long submitRebalanceDDL(String schema, String ddlSql) {
         try (TConnection conn = (TConnection) dataSource.getConnection()) {
             ExecutionContext executionContext = conn.getExecutionContext();
@@ -762,6 +767,10 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         }
     }
 
+    /**
+     * Be very careful to directly use TConnection to execute query,
+     * because some initialized steps may not be performed correctly.
+     */
     public List<Map<String, Object>> executeQuerySql(String sql, String schema, InternalTimeZone timeZone) {
         try (TConnection conn = (TConnection) dataSource.getConnection()) {
             if (timeZone != null) {
@@ -770,6 +779,11 @@ public class MatrixConfigHolder extends AbstractLifecycle {
             ExecutionContext executionContext = conn.getExecutionContext();
             executionContext.setSchemaName(schema);
             executionContext.setPrivilegeMode(false);
+            /**
+             * Generate txid before executing query.
+             * This ensures the connection will only generate exact ONE trx object.
+             */
+            executionContext.setTxId(TrxIdGenerator.getInstance().nextId());
             List<Map<String, Object>> result = null;
             ResultSet rs = null;
             try (ITStatement stmt = conn.createStatement()) {
@@ -782,6 +796,10 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         }
     }
 
+    /**
+     * Be very careful to directly use TConnection to execute query,
+     * because some initialized steps may not be performed correctly.
+     */
     public long submitSubDDL(String schema, DdlContext parentDdlContext, long parentJobId, long parentTaskId,
                              boolean forRollback, String ddlSql) {
         try (TConnection conn = (TConnection) dataSource.getConnection()) {

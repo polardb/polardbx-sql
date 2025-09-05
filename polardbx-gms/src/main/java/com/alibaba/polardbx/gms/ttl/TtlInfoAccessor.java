@@ -512,7 +512,7 @@ public class TtlInfoAccessor extends AbstractAccessor {
 
     private TddlRuntimeException logAndThrow(String errMsg, String action, Exception e) {
         logger.error(errMsg, e);
-        return new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, action,
+        throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, action,
             "ttl_info", e.getMessage());
     }
 

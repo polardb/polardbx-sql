@@ -31,13 +31,14 @@ import org.apache.calcite.rel.core.DDL;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class RefreshDbTopologySubTaskJobFactory extends AlterTableGroupSubTaskJobFactory {
 
     public RefreshDbTopologySubTaskJobFactory(DDL ddl, AlterTableGroupBasePreparedData parentPreparedData,
                                               AlterTableGroupItemPreparedData preparedData,
                                               List<PhyDdlTableOperation> phyDdlTableOperations,
-                                              Map<String, List<List<String>>> tableTopology,
+                                              TreeMap<String, List<List<String>>> tableTopology,
                                               Map<String, Set<String>> targetTableTopology,
                                               Map<String, Set<String>> sourceTableTopology,
                                               Map<String, Pair<String, String>> orderedTargetTableLocations,

@@ -348,6 +348,10 @@ public class OSSTableScanTest extends BasePlannerTest {
         public long getIdleRWTimeout() {
             return 0;
         }
+
+        @Override
+        public void releaseDirtyReadConnections() {
+        }
     }
 
     private static class MockTransactionManagerUtil implements ITransactionManagerUtil {

@@ -49,7 +49,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
     public RefreshDbTopologyFactory(DDL ddl, RefreshDbTopologyPreparedData preparedData,
                                     Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                     Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                    Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                    Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                     Map<String, Map<String, Set<String>>> targetTablesTopology,
                                     Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                     Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -142,7 +142,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
         }
         RefreshTopologyBuilder refreshTopologyBuilder =
             new RefreshTopologyBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             refreshTopologyBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             refreshTopologyBuilder.getTargetTablesTopology();
@@ -164,7 +164,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
         EmptyTask emptyTask = new EmptyTask(schemaName);
         boolean emptyTaskAdded = false;
-        for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
+        for (Map.Entry<String, TreeMap<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             RefreshDbTopologySubTaskJobFactory subTaskJobFactory =
                 new RefreshDbTopologySubTaskJobFactory(ddl, preparedData, tablesPrepareData.get(entry.getKey()),
                     newPartitionsPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),

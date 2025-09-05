@@ -29,6 +29,7 @@ import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.prepare.Prepare;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexCallParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNodeList;
 
@@ -95,7 +96,9 @@ public class LogicalReplace extends LogicalInsertIgnore {
             insert.isPushablePrimaryKeyCheck(),
             insert.isPushableForeignConstraintCheck(),
             insert.isModifyForeignKey(),
-            insert.isUkContainsAllSkAndGsiContainsAllUk()
+            insert.isUkContainsAllSkAndGsiContainsAllUk(),
+            insert.getDynamicImplicitDefaultParams(),
+            insert.getUnoptimizedDynamicImplicitDefaultParams()
         );
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.primaryInsertWriter = primaryInsertWriter;
@@ -131,7 +134,9 @@ public class LogicalReplace extends LogicalInsertIgnore {
                              List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
                              List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
                              boolean pushablePrimaryKeyCheck, boolean pushableForeignConstraintCheck,
-                             boolean modifyForeignKey, boolean ukContainsAllSkAndGsiContainsAllUk) {
+                             boolean modifyForeignKey, boolean ukContainsAllSkAndGsiContainsAllUk,
+                             List<RexCallParam> dynamicImplicitDefaultParams,
+                             List<RexCallParam> unoptimizedDynamicImplicitDefaultParams) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping, afterUgsiUkMapping,
@@ -142,7 +147,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
             gsiDeleteWriters, usePartFieldChecker, columnMetaMap, ukContainGeneratedColumn, evalRowColMetas,
             genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
             defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck, modifyForeignKey,
-            ukContainsAllSkAndGsiContainsAllUk);
+            ukContainsAllSkAndGsiContainsAllUk, dynamicImplicitDefaultParams, unoptimizedDynamicImplicitDefaultParams);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.broadCastReplaceScaleOutWriter = broadCastReplaceScaleOutWriter;
@@ -208,7 +213,74 @@ public class LogicalReplace extends LogicalInsertIgnore {
             isPushablePrimaryKeyCheck(),
             isPushableForeignConstraintCheck(),
             isModifyForeignKey(),
-            isUkContainsAllSkAndGsiContainsAllUk());
+            isUkContainsAllSkAndGsiContainsAllUk(),
+            getDynamicImplicitDefaultParams(),
+            getUnoptimizedDynamicImplicitDefaultParams());
+        return newLogicalReplace;
+    }
+
+    @Override
+    public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs, List<RexCallParam> dynamicImplicitDefaultParams) {
+        final LogicalReplace newLogicalReplace = new LogicalReplace(getCluster(),
+            traitSet,
+            table,
+            catalogReader,
+            sole(inputs),
+            getOperation(),
+            isFlattened(),
+            getInsertRowType(),
+            getKeywords(),
+            getDuplicateKeyUpdateList(),
+            getBatchSize(),
+            getAppendedColumnIndex(),
+            getHints(),
+            getTableInfo(),
+            getPrimaryInsertWriter(),
+            getGsiInsertWriters(),
+            getAutoIncParamIndex(),
+            getUkColumnNamesList(),
+            getBeforeUkMapping(),
+            getAfterUkMapping(),
+            getAfterUgsiUkIndex(),
+            getSelectInsertColumnMapping(),
+            getPkColumnNames(),
+            getBeforePkMapping(),
+            getAfterPkMapping(),
+            getAllUkSet(),
+            getTableUkMap(),
+            getUkGroupByTable(),
+            getLocalIndexPhyName(),
+            getRowColumnMetaList(),
+            getTableColumnMetaList(),
+            getSelectListForDuplicateCheck(),
+            getPrimaryRelocateWriter(),
+            getGsiRelocateWriters(),
+            getBroadCastReplaceScaleOutWriter(),
+            isTargetTableIsWritable(),
+            isTargetTableIsReadyToPublish(),
+            isSourceTablesIsReadyToPublish(),
+            getUnOptimizedLogicalDynamicValues(),
+            getUnOptimizedDuplicateKeyUpdateList(),
+            getPushDownInsertWriter(),
+            getGsiInsertIgnoreWriters(),
+            getPrimaryDeleteWriter(),
+            getGsiDeleteWriters(),
+            isUsePartFieldChecker(),
+            isHasJsonColumn(),
+            getColumnMetaMap(),
+            isUkContainGeneratedColumn(),
+            getEvalRowColMetas(),
+            getGenColRexNodes(),
+            getInputToEvalFieldsMapping(),
+            getDefaultExprColMetas(),
+            getDefaultExprColRexNodes(),
+            getDefaultExprEvalFieldsMapping(),
+            isPushablePrimaryKeyCheck(),
+            isPushableForeignConstraintCheck(),
+            isModifyForeignKey(),
+            isUkContainsAllSkAndGsiContainsAllUk(),
+            dynamicImplicitDefaultParams,
+            getUnoptimizedDynamicImplicitDefaultParams());
         return newLogicalReplace;
     }
 
@@ -225,7 +297,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
     }
 
     @Override
-    protected <R extends LogicalInsert> List<RelNode> getPhyPlanForDisplay(ExecutionContext executionContext,
+    public <R extends LogicalInsert> List<RelNode> getPhyPlanForDisplay(ExecutionContext executionContext,
                                                                            R replace) {
         final InsertWriter primaryWriter = replace.getPrimaryInsertWriter();
         final LogicalInsert insert = primaryWriter.getInsert();
@@ -237,7 +309,8 @@ public class LogicalReplace extends LogicalInsertIgnore {
             insert.getUnOptimizedDuplicateKeyUpdateList(), insert.getEvalRowColMetas(), insert.getGenColRexNodes(),
             insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
             insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
-            insert.isPushableForeignConstraintCheck(), isModifyForeignKey(), isUkContainsAllSkAndGsiContainsAllUk());
+            insert.isPushableForeignConstraintCheck(), isModifyForeignKey(), isUkContainsAllSkAndGsiContainsAllUk(),
+            getDynamicImplicitDefaultParams(), getUnoptimizedDynamicImplicitDefaultParams());
 
         final InsertWriter replaceWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return replaceWriter.getInput(executionContext);

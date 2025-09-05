@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.transaction.async;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.sync.ColumnarMinSnapshotPurgeSyncAction;
@@ -24,6 +25,9 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.util.SyncUtil;
+
+import java.util.Optional;
 
 public class PurgeColumnarTsoTimerTask implements Runnable {
 
@@ -32,17 +36,30 @@ public class PurgeColumnarTsoTimerTask implements Runnable {
     @Override
     public void run() {
         try {
+            boolean supportColumnarSlavePurge = DynamicConfig.getInstance().isColumnarSlaveSupportPurge();
+            boolean hasLeadership = ExecUtils.hasLeadership(null);
+            boolean isNodeWithSmallestId = SyncUtil.isNodeWithSmallestId();
+
             // NOTICE：This task will do sync twice: collect tso and sync min tso
             // Columnar purge will run in leader node of primary PolarDB-X instance, rather than readonly instance
-            if (!ExecUtils.hasLeadership(null)) {
+            if (!(hasLeadership || (supportColumnarSlavePurge && isNodeWithSmallestId))) {
                 return;
             }
 
             logger.warn("Start to fetch columnar purge tso");
 
+            long forceColumnarPurgeDurationMs = DynamicConfig.getInstance().getForceColumnarPurgeDurationMs();
             Long minSnapshotTime;
             try {
                 minSnapshotTime = ColumnarTransactionUtils.getMinColumnarSnapshotTime();
+                if (forceColumnarPurgeDurationMs >= 0) {
+                    minSnapshotTime = Long.max(
+                        minSnapshotTime,
+                        Optional.ofNullable(
+                            ColumnarTransactionUtils.getLatestTsoFromGmsWithDelay(forceColumnarPurgeDurationMs * 1000L)
+                        ).orElse(Long.MIN_VALUE)
+                    );
+                }
             } catch (Throwable t) {
                 logger.error("Failed to get min columnar tso!", t);
                 return;
@@ -51,8 +68,13 @@ public class PurgeColumnarTsoTimerTask implements Runnable {
             logger.warn("get the columnar purge tso: " + minSnapshotTime);
 
             try {
-                SyncManagerHelper.sync(new ColumnarMinSnapshotPurgeSyncAction(minSnapshotTime),
-                    SystemDbHelper.DEFAULT_DB_NAME, SyncScope.ALL);
+                if (hasLeadership) {
+                    SyncManagerHelper.sync(new ColumnarMinSnapshotPurgeSyncAction(minSnapshotTime),
+                        SystemDbHelper.DEFAULT_DB_NAME, SyncScope.ALL);
+                } else {
+                    SyncManagerHelper.sync(new ColumnarMinSnapshotPurgeSyncAction(minSnapshotTime),
+                        SystemDbHelper.DEFAULT_DB_NAME, SyncScope.CURRENT_ONLY);
+                }
 
             } catch (Throwable t) {
                 logger.error(String.format("Failed to purge columnar tso: %d", minSnapshotTime), t);

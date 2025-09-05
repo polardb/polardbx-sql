@@ -1,0 +1,681 @@
+DROP TABLE IF EXISTS tbl_rng10
+DROP TABLE IF EXISTS tbl_rng20
+DROP TABLEGROUP IF EXISTS rg_tg1
+CREATE TABLEGROUP rg_tg1
+CREATE TABLE IF NOT EXISTS tbl_rng10 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p1 VALUES LESS THAN (100),
+	PARTITION p2 VALUES LESS THAN (200),
+	PARTITION p3 VALUES LESS THAN (300),
+	PARTITION p4 VALUES LESS THAN MAXVALUE
+)
+CREATE TABLE IF NOT EXISTS tbl_rng20 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p1 VALUES LESS THAN (100),
+	PARTITION p2 VALUES LESS THAN (200),
+	PARTITION p3 VALUES LESS THAN (300),
+	PARTITION p4 VALUES LESS THAN MAXVALUE
+)
+ALTER TABLE tbl_rng10
+	SET tablegroup = rg_tg1
+ALTER TABLE tbl_rng20
+	SET tablegroup = rg_tg1
+INSERT INTO tbl_rng10
+VALUES (10),
+	(100),
+	(200),
+	(300)
+INSERT INTO tbl_rng20
+VALUES (10),
+	(100),
+	(200),
+	(300)
+ALTER TABLEGROUP rg_tg1 DROP PARTITION p2
+INSERT INTO tbl_rng10
+VALUES (11),
+	(101),
+	(201),
+	(301)
+INSERT INTO tbl_rng20
+VALUES (11),
+	(101),
+	(201),
+	(301)
+ALTER TABLEGROUP rg_tg1 DROP PARTITION p4
+INSERT INTO tbl_rng10
+VALUES (12),
+	(102),
+	(202)
+INSERT INTO tbl_rng20
+VALUES (12),
+	(102),
+	(202)
+SHOW CREATE TABLE tbl_rng10
+Table,Create Table
+tbl_rng10,CREATE TABLE `tbl_rng10` (
+	`a` int NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+tablegroup = `rg_tg1`
+SHOW CREATE TABLE tbl_rng20
+Table,Create Table
+tbl_rng20,CREATE TABLE `tbl_rng20` (
+	`a` int NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+tablegroup = `rg_tg1`
+SELECT *
+FROM tbl_rng10
+ORDER BY a
+a
+10
+11
+12
+101
+102
+200
+201
+202
+SELECT *
+FROM tbl_rng20
+ORDER BY a
+a
+10
+11
+12
+101
+102
+200
+201
+202
+DROP TABLE IF EXISTS tbl_list10
+DROP TABLE IF EXISTS tbl_list20
+DROP TABLEGROUP IF EXISTS ls_tg1
+CREATE TABLEGROUP ls_tg1
+CREATE TABLE IF NOT EXISTS tbl_list10 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY LIST (a) (
+	PARTITION p1 VALUES IN (10, 11),
+	PARTITION p2 VALUES IN (100, 101),
+	PARTITION p3 VALUES IN (200, 201),
+	PARTITION p4 VALUES IN (DEFAULT)
+)
+CREATE TABLE IF NOT EXISTS tbl_list20 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY LIST (a) (
+	PARTITION p1 VALUES IN (10, 11),
+	PARTITION p2 VALUES IN (100, 101),
+	PARTITION p3 VALUES IN (200, 201),
+	PARTITION p4 VALUES IN (DEFAULT)
+)
+ALTER TABLE tbl_list10
+	SET tablegroup = ls_tg1
+ALTER TABLE tbl_list20
+	SET tablegroup = ls_tg1
+INSERT INTO tbl_list10
+VALUES (10),
+	(100),
+	(200),
+	(300)
+INSERT INTO tbl_list20
+VALUES (10),
+	(100),
+	(200),
+	(300)
+ALTER TABLEGROUP ls_tg1 DROP PARTITION p2
+INSERT INTO tbl_list10
+VALUES (11),
+	(101),
+	(301)
+INSERT INTO tbl_list20
+VALUES (11),
+	(101),
+	(301)
+ALTER TABLEGROUP ls_tg1 DROP PARTITION p4
+INSERT INTO tbl_list10
+VALUES (201)
+INSERT INTO tbl_list20
+VALUES (201)
+SHOW CREATE TABLE tbl_list10
+Table,Create Table
+tbl_list10,CREATE TABLE `tbl_list10` (
+	`a` int NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,11) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `ls_tg1`
+SHOW CREATE TABLE tbl_list20
+Table,Create Table
+tbl_list20,CREATE TABLE `tbl_list20` (
+	`a` int NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,11) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `ls_tg1`
+SELECT *
+FROM tbl_list10
+ORDER BY a
+a
+10
+11
+200
+201
+SELECT *
+FROM tbl_list20
+ORDER BY a
+a
+10
+11
+200
+201
+DROP TABLE IF EXISTS h_r_ntp10
+DROP TABLE IF EXISTS h_r_ntp20
+DROP TABLEGROUP IF EXISTS hr_tg1
+CREATE TABLEGROUP hr_tg1
+CREATE TABLE IF NOT EXISTS h_r_ntp10 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY HASH (a, b) PARTITIONS 2
+SUBPARTITION BY RANGE (to_days(c)) (
+	PARTITION p1 (
+		SUBPARTITION p1sp1 VALUES LESS THAN (to_days('2020-01-01')),
+		SUBPARTITION p1sp2 VALUES LESS THAN MAXVALUE
+	),
+	PARTITION p2 (
+		SUBPARTITION p2sp1 VALUES LESS THAN (to_days('2020-01-01')),
+		SUBPARTITION p2sp2 VALUES LESS THAN (to_days('2021-01-01')),
+		SUBPARTITION p2sp3 VALUES LESS THAN MAXVALUE
+	)
+)
+CREATE TABLE IF NOT EXISTS h_r_ntp20 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY HASH (a, b) PARTITIONS 2
+SUBPARTITION BY RANGE (to_days(c)) (
+	PARTITION p1 (
+		SUBPARTITION p1sp1 VALUES LESS THAN (to_days('2020-01-01')),
+		SUBPARTITION p1sp2 VALUES LESS THAN MAXVALUE
+	),
+	PARTITION p2 (
+		SUBPARTITION p2sp1 VALUES LESS THAN (to_days('2020-01-01')),
+		SUBPARTITION p2sp2 VALUES LESS THAN (to_days('2021-01-01')),
+		SUBPARTITION p2sp3 VALUES LESS THAN MAXVALUE
+	)
+)
+ALTER TABLE h_r_ntp10
+	SET tablegroup = hr_tg1
+ALTER TABLE h_r_ntp20
+	SET tablegroup = hr_tg1
+INSERT INTO h_r_ntp10
+VALUES (1, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp10
+VALUES (2, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_r_ntp10
+VALUES (3, 1, '2040-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp20
+VALUES (1, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp20
+VALUES (2, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_r_ntp20
+VALUES (3, 1, '2040-01-01', 'a', 'aa')
+ALTER TABLEGROUP hr_tg1 DROP SUBPARTITION p2sp1
+INSERT INTO h_r_ntp10
+VALUES (4, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp10
+VALUES (5, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_r_ntp10
+VALUES (6, 1, '2040-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp20
+VALUES (4, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp20
+VALUES (5, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_r_ntp20
+VALUES (6, 1, '2040-01-01', 'a', 'aa')
+ALTER TABLEGROUP hr_tg1 DROP SUBPARTITION p1sp2
+INSERT INTO h_r_ntp10
+VALUES (7, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp20
+VALUES (7, 1, '2010-01-01', 'a', 'aa')
+ALTER TABLEGROUP hr_tg1 DROP SUBPARTITION p2sp3
+INSERT INTO h_r_ntp10
+VALUES (8, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_r_ntp20
+VALUES (70, 1, '2010-01-01', 'a', 'aa')
+SHOW FULL CREATE TABLE h_r_ntp10
+Table,Create Table
+h_r_ntp10,CREATE TABLE `h_r_ntp10` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY HASH(`a`,`b`)
+SUBPARTITION BY RANGE(TO_DAYS(`c`))
+(PARTITION p1
+ (SUBPARTITION p1sp1 VALUES LESS THAN (737790) ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION p2sp2 VALUES LESS THAN (738156) ENGINE = InnoDB))
+tablegroup = `hr_tg1`
+SHOW FULL CREATE TABLE h_r_ntp20
+Table,Create Table
+h_r_ntp20,CREATE TABLE `h_r_ntp20` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY HASH(`a`,`b`)
+SUBPARTITION BY RANGE(TO_DAYS(`c`))
+(PARTITION p1
+ (SUBPARTITION p1sp1 VALUES LESS THAN (737790) ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION p2sp2 VALUES LESS THAN (738156) ENGINE = InnoDB))
+tablegroup = `hr_tg1`
+SELECT *
+FROM h_r_ntp10
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+4,1,2010-01-01 00:00:00.0,a,aa
+5,2,2020-01-01 00:00:00.0,b,bb
+7,1,2010-01-01 00:00:00.0,a,aa
+8,1,2010-01-01 00:00:00.0,a,aa
+SELECT *
+FROM h_r_ntp20
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+4,1,2010-01-01 00:00:00.0,a,aa
+5,2,2020-01-01 00:00:00.0,b,bb
+7,1,2010-01-01 00:00:00.0,a,aa
+70,1,2010-01-01 00:00:00.0,a,aa
+DROP TABLE IF EXISTS h_l_tp10
+DROP TABLE IF EXISTS h_l_tp20
+DROP TABLEGROUP IF EXISTS hl_tg1
+CREATE TABLEGROUP hl_tg1
+CREATE TABLE IF NOT EXISTS h_l_tp10 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY HASH (a, b) PARTITIONS 4
+SUBPARTITION BY LIST (to_days(c)) (
+	SUBPARTITION sp1 VALUES IN (to_days('2020-01-01')),
+	SUBPARTITION sp2 VALUES IN (DEFAULT)
+)
+CREATE TABLE IF NOT EXISTS h_l_tp20 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY HASH (a, b) PARTITIONS 4
+SUBPARTITION BY LIST (to_days(c)) (
+	SUBPARTITION sp1 VALUES IN (to_days('2020-01-01')),
+	SUBPARTITION sp2 VALUES IN (DEFAULT)
+)
+ALTER TABLE h_l_tp10
+	SET tablegroup = hl_tg1
+ALTER TABLE h_l_tp20
+	SET tablegroup = hl_tg1
+INSERT INTO h_l_tp10
+VALUES (1, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_l_tp10
+VALUES (2, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_l_tp20
+VALUES (3, 1, '2040-01-01', 'a', 'aa')
+INSERT INTO h_l_tp20
+VALUES (1, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_l_tp20
+VALUES (2, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_l_tp20
+VALUES (3, 1, '2040-01-01', 'a', 'aa')
+ALTER TABLEGROUP hl_tg1 DROP SUBPARTITION sp1
+INSERT INTO h_l_tp10
+VALUES (10, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_l_tp10
+VALUES (20, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_l_tp20
+VALUES (30, 1, '2040-01-01', 'a', 'aa')
+INSERT INTO h_l_tp20
+VALUES (100, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO h_l_tp20
+VALUES (200, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO h_l_tp20
+VALUES (300, 1, '2040-01-01', 'a', 'aa')
+SHOW FULL CREATE TABLE h_l_tp10
+Table,Create Table
+h_l_tp10,CREATE TABLE `h_l_tp10` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY HASH(`a`,`b`)
+PARTITIONS 4
+SUBPARTITION BY LIST(TO_DAYS(`c`))
+(SUBPARTITION sp2 VALUES IN (DEFAULT))
+tablegroup = `hl_tg1`
+SHOW FULL CREATE TABLE h_l_tp20
+Table,Create Table
+h_l_tp20,CREATE TABLE `h_l_tp20` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY HASH(`a`,`b`)
+PARTITIONS 4
+SUBPARTITION BY LIST(TO_DAYS(`c`))
+(SUBPARTITION sp2 VALUES IN (DEFAULT))
+tablegroup = `hl_tg1`
+SELECT *
+FROM h_l_tp10
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+1,1,2010-01-01 00:00:00.0,a,aa
+10,1,2010-01-01 00:00:00.0,a,aa
+20,2,2020-01-01 00:00:00.0,b,bb
+SELECT *
+FROM h_l_tp20
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+1,1,2010-01-01 00:00:00.0,a,aa
+3,1,2040-01-01 00:00:00.0,a,aa
+3,1,2040-01-01 00:00:00.0,a,aa
+30,1,2040-01-01 00:00:00.0,a,aa
+100,1,2010-01-01 00:00:00.0,a,aa
+200,2,2020-01-01 00:00:00.0,b,bb
+300,1,2040-01-01 00:00:00.0,a,aa
+DROP TABLE IF EXISTS r_l_ntp10
+DROP TABLE IF EXISTS r_l_ntp20
+DROP TABLEGROUP IF EXISTS rl_tg1
+CREATE TABLEGROUP rl_tg1
+CREATE TABLE IF NOT EXISTS r_l_ntp10 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY RANGE (to_days(c))
+SUBPARTITION BY LIST (a) (
+	PARTITION p1 VALUES LESS THAN (to_days('2020-01-01')) (
+		SUBPARTITION p1sp1 VALUES IN (1000, 2000),
+		SUBPARTITION p1sp2 VALUES IN (DEFAULT)
+	),
+	PARTITION p2 VALUES LESS THAN MAXVALUE (
+		SUBPARTITION p2sp1 VALUES IN (1000, 2000),
+		SUBPARTITION p2sp2 VALUES IN (3000, 4000),
+		SUBPARTITION p2sp3 VALUES IN (DEFAULT)
+	)
+)
+CREATE TABLE IF NOT EXISTS r_l_ntp20 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY RANGE (to_days(c))
+SUBPARTITION BY LIST (a) (
+	PARTITION p1 VALUES LESS THAN (to_days('2020-01-01')) (
+		SUBPARTITION p1sp1 VALUES IN (1000, 2000),
+		SUBPARTITION p1sp2 VALUES IN (DEFAULT)
+	),
+	PARTITION p2 VALUES LESS THAN MAXVALUE (
+		SUBPARTITION p2sp1 VALUES IN (1000, 2000),
+		SUBPARTITION p2sp2 VALUES IN (3000, 4000),
+		SUBPARTITION p2sp3 VALUES IN (DEFAULT)
+	)
+)
+ALTER TABLE r_l_ntp10
+	SET tablegroup = rl_tg1
+ALTER TABLE r_l_ntp20
+	SET tablegroup = rl_tg1
+INSERT INTO r_l_ntp10
+VALUES (1000, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp10
+VALUES (2000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO r_l_ntp10
+VALUES (3000, 1, '2040-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp20
+VALUES (2000, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp20
+VALUES (4000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO r_l_ntp20
+VALUES (5000, 1, '2040-01-01', 'a', 'aa')
+ALTER TABLEGROUP rl_tg1 DROP SUBPARTITION p1sp1, p1sp2
+INSERT INTO r_l_ntp10
+VALUES (1000, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp10
+VALUES (2000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO r_l_ntp10
+VALUES (3000, 1, '2040-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp20
+VALUES (2000, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp20
+VALUES (4000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO r_l_ntp20
+VALUES (5000, 1, '2040-01-01', 'a', 'aa')
+ALTER TABLEGROUP rl_tg1 DROP SUBPARTITION p2sp1, p2sp2
+INSERT INTO r_l_ntp10
+VALUES (1000, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp10
+VALUES (2000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO r_l_ntp10
+VALUES (3000, 1, '2040-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp20
+VALUES (2000, 1, '2010-01-01', 'a', 'aa')
+INSERT INTO r_l_ntp20
+VALUES (4000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO r_l_ntp20
+VALUES (5000, 1, '2040-01-01', 'a', 'aa')
+SHOW FULL CREATE TABLE r_l_ntp10
+Table,Create Table
+r_l_ntp10,CREATE TABLE `r_l_ntp10` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST(`a`)
+(PARTITION p2 VALUES LESS THAN (MAXVALUE)
+ (SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB))
+tablegroup = `rl_tg1`
+SHOW FULL CREATE TABLE r_l_ntp20
+Table,Create Table
+r_l_ntp20,CREATE TABLE `r_l_ntp20` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY RANGE(TO_DAYS(`c`))
+SUBPARTITION BY LIST(`a`)
+(PARTITION p2 VALUES LESS THAN (MAXVALUE)
+ (SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB))
+tablegroup = `rl_tg1`
+SELECT *
+FROM r_l_ntp10
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+1000,1,2010-01-01 00:00:00.0,a,aa
+2000,2,2020-01-01 00:00:00.0,b,bb
+3000,1,2040-01-01 00:00:00.0,a,aa
+SELECT *
+FROM r_l_ntp20
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+2000,1,2010-01-01 00:00:00.0,a,aa
+4000,2,2020-01-01 00:00:00.0,b,bb
+5000,1,2040-01-01 00:00:00.0,a,aa
+5000,1,2040-01-01 00:00:00.0,a,aa
+5000,1,2040-01-01 00:00:00.0,a,aa
+DROP TABLE IF EXISTS rc_lc_tp10
+DROP TABLE IF EXISTS rc_lc_tp20
+DROP TABLEGROUP IF EXISTS rclc_tg1
+CREATE TABLEGROUP rclc_tg1
+CREATE TABLE IF NOT EXISTS rc_lc_tp10 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY RANGE COLUMNS (c, d)
+SUBPARTITION BY LIST COLUMNS (a, b) (
+	SUBPARTITION sp1 VALUES IN ((1000, 2000)),
+	SUBPARTITION sp2 VALUES IN (DEFAULT)
+) (
+	PARTITION p1 VALUES LESS THAN ('2020-01-01', 'abc'),
+	PARTITION p2 VALUES LESS THAN (maxvalue, maxvalue)
+)
+CREATE TABLE IF NOT EXISTS rc_lc_tp20 (
+	a bigint UNSIGNED NOT NULL,
+	b bigint UNSIGNED NOT NULL,
+	c datetime NOT NULL,
+	d varchar(16) NOT NULL,
+	e varchar(16) NOT NULL
+)
+PARTITION BY RANGE COLUMNS (c, d)
+SUBPARTITION BY LIST COLUMNS (a, b) (
+	SUBPARTITION sp1 VALUES IN ((1000, 2000)),
+	SUBPARTITION sp2 VALUES IN (DEFAULT)
+) (
+	PARTITION p1 VALUES LESS THAN ('2020-01-01', 'abc'),
+	PARTITION p2 VALUES LESS THAN (maxvalue, maxvalue)
+)
+ALTER TABLE rc_lc_tp10
+	SET tablegroup = rclc_tg1
+ALTER TABLE rc_lc_tp20
+	SET tablegroup = rclc_tg1
+INSERT INTO rc_lc_tp10
+VALUES (1000, 2000, '2010-01-01', 'a', 'aa')
+INSERT INTO rc_lc_tp10
+VALUES (2000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO rc_lc_tp20
+VALUES (1000, 2000, '2040-01-01', 'a', 'aa')
+INSERT INTO rc_lc_tp20
+VALUES (4000, 2, '2020-01-01', 'b', 'bb')
+ALTER TABLEGROUP rclc_tg1 DROP SUBPARTITION sp1
+INSERT INTO rc_lc_tp10
+VALUES (1000, 2000, '2010-01-01', 'a', 'aa')
+INSERT INTO rc_lc_tp10
+VALUES (2000, 2, '2020-01-01', 'b', 'bb')
+INSERT INTO rc_lc_tp20
+VALUES (1000, 2000, '2040-01-01', 'a', 'aa')
+INSERT INTO rc_lc_tp20
+VALUES (4000, 2, '2020-01-01', 'b', 'bb')
+SHOW FULL CREATE TABLE rc_lc_tp10
+Table,Create Table
+rc_lc_tp10,CREATE TABLE `rc_lc_tp10` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(SUBPARTITION sp2 VALUES IN (DEFAULT))
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc'),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+tablegroup = `rclc_tg1`
+SHOW FULL CREATE TABLE rc_lc_tp20
+Table,Create Table
+rc_lc_tp20,CREATE TABLE `rc_lc_tp20` (
+	`a` bigint UNSIGNED NOT NULL,
+	`b` bigint UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`e` varchar(16) COLLATE utf8mb4_general_ci NOT NULL,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(SUBPARTITION sp2 VALUES IN (DEFAULT))
+(PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc'),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+tablegroup = `rclc_tg1`
+SELECT *
+FROM rc_lc_tp10
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+1000,2000,2010-01-01 00:00:00.0,a,aa
+2000,2,2020-01-01 00:00:00.0,b,bb
+2000,2,2020-01-01 00:00:00.0,b,bb
+SELECT *
+FROM rc_lc_tp20
+ORDER BY a, b, c, d, e
+a,b,c,d,e
+1000,2000,2040-01-01 00:00:00.0,a,aa
+4000,2,2020-01-01 00:00:00.0,b,bb
+4000,2,2020-01-01 00:00:00.0,b,bb

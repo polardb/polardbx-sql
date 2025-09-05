@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.operator.util;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
@@ -316,6 +317,23 @@ public abstract class AggregateUtils {
 
     public static int estimateHashTableSize(int expectedOutputRowCount, ExecutionContext context) {
 
+        int estimatedSize = getHashTableSizeByEstimated(expectedOutputRowCount, context);
+        ExecutorMode executorMode = context.getExecuteMode();
+        switch (executorMode) {
+        case MPP:
+            return estimatedSize;
+        case NONE:
+        case CURSOR:
+        case AP_LOCAL:
+        case TP_LOCAL:
+        default:
+            int maxInitialHashTableSize =
+                context.getParamManager().getInt(ConnectionParams.AGG_MAX_HASH_TABLE_INITIAL_SIZE);
+            return Math.min(estimatedSize, maxInitialHashTableSize);
+        }
+    }
+
+    private static int getHashTableSizeByEstimated(int expectedOutputRowCount, ExecutionContext context) {
         int maxHashTableSize;
         int hashTableFactor = context.getParamManager().getInt(ConnectionParams.AGG_MAX_HASH_TABLE_FACTOR);
         if (hashTableFactor > 1) {

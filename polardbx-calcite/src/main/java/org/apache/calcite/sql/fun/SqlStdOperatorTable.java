@@ -411,14 +411,20 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
    * <code>IN</code> operator tests for a value's membership in a sub-query or
    * a list of values.
    */
-  public static final SqlBinaryOperator IN = new SqlInOperator(SqlKind.IN);
+  public static final SqlBinaryOperator IN = new SqlInOperator(SqlKind.IN, false);
+
+  /**
+   * <code>IN</code> operator tests for a value's membership in a sub-query or
+   * a list of values.
+   */
+  public static final SqlBinaryOperator EXPAND_IN = new SqlInOperator(SqlKind.IN, true);
 
   /**
    * <code>NOT IN</code> operator tests for a value's membership in a sub-query
    * or a list of values.
    */
   public static final SqlBinaryOperator NOT_IN =
-      new SqlInOperator(SqlKind.NOT_IN);
+      new SqlInOperator(SqlKind.NOT_IN, false);
 
   public static final SqlPrefixOperator NOT_EXISTS =
           new SqlPrefixOperator(

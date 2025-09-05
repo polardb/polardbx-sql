@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTime;
@@ -24,6 +25,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import io.airlift.slice.XxHash64;
 
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Time;
@@ -43,6 +45,8 @@ public class TimeBlock extends AbstractCommonBlock {
     public static final long ZERO_TIME_MILLIS = -1;
 
     private final long[] packed;
+
+    @FieldMemoryCounter(value = false)
     private final TimeZone timezone;
 
     // random access
@@ -211,7 +215,9 @@ public class TimeBlock extends AbstractCommonBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(packed);
-        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(packed));
+        estimatedSize = elementUsedBytes;
     }
 }

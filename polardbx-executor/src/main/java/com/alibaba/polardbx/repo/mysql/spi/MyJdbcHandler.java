@@ -170,6 +170,10 @@ public class MyJdbcHandler implements GeneralQueryHandler {
 
     private int ddlTimeoutForTest = -1;
 
+    public void setConnection(IConnection connection) {
+        this.connection = connection;
+    }
+
     public enum ExecutionType {
         PUT, GET
     }
@@ -527,6 +531,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         BytesSql bytesSql, byte[] sqlBytesPrefix, IConnection conn, ExecutionContext executionContext,
         List<ParameterContext> parameterContexts, Map<Integer, ParameterContext> param, boolean isInsertOrUpdate,
         boolean isDDL,
+        boolean isBatch,
         BaseQueryOperation rel)
         throws SQLException {
         long startInitStmtEnvNano = System.nanoTime();
@@ -583,7 +588,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             ps = conn.prepareStatement(bytesSql, sqlBytesPrefix);
         } else {
             if (parameterContexts == null && param != null) {
-                parameterContexts = mapToList(param);
+                parameterContexts = mapToList(param, isBatch);
             }
             String sql;
             if (conn.isWrapperFor(XConnection.class)) {
@@ -1136,7 +1141,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 ps = createStatement(connection, executionContext, false);
             } else {
                 ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext, null, sqlAndParam.param,
-                    false, false, queryOperation);
+                    false, false, false, queryOperation);
             }
             if (isStreaming) {
                 // 当prev的时候 不能设置
@@ -1145,7 +1150,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
 
             Map<Integer, ParameterContext> map = sqlAndParam.param;
             List<ParameterContext> parameterContexts = null;
-            parameterContexts = handleParamsMap(map);
+            parameterContexts = handleParamsMap(map, false);
             ResultSet rs;
 
             executionContext.getStats().physicalRequest.incrementAndGet();
@@ -1386,7 +1391,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             grpConnId = PhyTableOperationUtil.computeGrpConnIdByPhyOp(phyTableOperation, null, null, executionContext);
             this.connection = getPhyConnection(executionContext.getTransaction(), rw, groupName, grpConnId, null);
             ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext, originParamList, null, false,
-                false,
+                false, false,
                 phyTableOperation);
             List<ParameterContext> paramList = handleParamsList(originParamList);
             if (isStreaming) {
@@ -1577,13 +1582,13 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     executionContext.getLoadDataContext().isUseBatch()) {
                     try {
                         ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext,
-                            null, batchParams.get(0), isInsertOrUpdate, false, phyTableModify);
+                            null, batchParams.get(0), isInsertOrUpdate, false, true, phyTableModify);
                         if (!noDigest && ps.isWrapperFor(XPreparedStatement.class)) {
                             ps.unwrap(XPreparedStatement.class)
                                 .setGalaxyDigest(phyTableModify.getGalaxyPrepareDigest());
                         }
                         for (Map<Integer, ParameterContext> param : batchParams) {
-                            handleParamsMap(param);
+                            handleParamsMap(param, true);
                             ((PreparedStatement) ps).addBatch();
                         }
 
@@ -1598,7 +1603,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     }
                 } else {
                     ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext,
-                        null, batchParams.get(0), isInsertOrUpdate, false, phyTableModify);
+                        null, batchParams.get(0), isInsertOrUpdate, false, true, phyTableModify);
                     if (!noDigest && ps.isWrapperFor(XPreparedStatement.class)) {
                         ps.unwrap(XPreparedStatement.class).setGalaxyDigest(phyTableModify.getGalaxyPrepareDigest());
                     }
@@ -1608,7 +1613,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                             ParameterMethod.setParameters(ps, param);
                         } else {
                             convertParameters(param, executionContext.getParamManager());
-                            ParameterMethod.setParameters(ps, prepareParam(mapToList(param)));
+                            ParameterMethod.setParameters(ps, prepareParam(mapToList(param, true)));
                         }
                         ((PreparedStatement) ps).addBatch();
                     }
@@ -1627,14 +1632,14 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     ps = createStatement(connection, executionContext, false);
                 } else {
                     ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext, null,
-                        sqlAndParam.param, isInsertOrUpdate, false, phyTableModify);
+                        sqlAndParam.param, isInsertOrUpdate, false, false, phyTableModify);
                     if (!noDigest && ps.isWrapperFor(XPreparedStatement.class)) {
                         ps.unwrap(XPreparedStatement.class).setGalaxyDigest(phyTableModify.getGalaxyPrepareDigest());
                     }
                 }
 
                 int affectRow;
-                handleParamsMap(sqlAndParam.param);
+                handleParamsMap(sqlAndParam.param, false);
 
                 if (sqlAndParam.param.isEmpty()) {
                     int[] columnIndexes = executionContext.getColumnIndexes();
@@ -1801,13 +1806,14 @@ public class MyJdbcHandler implements GeneralQueryHandler {
      * else must transform map to list, and extend rawString params by prepareParam method
      */
     @Nullable
-    private List<ParameterContext> handleParamsMap(Map<Integer, ParameterContext> params) throws SQLException {
+    protected List<ParameterContext> handleParamsMap(Map<Integer, ParameterContext> params, boolean isBatch)
+        throws SQLException {
         convertParameters(params, executionContext.getParamManager());
         if (connection.isBytesSqlSupported()) {
             ParameterMethod.setParameters(ps, params);
             return null;
         } else {
-            List<ParameterContext> paramList = prepareParam(mapToList(params));
+            List<ParameterContext> paramList = prepareParam(mapToList(params, isBatch));
             ParameterMethod.setParameters(ps, paramList);
             return paramList;
         }
@@ -1863,7 +1869,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 ps = createStatement(connection, executionContext, true);
             } else {
                 ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext, null, sqlAndParam.param,
-                    false, true, tableOperation);
+                    false, true, false, tableOperation);
                 setParameters(ps, sqlAndParam.param);
             }
 

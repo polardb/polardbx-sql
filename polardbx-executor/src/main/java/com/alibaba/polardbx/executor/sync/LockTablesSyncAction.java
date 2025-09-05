@@ -25,12 +25,12 @@ import com.alibaba.polardbx.executor.mdl.MdlManager;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.PreemptiveTime;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
 import java.text.MessageFormat;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author wumu
@@ -39,22 +39,21 @@ public class LockTablesSyncAction implements ISyncAction {
     protected String schemaName;
     protected List<String> tableNames;
     protected String traceId;
-    protected Long initWait;
-    protected Long interval;
-    protected TimeUnit timeUnit;
+
+
+
+    protected PreemptiveTime preemptiveTime;
 
     // This will not conflict, because it is unique in clusters(ClusterAcceptIdGenerator).
     protected long connId;
 
     public LockTablesSyncAction(String schemaName, List<String> tableNames, String traceId, long connId,
-                                Long initWait, Long interval, TimeUnit timeUnit) {
+                                PreemptiveTime preemptiveTime){
         this.schemaName = schemaName;
         this.tableNames = tableNames;
         this.traceId = traceId;
         this.connId = connId;
-        this.initWait = initWait;
-        this.interval = interval;
-        this.timeUnit = timeUnit;
+        this.preemptiveTime = preemptiveTime;
     }
 
     @Override
@@ -68,7 +67,11 @@ public class LockTablesSyncAction implements ISyncAction {
             GmsTableMetaManager schemaManager =
                 (GmsTableMetaManager) OptimizerContext.getContext(schemaName).getLatestSchemaManager();
 
-            final MdlContext context = MdlManager.addContext(connId, schemaName, initWait, interval, timeUnit);
+            if (connId > 0) {
+                throw new RuntimeException("The connId used for LockTableSyncAction must be less than 0.");
+            }
+
+            final MdlContext context = MdlManager.addContext(connId, schemaName, preemptiveTime);
 
             for (String primaryTableName : tableNames) {
                 TableMeta currentMeta = schemaManager.getTableWithNull(primaryTableName);
@@ -124,27 +127,12 @@ public class LockTablesSyncAction implements ISyncAction {
         this.connId = connId;
     }
 
-    public void setInitWait(Long initWait) {
-        this.initWait = initWait;
+    public PreemptiveTime getPreemptiveTime() {
+        return preemptiveTime;
     }
 
-    public void setInterval(Long interval) {
-        this.interval = interval;
+    public void setPreemptiveTime(PreemptiveTime preemptiveTime) {
+        this.preemptiveTime = preemptiveTime;
     }
 
-    public void setTimeUnit(TimeUnit timeUnit) {
-        this.timeUnit = timeUnit;
-    }
-
-    public Long getInitWait() {
-        return initWait;
-    }
-
-    public Long getInterval() {
-        return interval;
-    }
-
-    public TimeUnit getTimeUnit() {
-        return timeUnit;
-    }
 }

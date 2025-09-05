@@ -1,0 +1,63 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists omc_prefix_drds_test;
+create database omc_prefix_drds_test mode = 'drds';
+use omc_prefix_drds_test;
+
+set @sql_mode_tmp1 = @@sql_mode;
+set sql_mode='';
+
+drop table if exists omc_with_prefix_idx_t1;
+
+create table omc_with_prefix_idx_t1 (
+a int,
+b bigint,
+c varchar(30),
+d varchar(100),
+index idx_bcd(b,c(20),d),
+index idx_bcd_prefix(b,c(10),d(20)),
+global index gsi_dbc(a,b,c(20),d) dbpartition by hash(a),
+primary key(a)
+) engine = InnoDB
+dbpartition by hash(a);
+
+insert into omc_with_prefix_idx_t1 values (1, 101, 'a', '1111111'),
+(2, 102, 'b', '2222222'),
+(3, 103, 'c', '3333333'),
+(4, 201, 'd', '4444444'),
+(5, 202, 'e', '5555555'),
+(6, 203, 'f', '6666666'),
+(7, 301, 'g', '7777777');
+
+select * from omc_with_prefix_idx_t1 order by a;
+
+alter table omc_with_prefix_idx_t1 modify column b varchar(100), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c varchar(40), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c char(50), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c text, ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c varchar(15), ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column c varchar(5), modify column d int after c, ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+alter table omc_with_prefix_idx_t1 modify column b bigint, ALGORITHM=OMC;
+
+show full create table omc_with_prefix_idx_t1;
+
+select * from omc_with_prefix_idx_t1 order by a;
+
+set sql_mode = @sql_mode_tmp1;

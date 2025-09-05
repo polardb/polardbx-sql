@@ -33,6 +33,7 @@ public final class SQLInListExpr extends SQLExprImpl implements SQLReplaceable, 
 
     private static final long serialVersionUID = 1L;
     private boolean not = false;
+    private boolean expand = false;
     private SQLExpr expr;
     private List<SQLExpr> targetList = new ArrayList<SQLExpr>();
 
@@ -64,6 +65,7 @@ public final class SQLInListExpr extends SQLExprImpl implements SQLReplaceable, 
     public SQLInListExpr clone() {
         SQLInListExpr x = new SQLInListExpr();
         x.not = not;
+        x.expand = expand;
         if (expr != null) {
             x.setExpr(expr.clone());
         }
@@ -166,6 +168,7 @@ public final class SQLInListExpr extends SQLExprImpl implements SQLReplaceable, 
         int result = 1;
         result = prime * result + ((expr == null) ? 0 : expr.hashCode());
         result = prime * result + (not ? 1231 : 1237);
+        result = prime * result + (expand ? 1231 : 1237);
         result = prime * result + ((targetList == null) ? 0 : targetList.hashCode());
         return result;
     }
@@ -190,6 +193,9 @@ public final class SQLInListExpr extends SQLExprImpl implements SQLReplaceable, 
             return false;
         }
         if (not != other.not) {
+            return false;
+        }
+        if (expand != other.expand) {
             return false;
         }
         if (targetList == null) {
@@ -234,5 +240,13 @@ public final class SQLInListExpr extends SQLExprImpl implements SQLReplaceable, 
 
     public void setHint(SQLCommentHint hint) {
         this.hint = hint;
+    }
+
+    public boolean isExpand() {
+        return expand;
+    }
+
+    public void setExpand(boolean expand) {
+        this.expand = expand;
     }
 }

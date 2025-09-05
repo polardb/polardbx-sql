@@ -1,0 +1,60 @@
+## DISABLE_FAST_SQL_PARSER
+create table dt_t2(
+a int,
+b int,
+c datetime(3)
+)
+partition by range(to_days(c))
+(
+partition p1 values less than (to_days('2022-02-03 00:00:00.000')),
+partition p2 values less than (to_days('2022-02-04 00:00:01.000')),
+partition p3 values less than (to_days('2022-02-05 00:00:02.000')),
+partition p4 values less than (to_days('2022-02-06 00:00:03.000')),
+partition p5 values less than (to_days('2022-02-07 00:00:04.000')),
+partition pm values less than (maxvalue)
+)
+show create table dt_t2
+Table,Create Table
+dt_t2,CREATE TABLE `dt_t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` datetime(3) DEFAULT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_DAYS(`c`))
+(PARTITION p1 VALUES LESS THAN (738554) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (738555) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (738556) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (738557) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (738558) ENGINE = InnoDB,
+ PARTITION pm VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+insert into dt_t2 values(1, 1, '2022-02-03 00:00:01.499')
+insert into dt_t2 values(2, 2, '2022-02-04 00:00:01.501')
+insert into dt_t2 values(3, 3, '2022-02-05 00:00:02.001')
+select * from dt_t2 where c = '2022-02-03 00:00:01.499'
+a,b,c
+1,1,2022-02-03 00:00:01.499
+select * from dt_t2 where c = '2022-02-05 00:00:02.001'
+a,b,c
+3,3,2022-02-05 00:00:02.001
+select * from dt_t2 where c between '2022-02-03 00:00:01.499' and '2022-02-05 00:00:02.001' order by c
+a,b,c
+1,1,2022-02-03 00:00:01.499
+2,2,2022-02-04 00:00:01.501
+3,3,2022-02-05 00:00:02.001
+select * from dt_t2 where c = '2022-02-05 00:00:02.001'
+a,b,c
+3,3,2022-02-05 00:00:02.001
+explain  select * from dt_t2 where c = '2022-02-03 00:00:01.499'
+Logical ExecutionPlan
+PhyTableOperation(tables="dt_t2[p2]", sql="SELECT `dt_t2`.`a`, `dt_t2`.`b`, `dt_t2`.`c` FROM ? AS `dt_t2` WHERE (`dt_t2`.`c` = ?)", params="2022-02-03 00:00:01.499")
+explain  select * from dt_t2 where c = '2022-02-05 00:00:02.001'
+Logical ExecutionPlan
+PhyTableOperation(tables="dt_t2[p4]", sql="SELECT `dt_t2`.`a`, `dt_t2`.`b`, `dt_t2`.`c` FROM ? AS `dt_t2` WHERE (`dt_t2`.`c` = ?)", params="2022-02-05 00:00:02.001")
+explain  select * from dt_t2 where c between '2022-02-03 00:00:01.499' and '2022-02-05 00:00:02.001' order by c
+Logical ExecutionPlan
+MergeSort(sort="c ASC")
+  LogicalView(tables="dt_t2[p2,p3,p4]", shardCount=3, sql="SELECT `a`, `b`, `c` FROM `dt_t2` AS `dt_t2` WHERE (`c` BETWEEN ? AND ?) ORDER BY `c`")
+explain  select * from dt_t2 where c = '2022-02-05 00:00:02.001'
+Logical ExecutionPlan
+PhyTableOperation(tables="dt_t2[p4]", sql="SELECT `dt_t2`.`a`, `dt_t2`.`b`, `dt_t2`.`c` FROM ? AS `dt_t2` WHERE (`dt_t2`.`c` = ?)", params="2022-02-05 00:00:02.001")

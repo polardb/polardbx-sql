@@ -18,11 +18,14 @@ package com.alibaba.polardbx.executor.balancer.policy;
 //
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
 import com.alibaba.polardbx.executor.balancer.action.ActionInitPartitionDb;
 import com.alibaba.polardbx.executor.balancer.action.ActionLockResource;
@@ -35,6 +38,7 @@ import com.alibaba.polardbx.executor.balancer.action.ActionTaskAdapter;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.ActionWriteDataDistLog;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
+import com.alibaba.polardbx.executor.balancer.action.EventLogger;
 import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
 import com.alibaba.polardbx.executor.balancer.solver.MixedModel;
 import com.alibaba.polardbx.executor.balancer.solver.Solution;
@@ -81,8 +85,12 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_TABLEGROUP_SOLVED_BY_LP;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_UNIT_PARTITION_COUNT;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_UNIT_SIZE;
 import static com.alibaba.polardbx.executor.balancer.policy.PolicyUtils.getGroupDetails;
+import static com.alibaba.polardbx.executor.balancer.solver.ExternalSolutionManager.EMPTY_SOLUTION;
+import static com.alibaba.polardbx.executor.balancer.solver.ExternalSolutionManager.queryExternalSolution;
 
 /**
  * Move partitions between storage node if un-balanced.
@@ -174,6 +182,12 @@ public class PolicyPartitionBalance implements BalancePolicy {
         if (CollectionUtils.isEmpty(actions)) {
             return Lists.newArrayList();
         }
+        String logInfo =
+            String.format(
+                "[schema %s, drds mode] total %d groups,  generate %d actions", schema, groupList.size(),
+                actions.size()
+            );
+        EventLogger.log(EventType.REBALANCE_INFO, logInfo);
 //
         final String name = ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, schema);
         final String schemaXLock = schema;
@@ -590,10 +604,12 @@ public class PolicyPartitionBalance implements BalancePolicy {
         }
 
         MixedModel.SolveLevel solveLevel = MixedModel.SolveLevel.MIN_COST;
-        if (!options.solveLevel.equals("DEFAULT") && !options.solveLevel.isEmpty()) {
+        if (StringUtils.isEmpty(options.solveLevel) || options.solveLevel.equals(
+            MixedModel.SolveLevel.BALANCE_DEFAULT.name())) {
             solveLevel = MixedModel.SolveLevel.BALANCE_DEFAULT;
         }
 
+        int maxTableGroupSolvedByLp = ec.getParamManager().getInt(REBALANCE_MAX_TABLEGROUP_SOLVED_BY_LP);
         List<PartitionGroupStat> pgList = stats.getPartitionGroupStats();
         Map<String, TableGroupConfig> tableGroupConfigMap = TableGroupUtils.getAllTableGroupInfoByDb(schemaName)
             .stream().collect(Collectors.toMap(o -> o.getTableGroupRecord().tg_name, o -> o));
@@ -750,11 +766,16 @@ public class PolicyPartitionBalance implements BalancePolicy {
                 int[] spIndexes = spIndexMap.get(sp).stream().mapToInt(Integer::intValue).toArray();
                 double originalMu =
                     MixedModel.caculateBalanceFactor(m, N, originalPlace, spIndexes, partitionSize).getValue();
-                if (options.shuffleDataDistribution != 0) {
+                if (options.solveLevel.equalsIgnoreCase(MixedModel.SolveLevel.EXTERNAL.name())) {
+                    solution =
+                        getExternalSolution(schemaName, sp, tableGroupNames.get(k), toRebalancePgList, storageInstMap,
+                            m, N, originalPlace, partitionSize);
+
+                } else if (options.shuffleDataDistribution != 0) {
                     solution = MixedModel.solveShufflePartition(m, N, originalPlace, partitionSize);
                 } else if (toRebalanceSequentialTg.contains(tableGroupNames.get(k))) {
                     solution = MixedModel.solveMoveSequentialPartition(M, N, originalPlace, partitionSize);
-                } else if (k < MAX_TABLEGROUP_SOLVED_BY_LP) {
+                } else if (k < maxTableGroupSolvedByLp) {
                     solution = MixedModel.solveMovePartition(m, N, originalPlace, partitionSize, spIndexes, solveLevel);
                 } else {
                     solution = MixedModel.solveMovePartitionByGreedy(m, N, originalPlace, spIndexes, partitionSize);
@@ -801,13 +822,15 @@ public class PolicyPartitionBalance implements BalancePolicy {
             Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
         );
         long maxTaskUnitSize = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_SIZE);
+        long maxPartitionCount = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_PARTITION_COUNT);
         if (maxTaskUnitSize < 1024) {
             maxTaskUnitSize = options.maxTaskUnitSize;
         }
         for (String tgName : movesGroupByTg.keySet()) {
             List<PolicyPartitionBalance.MoveInfo> movesGroup = movesGroupByTg.get(tgName);
             List<ActionMovePartitions> movePartitionsList =
-                PolicyPartitionBalance.shuffleToGroup(schemaName, movesGroup, maxTaskUnitSize, stats);
+                PolicyPartitionBalance.shuffleToGroup(schemaName, movesGroup, maxTaskUnitSize, maxPartitionCount,
+                    stats);
             actions.addAll(movePartitionsList);
         }
 //        for (int i = 0; i < moves.size(); ) {
@@ -909,6 +932,7 @@ public class PolicyPartitionBalance implements BalancePolicy {
 
     public static List<ActionMovePartitions> shuffleToGroup(String schemaName, List<MoveInfo> moves,
                                                             long maxTaskUnitSize,
+                                                            long maxPartitionCount,
                                                             BalanceStats stats) {
         List<ActionMovePartitions> movePartitionsList = new ArrayList<>();
         Map<String, Queue<MoveInfo>> moveInfoMap = new HashMap<>();
@@ -926,12 +950,14 @@ public class PolicyPartitionBalance implements BalancePolicy {
             List<MoveInfo> moveInfoList = new ArrayList<>();
             for (String dn : dns) {
                 long sumMoveSize = 0L;
+                long count = 0L;
                 Queue<MoveInfo> moveInfoQueue = moveInfoMap.get(dn);
-                while (!moveInfoQueue.isEmpty() && sumMoveSize < splitTaskUnitSize) {
+                while (!moveInfoQueue.isEmpty() && sumMoveSize < splitTaskUnitSize && count < maxPartitionCount) {
                     MoveInfo moveInfo = moveInfoQueue.poll();
                     sumMoveSize += moveInfo.dataSize;
                     moveInfoList.add(moveInfo);
                     i++;
+                    count++;
                 }
             }
             Map<String, List<ActionMovePartition>> movePartitionActions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -947,6 +973,62 @@ public class PolicyPartitionBalance implements BalancePolicy {
             movePartitionsList.add(new ActionMovePartitions(schemaName, movePartitionActions));
         }
         return movePartitionsList;
+    }
+
+    public static Solution getExternalSolution(String schemaName, String sp, String tableGroupName,
+                                               List<PartitionGroupStat> toRebalancePgList,
+                                               Map<Integer, String> storageInstMap, int m, int N, int[] originalPlace,
+                                               double[] partitionSize) {
+        String solutionString = queryExternalSolution(schemaName, sp, tableGroupName);
+        if (EMPTY_SOLUTION.equalsIgnoreCase(solutionString)) {
+            Solution solution = new Solution(true, originalPlace, -1, "Invisible");
+            return solution;
+        }
+        if (DdlHelper.isGzip(solutionString)) {
+            solutionString = DdlHelper.decompress(solutionString);
+        }
+        Map<String, String> pg2TargetStorageMap = new HashMap<>();
+        String errMsg =
+            String.format(" schemaName:%s, tableGroupName:%s, storagePoolName:%s", schemaName, tableGroupName, sp);
+        if (solutionString == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                "failed to query solution from external for " + errMsg);
+        }
+        pg2TargetStorageMap = JSON.parseObject(solutionString, pg2TargetStorageMap.getClass());
+
+        Map<String, Integer> reverseStorageInstMap = new HashMap<>();
+        for (Integer index : storageInstMap.keySet()) {
+            reverseStorageInstMap.put(storageInstMap.get(index), index);
+        }
+
+        int[] targetPlace = new int[toRebalancePgList.size()];
+        int i = 0;
+        if (pg2TargetStorageMap.size() != toRebalancePgList.size()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                "failed to parse solution from external for " + errMsg + ", because the size of toRebalancePgList:"
+                    + toRebalancePgList.size() + ", the size of pg2TargetStorageMap:" + pg2TargetStorageMap.size());
+        }
+        for (PartitionGroupStat groupStat : toRebalancePgList) {
+            String pgName = groupStat.pg.getPartition_name();
+            if (pg2TargetStorageMap.containsKey(groupStat.pg.getPartition_name())) {
+                String targetStorage = pg2TargetStorageMap.get(pgName);
+                if (!reverseStorageInstMap.containsKey(targetStorage)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                        "failed to parse solution from external for " + errMsg + " pgName:" + pgName);
+                }
+                targetPlace[i] = reverseStorageInstMap.get(targetStorage);
+                i++;
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                    "failed to parse solution from external for " + errMsg + " pgName:" + pgName);
+            }
+        }
+
+        String stragety = "External";
+
+        double mu = MixedModel.caculateBalanceFactor(m, N, originalPlace, partitionSize).getValue();
+        Solution solution = new Solution(true, targetPlace, mu, stragety);
+        return solution;
     }
 
 }

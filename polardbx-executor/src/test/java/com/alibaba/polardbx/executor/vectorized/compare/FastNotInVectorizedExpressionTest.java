@@ -1,12 +1,15 @@
 package com.alibaba.polardbx.executor.vectorized.compare;
 
+import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.DateBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.TimestampBlockBuilder;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InValuesVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.InputRefVectorizedExpression;
@@ -16,7 +19,9 @@ import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.google.common.collect.ImmutableList;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexInputRef;
@@ -180,6 +185,63 @@ public class FastNotInVectorizedExpressionTest {
         LongBlock expectBlock = LongBlock.of(null, null, null, null, null, null, null, null, null);
 
         doTest(DataTypes.LongType, inputChunk, convertInValues(inValues), expectBlock);
+    }
+
+    @Test
+    public void testDateNotInString() {
+
+        DateBlockBuilder blockBuilder = new DateBlockBuilder(16, DataTypes.DateType, new ExecutionContext());
+        blockBuilder.writeByteArray("0000-00-00".getBytes()); // 0
+        blockBuilder.writeByteArray("2000-02-01".getBytes()); // 1
+        blockBuilder.writeByteArray("2020-12-11".getBytes()); // 0
+        blockBuilder.writeByteArray("2013-09-10".getBytes()); // 1
+        blockBuilder.writeByteArray("2000-10-10".getBytes()); // 0
+        blockBuilder.writeByteArray(null); // null
+        blockBuilder.writeByteArray("2003-06-20".getBytes()); // 1
+        blockBuilder.writeByteArray(null); // null
+        Block block = blockBuilder.build();
+
+        Chunk inputChunk = new Chunk(block.getPositionCount(), block);
+        String[] inValues = {"2000-10-10 11:11:11", "2020-12-11", "0000-00-00 00:00:00"};
+        LongBlock expectBlock = LongBlock.of(0L, 1L, 0L, 1L, 0L, null, 1L, null);
+
+        doTest(DataTypes.DateType, inputChunk,
+            convertInValues(inValues, TYPE_FACTORY.createSqlType(SqlTypeName.DATE)),
+            expectBlock);
+    }
+
+    @Test
+    public void testDatetimeNotInString() {
+        TimestampBlockBuilder blockBuilder =
+            new TimestampBlockBuilder(16, DateTimeType.DATE_TIME_TYPE_2, new ExecutionContext());
+        blockBuilder.writeByteArray("0000-00-00 00:00:00.00".getBytes()); // 0
+        blockBuilder.writeByteArray("2000-02-01".getBytes()); // 1
+        blockBuilder.writeByteArray("2020-12-11 13:00:00.01".getBytes()); // 0
+        blockBuilder.writeByteArray("2013-09-10".getBytes()); // 1
+        blockBuilder.writeByteArray("2000-10-10 11:11:11.12".getBytes()); // 0
+        blockBuilder.writeByteArray(null); // null
+        blockBuilder.writeByteArray("2003-06-20".getBytes()); // 1
+        blockBuilder.writeByteArray(null); // null
+        Block block = blockBuilder.build();
+
+        Chunk inputChunk = new Chunk(block.getPositionCount(), block);
+        String[] inValues = {"2000-10-10 11:11:11.12", "2020-12-11 13:00:00.01", "0000-00-00 00:00:00"};
+        LongBlock expectBlock = LongBlock.of(0L, 1L, 0L, 1L, 0L, null, 1L, null);
+
+        doTest(DateTimeType.DATE_TIME_TYPE_2, inputChunk,
+            convertInValues(inValues, TYPE_FACTORY.createSqlType(SqlTypeName.DATETIME, 2)),
+            expectBlock);
+    }
+
+    private List<RexNode> convertInValues(String[] inValues, RelDataType dataType) {
+        List<RexNode> rexNodeList = new ArrayList<>(inValues.length + 1);
+        rexNodeList.add(new RexInputRef(1, dataType));
+        for (String inValue : inValues) {
+            RexNode rexNode = REX_BUILDER.makeLiteral(inValue,
+                TYPE_FACTORY.createSqlType(SqlTypeName.VARCHAR), false);
+            rexNodeList.add(rexNode);
+        }
+        return rexNodeList;
     }
 
     private List<RexNode> convertInValues(long[] inValues) {

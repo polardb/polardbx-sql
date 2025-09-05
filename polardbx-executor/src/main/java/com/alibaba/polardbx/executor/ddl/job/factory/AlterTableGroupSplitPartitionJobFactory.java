@@ -58,7 +58,7 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
     public AlterTableGroupSplitPartitionJobFactory(DDL ddl, AlterTableGroupSplitPartitionPreparedData preparedData,
                                                    Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                                    Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                                   Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                                   Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                                    Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                    Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                                    Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -194,7 +194,7 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
                                           ExecutionContext executionContext) {
         AlterTableGroupSplitPartitionBuilder alterTableGroupSplitPartitionBuilder =
             new AlterTableGroupSplitPartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableGroupSplitPartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableGroupSplitPartitionBuilder.getTargetTablesTopology();

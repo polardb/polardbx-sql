@@ -25,6 +25,7 @@ import com.google.common.truth.Truth;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -75,6 +76,11 @@ public class ModifyOnTopNTest extends AutoCrudBasedLockTestCase {
         this.supportReturning = useXproto(tddlConnection)
             && Optional.ofNullable(getStorageProperties(tddlConnection).get("supportsReturning"))
             .map(Boolean::parseBoolean).orElse(false);
+        try {
+            tddlConnection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test

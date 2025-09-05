@@ -74,6 +74,9 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
     private SQLName engineName;
     // Compatible layer.
     private List<SQLAssignItem> compatibleOptions = new ArrayList<SQLAssignItem>();
+    /**
+     * May be uppercase or lowercase, defined by user input.
+     */
     private final Map<String, String> columnarOptions = new HashMap<>();
 
     public Map<String, String> getColumnarOptions() {
@@ -492,7 +495,7 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
     }
 
     public void addColumnarOption(String name, String value) {
-        getColumnarOptions().put(name.toUpperCase(), value.toUpperCase());
+        getColumnarOptions().put(name, value);
     }
 
     public void addColumnarOption(Map<String, String> options) {

@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.hash.XxHash_64Hasher;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
@@ -241,7 +242,7 @@ public class PhyTableOperationUtil {
             List<List<String>> tablesList = phyTbs;
             if (logTbs == null || logTbs.isEmpty() || tablesList == null || tablesList.isEmpty()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TRANS_FETCH_INTRA_GROUP_CONN_ID_FAIL,
-                    "invalid physical table names");
+                    String.format("invalid physical table names, grpIdx is %s", grpIdx));
             }
             PartitionInfoManager partInfoMgr =
                 ec.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager();
@@ -267,7 +268,7 @@ public class PhyTableOperationUtil {
             } else {
                 partInfo = tbMeta.getPartitionInfo();
             }
-            Long connKey = tryFetchIntraGroupConnKeyFromPartSpec(grpIdx, firstPhyTbl, partInfo);
+            Long connKey = tryFetchIntraGroupConnKeyFromPartSpec(grpIdx, firstPhyTbl, tbMeta.getVersion(), partInfo);
             logConnGrpKeyIfNeed(grpIdx, firstPhyTbl, isReplicatedNode, partInfo, tbMeta, connKey, ec);
             return connKey;
         } catch (Throwable ex) {
@@ -308,7 +309,7 @@ public class PhyTableOperationUtil {
             } else {
                 partInfo = tbMeta.getPartitionInfo();
             }
-            Long connKey = tryFetchIntraGroupConnKeyFromPartSpec(grpIdx, firstPhyTbl, partInfo);
+            Long connKey = tryFetchIntraGroupConnKeyFromPartSpec(grpIdx, firstPhyTbl, tbMeta.getVersion(), partInfo);
             logConnGrpKeyIfNeed(grpIdx, firstPhyTbl, isReplicatedNode, partInfo, tbMeta, connKey, ec);
             return connKey;
         } catch (Throwable ex) {
@@ -353,7 +354,7 @@ public class PhyTableOperationUtil {
             } else {
                 partInfo = tbMeta.getPartitionInfo();
             }
-            Long connKey = tryFetchIntraGroupConnKeyFromPartSpec(grpIdx, firstPhyTbl, partInfo);
+            Long connKey = tryFetchIntraGroupConnKeyFromPartSpec(grpIdx, firstPhyTbl, tbMeta.getVersion(), partInfo);
             logConnGrpKeyIfNeed(grpIdx, firstPhyTbl, isReplicatedNode, partInfo, tbMeta, connKey, ec);
             return connKey;
         } catch (Throwable ex) {
@@ -403,6 +404,7 @@ public class PhyTableOperationUtil {
 
     private static Long tryFetchIntraGroupConnKeyFromPartSpec(String grpIdx,
                                                               String phyTb,
+                                                              Long tblMetaVer,
                                                               PartitionInfo partInfo) {
         PartSpecSearcher specSearcher = partInfo.getPartSpecSearcher();
         Long connKey = specSearcher.getPartIntraGroupConnKey(grpIdx, phyTb);
@@ -411,8 +413,7 @@ public class PhyTableOperationUtil {
             return null;
         }
         if (connKey == PartSpecSearcher.NO_FOUND_PART_SPEC) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_FETCH_INTRA_GROUP_CONN_ID_FAIL,
-                "invalid group or physical table names");
+            PhyTableOperationUtil.throwFetchGroupConnFailedException(tblMetaVer, partInfo, grpIdx, phyTb);
         }
 
         return connKey;
@@ -476,7 +477,8 @@ public class PhyTableOperationUtil {
                     TableMeta tbMeta = schemaManager.getTable(firstPartTb);
                     PartitionInfo partInfo = tbMeta.getPartitionInfo();
                     Long grpConnKey =
-                        tryFetchIntraGroupConnKeyFromPartSpec(grpKey, phyTblOfFirstPartTblIdx, partInfo);
+                        tryFetchIntraGroupConnKeyFromPartSpec(grpKey, phyTblOfFirstPartTblIdx, tbMeta.getVersion(),
+                            partInfo);
                     logConnGrpKeyIfNeed(grpKey, phyTblOfFirstPartTblIdx, false, partInfo, tbMeta, grpConnKey, ec);
                     Long grpConnId = computeGrpConnIdByGrpConnKey(grpConnKey, grpParallelism);
                     GroupConnId groupConnId = new GroupConnId(grpKey, grpConnId);
@@ -543,4 +545,32 @@ public class PhyTableOperationUtil {
     }
 
     //public static int calc
+
+    public static Exception throwFetchGroupConnFailedException(Long tblMetaVer,
+                                                               PartitionInfo tarPartInfo,
+                                                               String grpIdx,
+                                                               String phyTbl) {
+
+        String logDb = "";
+        String logTb = "";
+        String partInfoDigest = "null";
+        try {
+            if (tarPartInfo != null) {
+                logDb = tarPartInfo.getTableSchema();
+                logTb = tarPartInfo.getTableName();
+                partInfoDigest = tarPartInfo.getDigest(tblMetaVer);
+            } else {
+                partInfoDigest = String.format("[metaVer=%s]", tblMetaVer);
+            }
+        } catch (Throwable ex) {
+            // ignore
+        }
+
+        String exMsg =
+            String.format(
+                "invalid group or physical table names, phyTbl name is `%s`.`%s`, logTb name is `%s`.`%s`, partInfoDigest is %s",
+                grpIdx, phyTbl, logDb, logTb, partInfoDigest);
+        throw new TddlRuntimeException(ErrorCode.ERR_TRANS_FETCH_INTRA_GROUP_CONN_ID_FAIL, exMsg);
+
+    }
 }

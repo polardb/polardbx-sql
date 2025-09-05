@@ -40,6 +40,7 @@ import org.apache.orc.ColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.time.ZoneId;
 import java.util.Arrays;
@@ -129,42 +130,50 @@ public interface ColumnProvider<T> {
         return (int) (result & ((1 << numberOfBits) - 1));
     }
 
-    static int intFromByte(byte[] bytes, int size) {
+    static int intFromByte(ByteBuffer bytes) {
         int result = 0;
+        int size = bytes.remaining();
+        int pos = bytes.position();
         for (int i = 0; i < size; ++i) {
-            result |= (((int) (bytes[i] & 0xFF)) << (i << 3));
+            result |= ((bytes.get(pos + i) & 0xFF) << (i << 3));
         }
 
         return result;
     }
 
-    static long longFromByte(byte[] bytes, int size) {
+    static long longFromByte(ByteBuffer bytes) {
         long result = 0;
+        int size = bytes.remaining();
+        int pos = bytes.position();
         for (int i = 0; i < size; ++i) {
-            result |= (((long) (bytes[i] & 0xFF)) << (i << 3));
+            result |= (((long) (bytes.get(pos + i) & 0xFF)) << (i << 3));
         }
 
         return result;
     }
 
-    static long bigBitLongFromByte(byte[] bytes, int size) {
+    static long bigBitLongFromByte(ByteBuffer bytes) {
         long result = 0;
+        int size = bytes.remaining();
+        int pos = bytes.position();
         for (int i = 0; i < size; ++i) {
-            result |= (((long) (bytes[i] & 0xFF)) << ((size - i - 1) << 3));
+            result |= (((long) (bytes.get(pos + i) & 0xFF)) << ((size - i - 1) << 3));
         }
 
         return result;
     }
 
-    static long convertDateToLong(byte[] bytes) {
-        if (bytes.length != 3) {
+    static long convertDateToLong(ByteBuffer bytes) {
+        int length = bytes.remaining();
+        int pos = bytes.position();
+        if (length != 3) {
             throw GeneralUtil.nestedException("Bad format in row value");
         }
 
         // convert 3 byte to integer
         int value = 0;
-        for (int i = 0; i < bytes.length; ++i) {
-            value |= (((int) (bytes[i] & 0xFF)) << (i << 3));
+        for (int i = 0; i < length; ++i) {
+            value |= ((bytes.get(pos + i) & 0xFF) << (i << 3));
         }
 
         //cdc 二进制编码：5 bit（day）｜4 bit（month）｜其它（year）
@@ -179,11 +188,12 @@ public interface ColumnProvider<T> {
         return TimeStorage.writeDate(year, month, day);
     }
 
-    static long convertDateTimeToLong(byte[] bytes, int scale) {
+    static long convertDateTimeToLong(ByteBuffer bytes, int scale) {
+        int pos = bytes.position();
         // parse datetime
         long datetime = 0;
         for (int i = 0; i < 5; i++) {
-            byte b = bytes[i];
+            byte b = bytes.get(pos + i);
             datetime = (datetime << 8) | (b >= 0 ? (int) b : (b + 256));
         }
 
@@ -207,7 +217,7 @@ public interface ColumnProvider<T> {
         if (length > 0) {
             int fraction = 0;
             for (int i = 5; i < (5 + length); i++) {
-                byte b = bytes[i];
+                byte b = bytes.get(pos + i);
                 fraction = (fraction << 8) | (b >= 0 ? (int) b : (b + 256));
             }
             micro = fraction * (int) Math.pow(100, 3 - length);
@@ -219,11 +229,12 @@ public interface ColumnProvider<T> {
         );
     }
 
-    static long convertTimeToLong(byte[] bytes, int scale) {
+    static long convertTimeToLong(ByteBuffer bytes, int scale) {
+        int pos = bytes.position();
         // parse time
         long time = 0;
         for (int i = 0; i < 3; i++) {
-            byte b = bytes[i];
+            byte b = bytes.get(pos + i);
             time = (time << 8) | (b >= 0 ? (int) b : (b + 256));
         }
 
@@ -244,7 +255,7 @@ public interface ColumnProvider<T> {
         if (length > 0) {
             int fraction = 0;
             for (int i = 3; i < (3 + length); i++) {
-                byte b = bytes[i];
+                byte b = bytes.get(pos + i);
                 fraction = (fraction << 8) | (b >= 0 ? (int) b : (b + 256));
             }
             if (sign == 0 && fraction > 0) {
@@ -260,23 +271,25 @@ public interface ColumnProvider<T> {
         );
     }
 
-    static String convertToString(byte[] bytes, String charsetName) {
-        LogBuffer buffer = new LogBuffer(bytes, 0, bytes.length);
+    static String convertToString(ByteBuffer bytes, String charsetName) {
+        int length = bytes.remaining();
+        LogBuffer buffer = new LogBuffer(bytes.array(), bytes.position(), length);
 
         Charset charset = Charset.forName(charsetName);
         JsonConversion.Json_Value jsonValue =
-            JsonConversion.parse_value(buffer.getUint8(), buffer, bytes.length - 1, charset);
+            JsonConversion.parse_value(buffer.getUint8(), buffer, length - 1, charset);
 
         StringBuilder builder = new StringBuilder();
         jsonValue.toJsonString(builder, charset);
         return builder.toString();
     }
 
-    static byte[] convertToPaddingBytes(byte[] bytes, BinaryType binaryType) {
+    static byte[] convertToPaddingBytes(ByteBuffer bytes, BinaryType binaryType) {
         byte[] paddingBytes = new byte[binaryType.length()];
-        System.arraycopy(bytes, 0, paddingBytes, 0, Math.min(bytes.length, paddingBytes.length));
-        if (bytes.length < paddingBytes.length) {
-            Arrays.fill(paddingBytes, bytes.length, paddingBytes.length, (byte) 0);
+        System.arraycopy(bytes.array(), bytes.position(), paddingBytes, 0,
+            Math.min(bytes.remaining(), paddingBytes.length));
+        if (bytes.remaining() < paddingBytes.length) {
+            Arrays.fill(paddingBytes, bytes.remaining(), paddingBytes.length, (byte) 0);
         }
         return paddingBytes;
     }

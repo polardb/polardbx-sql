@@ -42,11 +42,7 @@ import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @author luoyanxin
@@ -56,7 +52,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
     public AlterTableMergePartitionJobFactory(DDL ddl, AlterTableMergePartitionPreparedData preparedData,
                                               Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                               Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                              Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                              Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                               Map<String, Map<String, Set<String>>> targetTablesTopology,
                                               Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                               Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -267,7 +263,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
                                           ExecutionContext executionContext) {
         AlterTableMergePartitionBuilder alterTableMergePartitionBuilder =
             new AlterTableMergePartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableMergePartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableMergePartitionBuilder.getTargetTablesTopology();
@@ -289,14 +285,8 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
     public void constructSubTasks(String schemaName, ExecutableDdlJob executableDdlJob, DdlTask tailTask,
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
         EmptyTask emptyTask = new EmptyTask(schemaName);
-        String logicalTableName = preparedData.getTableName();
-        TableMeta tm = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
-        final boolean useChangeSet = ChangeSetUtils.isChangeSetProcedure(executionContext);
-
-        AlterTableGroupSubTaskJobFactory subTaskJobFactory;
-        if (useChangeSet && ChangeSetUtils.supportUseChangeSet(taskType, tm)) {
-            subTaskJobFactory = new AlterTableMergePartitionChangeSetSubJobFactory(ddl,
-                (AlterTableMergePartitionPreparedData) preparedData,
+        AlterTableGroupSubTaskJobFactory subTaskJobFactory =
+            new AlterTableMergePartitionSubTaskJobFactory(ddl, (AlterTableMergePartitionPreparedData) preparedData,
                 tablesPrepareData.get(preparedData.getTableName()),
                 newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
                 tablesTopologyMap.get(preparedData.getTableName()),
@@ -304,17 +294,6 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
                 sourceTablesTopology.get(preparedData.getTableName()),
                 orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
                 taskType, executionContext);
-        } else {
-            subTaskJobFactory =
-                new AlterTableMergePartitionSubTaskJobFactory(ddl, (AlterTableMergePartitionPreparedData) preparedData,
-                    tablesPrepareData.get(preparedData.getTableName()),
-                    newPartitionsPhysicalPlansMap.get(preparedData.getTableName()),
-                    tablesTopologyMap.get(preparedData.getTableName()),
-                    targetTablesTopology.get(preparedData.getTableName()),
-                    sourceTablesTopology.get(preparedData.getTableName()),
-                    orderedTargetTablesLocations.get(preparedData.getTableName()), targetPartitionName, false,
-                    taskType, executionContext);
-        }
 
         ExecutableDdlJob subTask = subTaskJobFactory.create();
         executableDdlJob.combineTasks(subTask);

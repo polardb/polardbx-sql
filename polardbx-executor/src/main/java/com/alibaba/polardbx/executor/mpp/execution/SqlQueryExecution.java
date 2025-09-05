@@ -42,6 +42,7 @@ import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.ColumnarNodeSelector;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.NodeScheduler;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.NodeSelector;
+import com.alibaba.polardbx.executor.mpp.execution.scheduler.RandomNodeMode;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.SqlQueryScheduler;
 import com.alibaba.polardbx.executor.mpp.planner.NodePartitioningManager;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
@@ -150,17 +151,14 @@ public class SqlQueryExecution extends QueryExecution {
             int limitNode = session.getClientContext().getParamManager().getInt(ConnectionParams.MPP_NODE_SIZE);
             boolean columnarMode = session.getClientContext().getParamManager()
                 .getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCHEDULE);
-            MppScope mppScope = ExecUtils.getMppSchedulerScope(!columnarMode);
             if (limitNode <= 0) {
-                int polarXParallelism = ExecUtils.getPolarDBXCNCores(
-                    session.getClientContext().getParamManager(), mppScope);
-                limitNode = subPlan.getValue() % polarXParallelism > 0 ? subPlan.getValue() / polarXParallelism + 1 :
-                    subPlan.getValue() / polarXParallelism;
+                limitNode = ExecUtils.getMppLimitNodes(columnarMode, session.getClientContext().getParamManager(),
+                    subPlan.getValue());
             }
-            boolean randomNode =
-                session.getClientContext().getParamManager().getBoolean(ConnectionParams.MPP_NODE_RANDOM);
+            RandomNodeMode randomNodeMode = RandomNodeMode.getRandomNodeMode(
+                session.getClientContext().getParamManager().getString(ConnectionParams.MPP_NODE_RANDOM_MODE));
 
-            NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, limitNode, randomNode);
+            NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, limitNode, randomNodeMode);
             if (nodeSelector instanceof ColumnarNodeSelector) {
                 optimizeScheduleUnderColumnar((ColumnarNodeSelector) nodeSelector);
             }

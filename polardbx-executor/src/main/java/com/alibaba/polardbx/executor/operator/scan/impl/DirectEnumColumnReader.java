@@ -99,9 +99,9 @@ public class DirectEnumColumnReader extends DirectVarcharColumnReader {
         }
 
         // Read all bytes of stream into sliceOutput at once.
-        SliceOutput sliceOutput = new DynamicSliceOutput(positionCount);
-        ORCDataOutput dataOutput = new SliceOutputWrapper(sliceOutput);
         int len = (int) totalLength;
+        SliceOutput sliceOutput = new DynamicSliceOutput(len);
+        ORCDataOutput dataOutput = new SliceOutputWrapper(sliceOutput);
         while (len > 0) {
             int bytesRead = dataStream.read(dataOutput, len);
             if (bytesRead < 0) {

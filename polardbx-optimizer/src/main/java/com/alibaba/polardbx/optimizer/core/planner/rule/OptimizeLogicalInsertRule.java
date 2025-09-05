@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -35,11 +36,9 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.BinaryType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.LastInsertId;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategyResult;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
@@ -49,7 +48,12 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalReplace;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalUpsert;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.WriterFactory;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.LogicalWriteUtil.ReplaceRexWithParamHandlerCall;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.MappingBuilder;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.RexHandlerCallFactory.ReplaceRexWithParamHandlerCallBuilder;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.RexHandlerChain;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.RexHandlerChainFactory;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.RexHandlerFactory;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.InsertWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.RelocateWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplaceRelocateWriter;
@@ -84,15 +88,12 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSequenceParam;
-import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.util.mapping.Mappings;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -104,7 +105,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -230,7 +230,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         final boolean isValueSource = !origin.isSourceSelect();
 
         final List<RexNode> newDuplicatedUpdateList = newInsert.isSourceSelect() ?
-            LogicalInsert.buildDuplicateKeyUpdateList(newInsert, valuePermute.size(), null) :
+            LogicalInsert.buildDuplicateKeyUpdateList(newInsert, new AtomicInteger(valuePermute.size()), null, null) :
             newInsert.getDuplicateKeyUpdateList();
 
         // Build writers
@@ -840,19 +840,28 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                 Map<String, Set<String>> currentUniqueKeys = e.getValue();
                 // At least match one uk in table
                 if (currentUniqueKeys.values().stream().anyMatch(
-                    currentUniqueKey -> currentUniqueKey.size() == uniqueKey.size() && currentUniqueKey.containsAll(
-                        uniqueKey))) {
-                    ukAllTableMap.computeIfAbsent(i, k -> new ArrayList<>()).add(currentTableName);
+                    currentUniqueKey -> currentUniqueKey.size() == uniqueKey.size()
+                        && currentUniqueKey.containsAll(uniqueKey))) {
+                    final List<String> ukAllTables = ukAllTableMap.computeIfAbsent(i, k -> new ArrayList<>());
+                    if (TStringUtil.equalsIgnoreCase(currentTableName, primaryTableName)) {
+                        // Add primary table to first position
+                        ukAllTables.add(0, currentTableName);
+                    } else {
+                        ukAllTables.add(currentTableName);
+                    }
                 }
             }
         }
 
-        List<String> primaryKey = new ArrayList<>();
+        Set<String> primaryKey = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         if (baseTableMeta.getPrimaryIndex() != null) {
             primaryKey.addAll(
                 baseTableMeta.getPrimaryIndex().getKeyColumns().stream().map(cm -> cm.getName().toUpperCase())
                     .collect(Collectors.toList()));
         }
+
+        final boolean isGetDupForPkFromPrimaryOnly =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_GET_DUP_FOR_PK_FROM_PRIMARY_ONLY);
 
         // Best table for all uk is the table contains all uk columns
         // and every uk contains all partition columns of this table
@@ -861,17 +870,28 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             primaryKey,
             schemaName,
             primaryTableName,
+            isGetDupForPkFromPrimaryOnly,
             executionContext);
 
         if (bestTableUkMap.isEmpty()) {
             for (Map.Entry<Integer, List<String>> e : ukAllTableMap.entrySet()) {
-                List<String> tableNames = e.getValue();
-                List<String> uniqueKey = uniqueKeys.get(e.getKey());
-                boolean isPrimary = uniqueKey.containsAll(primaryKey) && primaryKey.containsAll(uniqueKey);
+                final List<String> tableNames = e.getValue();
+                final Set<String> uniqueKey = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                uniqueKey.addAll(uniqueKeys.get(e.getKey()));
 
-                // PK must be searched on primary table
-                String ukTargetTable = isPrimary ? primaryTableName :
-                    getUkTargetTable(schemaName, primaryTableName, uniqueKey, tableNames, executionContext);
+                String ukTargetTable = null;
+                if (isGetDupForPkFromPrimaryOnly
+                    && uniqueKey.containsAll(primaryKey) && primaryKey.containsAll(uniqueKey)) {
+                    // PK must be searched on primary table
+                    ukTargetTable = primaryTableName;
+                } else {
+                    ukTargetTable = getUkTargetTable(schemaName,
+                        primaryTableName,
+                        uniqueKey,
+                        tableNames,
+                        executionContext);
+                }
+
                 tableUkMap.computeIfAbsent(ukTargetTable.toUpperCase(), k -> new ArrayList<>())
                     .add(uniqueKeys.get(e.getKey()));
             }
@@ -883,41 +903,94 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
     }
 
     /**
+     * if there are multiple tables contains the same uk, find the best table for all uk.
+     * <p>
+     * if primary key is the only uk, choose table with priority as below:
+     * <pre>
+     *     1. primary table partition by pk
+     *     2. published gsi partition by pk
+     *     3. primary table not partition by pk
+     * </pre>
+     * <p>
+     * if exists uk other than pk, choose best table for uk first, with priority as below:
+     * <pre>
+     *     1. published gsi with partition key included in all uk columns
+     * </pre>
+     * <p>
+     * if best table for uk exists, choose the best table for pk, with priority as below:
+     * <pre>
+     *     1. best table for uk is also partitioned by pk
+     *     2. primary table partition by pk
+     *     3. published gsi partitioned by pk
+     *     4. primary table not partition by pk
+     * </pre>
+     *
      * @param ukAllTableMap map[uk index, tables contains this uk]
      * @param uniqueKeys map[uk index, columns of this uk]
      */
     private static @NotNull Map<String, List<List<String>>> findBestTableForAllUk(
         Map<Integer, List<String>> ukAllTableMap,
         List<List<String>> uniqueKeys,
-        List<String> primaryKey,
+        Set<String> pkSet,
         String schemaName,
         String primaryTableName,
+        boolean isGetDupForPkFromPrimaryOnly,
         ExecutionContext ec) {
         final Map<String, List<List<String>>> bestTableUkMap = new HashMap<>();
-        final Set<String> pkSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        pkSet.addAll(primaryKey);
 
         final SchemaManager sm = ec.getSchemaManager(schemaName);
 
+        final Set<String> tablesContainsPk = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         final Optional<List<String>> bestTableCandidates = ukAllTableMap
             .entrySet()
             .stream()
-            // skip primary key
-            .filter(e -> !(uniqueKeys.get(e.getKey()).containsAll(primaryKey)
-                && pkSet.containsAll(uniqueKeys.get(e.getKey()))))
+            .filter(e -> {
+                final Set<String> ukSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                ukSet.addAll(uniqueKeys.get(e.getKey()));
+                final boolean isPk = ukSet.containsAll(pkSet) && pkSet.containsAll(ukSet);
+                if (isPk) {
+                    tablesContainsPk.addAll(e.getValue());
+                }
+                // skip primary key candidates
+                return !isPk;
+            })
             .map(e -> e.getValue()
                 .stream()
                 // exclude unpublished gsi
-                .filter(tableName -> tableName.equalsIgnoreCase(primaryTableName)
-                    || GlobalIndexMeta.isPublished(ec, sm.getTable(tableName)))
+                .filter(tableName -> isPrimaryOrPublishedGsi(primaryTableName, tableName, ec, sm))
                 .collect(Collectors.toList()))
             // exclude empty table candidates list
             .filter(candidates -> !candidates.isEmpty())
             .findFirst();
 
-        if (bestTableCandidates.isPresent()) {
-            final TddlRuleManager rm = OptimizerContext.getContext(schemaName).getRuleManager();
+        final boolean pkOnly = !bestTableCandidates.isPresent();
 
+        final TddlRuleManager rm = Objects.requireNonNull(OptimizerContext.getContext(schemaName)).getRuleManager();
+
+        // PK only
+        if (pkOnly) {
+            // Choose primary table by default
+            String tableForPk = primaryTableName;
+
+            if (!isGetDupForPkFromPrimaryOnly) {
+                final Set<String> tablesPartitionByPk = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                tablesContainsPk.stream()
+                    .filter(pkCandidate -> isTablePartitionByColumns(pkCandidate, pkSet, rm)
+                        && isPrimaryOrPublishedGsi(primaryTableName, pkCandidate, ec, sm))
+                    .forEach(tablesPartitionByPk::add);
+                // Choose primary table if primary table partition by pk
+                // or choose first published gsi table partition by pk
+                if (!tablesPartitionByPk.contains(tableForPk) && !tablesPartitionByPk.isEmpty()) {
+                    tableForPk = tablesPartitionByPk.iterator().next();
+                }
+            }
+
+            bestTableUkMap.computeIfAbsent(
+                    tableForPk.toUpperCase(),
+                    k -> new ArrayList<>())
+                .add(ImmutableList.copyOf(pkSet));
+        } else {
+            // UK exists
             for (String bestTable : bestTableCandidates.get()) {
                 boolean bestForAllUk = true;
                 final List<List<String>> ukList = new ArrayList<>();
@@ -928,15 +1001,13 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                     final Set<String> ukColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                     ukColumnSet.addAll(uniqueKeys.get(e.getKey()));
 
-                    final boolean isPrimary = ukColumnSet.containsAll(pkSet) && pkSet.containsAll(ukColumnSet);
-
-                    if (isPrimary) {
-                        // PK must be searched on primary table
+                    if (ukColumnSet.containsAll(pkSet) && pkSet.containsAll(ukColumnSet)) {
+                        // Check candidate best for pk later
                         continue;
                     }
 
                     if (!ukTableNames.contains(bestTable)
-                        || !ukColumnSet.containsAll(rm.getSharedColumns(bestTable))) {
+                        || !isTablePartitionByColumns(bestTable, ukColumnSet, rm)) {
                         bestForAllUk = false;
                         break;
                     }
@@ -947,19 +1018,41 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                 if (bestForAllUk) {
                     bestTableUkMap.put(bestTable.toUpperCase(), ukList);
 
-                    // PK must be searched on primary table
+                    // Choose primary table by default
+                    String tableForPk = primaryTableName;
+
+                    if (!isGetDupForPkFromPrimaryOnly) {
+                        final Set<String> tablesPartitionByPk = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        tablesContainsPk.stream()
+                            .filter(pkCandidate -> isTablePartitionByColumns(pkCandidate, pkSet, rm)
+                                && isPrimaryOrPublishedGsi(primaryTableName, pkCandidate, ec, sm))
+                            .forEach(tablesPartitionByPk::add);
+                        // Choose best table for all uk if table is also partition by pk
+                        // or choose primary table if primary table partition by pk
+                        // or choose first published gsi partition by pk
+                        if (tablesPartitionByPk.contains(bestTable)) {
+                            tableForPk = bestTable;
+                        } else if (!tablesPartitionByPk.contains(tableForPk) && !tablesPartitionByPk.isEmpty()) {
+                            tableForPk = tablesPartitionByPk.iterator().next();
+                        }
+                    }
+
                     bestTableUkMap.computeIfAbsent(
-                            primaryTableName.toUpperCase(),
+                            tableForPk.toUpperCase(),
                             k -> new ArrayList<>())
-                        .add(primaryKey);
+                        .add(ImmutableList.copyOf(pkSet));
+
                     break;
                 }
             }
-        } else {
-            // PK only and PK must be searched on primary table
-            bestTableUkMap.computeIfAbsent(primaryTableName.toUpperCase(), k -> new ArrayList<>()).add(primaryKey);
         }
         return bestTableUkMap;
+    }
+
+    private static boolean isPrimaryOrPublishedGsi(String primaryTableName, String tableName, ExecutionContext ec,
+                                                   SchemaManager sm) {
+        return tableName.equalsIgnoreCase(primaryTableName)
+            || GlobalIndexMeta.isPublished(ec, sm.getTable(tableName));
     }
 
     private Map<String, List<String>> getLocalIndexName(Map<String, List<List<String>>> tableUkMap, String schemaName,
@@ -988,21 +1081,18 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         return localIndexName;
     }
 
-    private String getUkTargetTable(String schemaName, String primaryTableName, List<String> uniqueKey,
+    private String getUkTargetTable(String schemaName, String primaryTableName, Set<String> ukColumnSet,
                                     List<String> tableNames, ExecutionContext executionContext) {
         final TddlRuleManager rm = OptimizerContext.getContext(schemaName).getRuleManager();
         final SchemaManager sm = executionContext.getSchemaManager(schemaName);
-        final Set<String> ukColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        ukColumnSet.addAll(uniqueKey);
 
         final Set<String> tablesPartitionedByUk = tableNames
             .stream()
-            .filter(tableName -> ukColumnSet.containsAll(rm.getSharedColumns(tableName)))
+            .filter(tableName -> isTablePartitionByColumns(tableName, ukColumnSet, rm))
             .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
         final Set<String> primaryTableAndPublicGsiNames = tableNames
             .stream()
-            .filter(tableName -> tableName.equalsIgnoreCase(primaryTableName)
-                || GlobalIndexMeta.isPublished(executionContext, sm.getTable(tableName)))
+            .filter(tableName -> isPrimaryOrPublishedGsi(primaryTableName, tableName, executionContext, sm))
             .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
 
         // If primary table is partitioned by uk
@@ -1039,18 +1129,57 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         }
 
         // One of the UK can not find corresponding tables, which should be impossible
-        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "can not find corresponding gsi for uk " + uniqueKey);
+        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+            "can not find corresponding gsi for uk " + String.join(",", ukColumnSet));
     }
 
-    private LogicalInsert processOnDuplicateKeyUpdate(LogicalInsert upsert,
-                                                      AtomicInteger maxParamIndex) {
+    private static @NotNull Boolean isTablePartitionByColumns(String tableName, Set<String> ukColumnSet,
+                                                              TddlRuleManager rm) {
+        return Optional.ofNullable(rm.getSharedColumns(tableName))
+            .map(partitionKeys ->
+                // skip single/broadcast table
+                !partitionKeys.isEmpty()
+                    && ukColumnSet.containsAll(partitionKeys))
+            .orElse(false);
+    }
+
+    private LogicalInsert processOnDuplicateKeyUpdateForLogicalExecute(LogicalInsert upsert,
+                                                                       AtomicInteger maxParamIndex,
+                                                                       ExecutionContext ec) {
+        final ReplaceRexWithParamHandlerCallBuilder handlerCallBuilder =
+            new ReplaceRexWithParamHandlerCallBuilder(upsert, maxParamIndex, ec);
+
         final RexBuilder rexBuilder = upsert.getCluster().getRexBuilder();
         final List<RexNode> duplicateKeyUpdateList = upsert.getDuplicateKeyUpdateList().stream()
-            .map(rex -> {
-                final RexCall rexCall = (RexCall) rex;
-                final RexNode value = rexCall.getOperands().get(1)
-                    .accept(new ReplaceRexCallWithParamVisitor(maxParamIndex, true, true, true));
-                return rexBuilder.makeCall(rexCall.op, rexCall.getOperands().get(0), value);
+            .map(duplicateKeyUpdateItem -> {
+                final RexCall rexCall = (RexCall) duplicateKeyUpdateItem;
+                final RexInputRef columnRef = (RexInputRef) rexCall.getOperands().get(0);
+                final int columnIndex = columnRef.getIndex();
+                final RexNode rex = rexCall.getOperands().get(1);
+
+                /**
+                 * <pre>
+                 * Check type and compute functions.
+                 * If the function is a sharding key, compute it.
+                 * If the function can not be pushed down ( like LAST_INSERT_ID() ), compute it.
+                 * If the function can be pushed down, check its operands, which may be functions can't be pushed down.
+                 * If the function is not deterministic, compute it.
+                 * If a parent node need to be computed, its child node must also be computed.
+                 * If a child node is cloned, its parent node must also be cloned.
+                 * If the target column is column with implicit default on null, wrap function with IF(ISNULL(rexNode), implicitDefault, rexNode).
+                 * </pre>
+                 */
+                final ReplaceRexWithParamHandlerCall call = handlerCallBuilder.buildLogicalDynamicValues(columnIndex,
+                    rex,
+                    true,
+                    true);
+
+                final RexHandlerChain<ReplaceRexWithParamHandlerCall> handlerChain =
+                    RexHandlerChainFactory.create(call);
+
+                final RexNode value = handlerChain.process(call).getResult();
+
+                return rexBuilder.makeCall(rexCall.op, columnRef, value);
             }).collect(Collectors.toList());
 
         final LogicalInsert result = new LogicalInsert(upsert.getCluster(),
@@ -1066,23 +1195,58 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             upsert.getBatchSize(),
             upsert.getAppendedColumnIndex(),
             upsert.getHints(),
-            upsert.getTableInfo());
+            upsert.getTableInfo(),
+            ImmutableList.copyOf(handlerCallBuilder.getDynamicImplicitDefaultParamMap().values()));
         result.setAutoIncParamIndex(upsert.getAutoIncParamIndex());
 
         return result;
     }
 
     private LogicalInsert processOnDuplicateKeyUpdateForNondeterministic(LogicalInsert upsert,
-                                                                         AtomicInteger maxParamIndex) {
+                                                                         AtomicInteger maxParamIndex,
+                                                                         ExecutionContext ec) {
+        final ReplaceRexWithParamHandlerCallBuilder handlerCallBuilder =
+            new ReplaceRexWithParamHandlerCallBuilder(upsert, maxParamIndex, ec, true);
+
+        // For batch upsert, we need to compute after-value for each row,
+        // but we have only one ON DUPLICATE KEY UPDATE clause for each physical INSERT,
+        // so that we need to compute the ON DUPLICATE KEY UPDATE clause on CN.
+        final RexUtils.ColumnRefFinder columnRefFinder = new RexUtils.ColumnRefFinder(false);
         final RexBuilder rexBuilder = upsert.getCluster().getRexBuilder();
-        final RexUtils.ColumnRefFinder columnRefFinder = new RexUtils.ColumnRefFinder();
         final List<RexNode> duplicateKeyUpdateList = upsert.getDuplicateKeyUpdateList().stream()
-            .map(rex -> {
-                final RexCall rexCall = (RexCall) rex;
-                final RexNode value = rexCall.getOperands().get(1)
-                    .accept(new ReplaceRexCallForBroadcastVisitor(maxParamIndex, true, false,
-                        (r) -> !columnRefFinder.analyze(r)));
-                return rexBuilder.makeCall(rexCall.op, rexCall.getOperands().get(0), value);
+            .map(duplicateKeyUpdateItem -> {
+                final RexCall rexCall = (RexCall) duplicateKeyUpdateItem;
+                final RexInputRef columnRef = (RexInputRef) rexCall.getOperands().get(0);
+                final int columnIndex = columnRef.getIndex();
+                final RexNode rex = rexCall.getOperands().get(1);
+
+                /**
+                 * <pre>
+                 * Check type and compute functions.
+                 * If the function is a sharding key, compute it.
+                 * If the function can not be pushed down ( like LAST_INSERT_ID() ), compute it.
+                 * If the function can be pushed down, check its operands, which may be functions can't be pushed down.
+                 * If the function is not deterministic, compute it.
+                 * If a parent node need to be computed, its child node must also be computed.
+                 * If a child node is cloned, its parent node must also be cloned.
+                 * If the target column is column with dynamic implicit default on null, wrap function with IF_NULL(rexNode, implicitDefault).
+                 * </pre>
+                 */
+                final ReplaceRexWithParamHandlerCall call = handlerCallBuilder.buildOnDuplicateKeyUpdate(columnIndex,
+                    rex,
+                    rexBuilder,
+                    false,
+                    true,
+                    columnRefFinder);
+
+                final RexHandlerChain<ReplaceRexWithParamHandlerCall> chain =
+                    handlerCallBuilder.withImplicitDefault(columnIndex) ?
+                        RexHandlerChainFactory.create(call)
+                        // For DeterministicPushDown, replace RexCall only
+                        : RexHandlerChain.create(RexHandlerFactory.REPLACE_REX_CALL_WITH_PARAM_HANDLER);
+
+                final RexNode value = chain.process(call).getResult();
+                return rexBuilder.makeCall(rexCall.op, columnRef, value);
             }).collect(Collectors.toList());
 
         final LogicalInsert result = new LogicalInsert(upsert.getCluster(),
@@ -1098,7 +1262,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             upsert.getBatchSize(),
             upsert.getAppendedColumnIndex(),
             upsert.getHints(),
-            upsert.getTableInfo());
+            upsert.getTableInfo(),
+            ImmutableList.copyOf(handlerCallBuilder.getDynamicImplicitDefaultParamMap().values()));
         result.setAutoIncParamIndex(upsert.getAutoIncParamIndex());
         return result;
     }
@@ -1189,8 +1354,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
      * @return Insert plan with new LogicalDynamicValues
      */
     private LogicalInsert processRexCall(LogicalInsert insert, AtomicInteger maxParamIndex, ExecutionContext ec) {
-        final Set<Integer> literalColumnIndex = new HashSet<>(insert.getLiteralColumnIndex());
-        final Set<Integer> deterministicColumnIndex = new HashSet<>(insert.getDeterministicColumnIndex(ec));
+        final ReplaceRexWithParamHandlerCallBuilder handlerCallBuilder =
+            new ReplaceRexWithParamHandlerCallBuilder(insert, maxParamIndex, ec);
 
         final LogicalDynamicValues input = RelUtils.getRelInput(insert);
         final AtomicBoolean withRexCallParam = new AtomicBoolean(false);
@@ -1201,11 +1366,25 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                 final int columnIndex = o.getKey();
                 final RexNode rex = o.getValue();
 
-                final boolean mustBeLiteral = literalColumnIndex.contains(columnIndex);
-                final ReplaceRexCallWithParamVisitor visitor =
-                    new ReplaceRexCallWithParamVisitor(maxParamIndex, deterministicColumnIndex.contains(columnIndex),
-                        mustBeLiteral, mustBeLiteral);
-                final RexNode replaced = rex.accept(visitor);
+                /**
+                 * <pre>
+                 * Check type and compute functions.
+                 * If the function is a sharding key, compute it.
+                 * If the function can not be pushed down ( like LAST_INSERT_ID() ), compute it.
+                 * If the function can be pushed down, check its operands, which may be functions can't be pushed down.
+                 * If the function is not deterministic, compute it.
+                 * If a parent node need to be computed, its child node must also be computed.
+                 * If a child node is cloned, its parent node must also be cloned.
+                 * If the target column is column with implicit default on null, wrap function with IF(ISNULL(rexNode), implicitDefault, rexNode).
+                 * </pre>
+                 */
+                final ReplaceRexWithParamHandlerCall call =
+                    handlerCallBuilder.buildLogicalDynamicValues(columnIndex, rex);
+
+                final RexHandlerChain<ReplaceRexWithParamHandlerCall> handlerChain =
+                    RexHandlerChainFactory.create(call);
+
+                final RexNode replaced = handlerChain.process(call).getResult();
 
                 if (rex != replaced && !withRexCallParam.get()) {
                     withRexCallParam.set(true);
@@ -1233,7 +1412,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                 insert.getBatchSize(),
                 insert.getAppendedColumnIndex(),
                 insert.getHints(),
-                insert.getTableInfo());
+                insert.getTableInfo(),
+                ImmutableList.copyOf(handlerCallBuilder.getDynamicImplicitDefaultParamMap().values()));
         }
         return newInsert;
     }
@@ -1291,7 +1471,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             logicalInsert.getBatchSize(),
             logicalInsert.getAppendedColumnIndex(),
             logicalInsert.getHints(),
-            logicalInsert.getTableInfo());
+            logicalInsert.getTableInfo(),
+            logicalInsert.getDynamicImplicitDefaultParams());
 
         return result;
     }
@@ -1390,10 +1571,10 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         // Add parameter for ON DUPLICATE KEY UPDATE list
         if (origin.isUpsert()) {
             if (logicalExecute) {
-                result = processOnDuplicateKeyUpdate(result, maxParamIndex);
+                result = processOnDuplicateKeyUpdateForLogicalExecute(result, maxParamIndex, ec);
             } else if (replaceNondeterministicOnly) {
                 // For broadcast table, here is a little bit tricky
-                result = processOnDuplicateKeyUpdateForNondeterministic(result, maxParamIndex);
+                result = processOnDuplicateKeyUpdateForNondeterministic(result, maxParamIndex, ec);
             }
         }
 
@@ -1442,7 +1623,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                     result.getGenColRexNodes(), result.getInputToEvalFieldsMapping(), result.getDefaultExprColMetas(),
                     result.getDefaultExprColRexNodes(), result.getDefaultExprEvalFieldsMapping(),
                     result.isPushablePrimaryKeyCheck(), result.isPushableForeignConstraintCheck(),
-                    result.isModifyForeignKey(), result.isUkContainsAllSkAndGsiContainsAllUk());
+                    result.isModifyForeignKey(), result.isUkContainsAllSkAndGsiContainsAllUk(),
+                    new ArrayList<>(), null);
             /**
              * 2、update the index of RexDynamicParam in onDuplicatedUpdate list recursively
              * how to update them? firstly, find out the minimum RexDynamicPara and compute the offset
@@ -1483,6 +1665,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             }
             newInsertOrReplace.setUnOptimizedLogicalDynamicValues(oldInput);
             newInsertOrReplace.setUnOptimizedDuplicateKeyUpdateList(result.getDuplicateKeyUpdateList());
+            newInsertOrReplace.setUnoptimizedDynamicImplicitDefaultParams(result.getDynamicImplicitDefaultParams());
         }
         return RelUtils.removeHepRelVertex(newInsertOrReplace);
     }
@@ -1516,187 +1699,21 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         return maxParamIndex;
     }
 
-    /**
-     * <pre>
-     * Check type and compute functions.
-     * If the function is a sharding key, compute it.
-     * If the function can not be pushed down ( like LAST_INSERT_ID() ), compute it.
-     * If the function can be pushed down, check its operands, which may be functions can't be pushed down.
-     * If the function is not deterministic, compute it.
-     * If a parent node need to be computed, its child node must also be computed.
-     * If a child node is cloned, its parent node must also be cloned.
-     * </pre>
-     */
-    private class ReplaceRexCallWithParamVisitor extends RexShuttle {
-
-        private final AtomicInteger currentParamIndex;
-        private final Deque<Boolean> isTop = new ArrayDeque<>();
-
-        /**
-         * For logical write, if the function is not deterministic, it should be calculated.
-         */
-        private boolean logicalWrite;
-        /**
-         * If the function can't be pushed down, all its operands must be computed too.
-         */
-        private boolean doReplace;
-
-        private boolean replaceLiteral;
-
-        ReplaceRexCallWithParamVisitor(AtomicInteger currentParamIndex, boolean logicalWrite, boolean doReplace) {
-            this(currentParamIndex, logicalWrite, doReplace, false);
-        }
-
-        ReplaceRexCallWithParamVisitor(AtomicInteger currentParamIndex, boolean logicalWrite,
-                                       boolean forceReplace, boolean replaceLiteral) {
-            this.logicalWrite = logicalWrite;
-            this.currentParamIndex = currentParamIndex;
-            this.doReplace = forceReplace;
-            this.replaceLiteral = replaceLiteral;
-            this.isTop.push(true);
-        }
-
-        @Override
-        public RexNode visitLiteral(RexLiteral literal) {
-            if (this.replaceLiteral && Boolean.TRUE.equals(isTop.peek())) {
-                return new RexCallParam(literal.getType(), currentParamIndex.incrementAndGet(), literal);
-            } else {
-                return super.visitLiteral(literal);
-            }
-        }
-
-        @Override
-        public RexNode visitInputRef(RexInputRef inputRef) {
-            if (Boolean.TRUE.equals(isTop.peek())) {
-                return new RexCallParam(inputRef.getType(), currentParamIndex.incrementAndGet(), inputRef);
-            } else {
-                doReplace = true;
-                return super.visitInputRef(inputRef);
-            }
-        }
-
-        @Override
-        public RexNode visitCall(final RexCall call) {
-            RexNode visited = null;
-
-            this.isTop.push(false);
-            try {
-                visited = super.visitCall(call);
-            } finally {
-                this.isTop.pop();
-            }
-
-            // If the function can't be pushed down, all its operands must be computed too.
-            doReplace |= !call.getOperator().canPushDown() || (logicalWrite && call.getOperator().isDynamicFunction());
-
-            // If function is last_insert_id with no operands, compute
-            doReplace |=
-                Objects.equals(call.getOperator().getName(), LastInsertId.NAME) && call.getOperands().size() == 0;
-
-            if (!doReplace) {
-                return visited;
-            }
-
-            if (Boolean.TRUE.equals(isTop.peek())) {
-                // Replace top RexNode with RexCallParam
-                return new RexCallParam(call.getType(), currentParamIndex.incrementAndGet(), call);
-            }
-
-//            if (call.getOperator() == TddlOperatorTable.NEXTVAL) {
-//                // If it's a nested seq.nextVal, we can't compute.
-//                throw new TddlRuntimeException(ErrorCode.ERR_FUNCTION, "'" + call + "'");
-//            }
-
-            return visited;
-        }
-    }
-
-    private class ReplaceRexCallForBroadcastVisitor extends RexShuttle {
-        private final AtomicInteger currentParamIndex;
-        private final Deque<Boolean> isTop = new ArrayDeque<>();
-        private final Deque<Boolean> isComputable = new ArrayDeque<>();
-
-        /**
-         * For logical write, if the function is not deterministic, it should be calculated.
-         */
-        private boolean logicalWrite;
-        /**
-         * If the function can't be pushed down, all its operands must be computed too.
-         */
-        private boolean doReplace;
-
-        private Predicate<RexNode> computable;
-
-        ReplaceRexCallForBroadcastVisitor(AtomicInteger currentParamIndex, boolean logicalWrite, boolean forceReplace,
-                                          Predicate<RexNode> computable) {
-            this.logicalWrite = logicalWrite;
-            this.currentParamIndex = currentParamIndex;
-            this.doReplace = forceReplace;
-            this.isTop.push(true);
-            this.computable = computable;
-        }
-
-        @Override
-        public RexNode visitCall(final RexCall call) {
-            RexNode visited = null;
-
-            Boolean currentRexComputable = this.isComputable.peek();
-            if (!Boolean.TRUE.equals(currentRexComputable)) {
-                currentRexComputable = this.computable.test(call);
-            }
-
-            if (Boolean.TRUE.equals(currentRexComputable)) {
-                this.isTop.push(false);
-                try {
-                    visited = super.visitCall(call);
-                } finally {
-                    this.isTop.pop();
-                }
-
-                // If the function can't be pushed down, all its operands must be computed too.
-                doReplace |=
-                    !call.getOperator().canPushDown() || (logicalWrite && call.getOperator().isDynamicFunction());
-
-                if (!doReplace) {
-                    return visited;
-                }
-
-                if (Boolean.TRUE.equals(isTop.peek())) {
-                    // Replace top RexNode with RexCallParam
-                    return new RexCallParam(call.getType(), currentParamIndex.incrementAndGet(), call);
-                }
-
-                if (call.getOperator() == TddlOperatorTable.NEXTVAL) {
-                    // If it's a nested seq.nextVal, we can't compute.
-                    throw new TddlRuntimeException(ErrorCode.ERR_FUNCTION, "'" + call + "'");
-                }
-
-                return visited;
-            } else {
-                this.isComputable.push(false);
-                try {
-                    return super.visitCall(call);
-                } finally {
-                    this.isComputable.pop();
-                }
-            }
-        }
-    }
-
-    private ImmutableList<ImmutableList<RexNode>> buildNewTupleForLogicalDynamicValue(LogicalDynamicValues input,
+    private ImmutableList<ImmutableList<RexNode>> buildNewTupleForLogicalDynamicValue(LogicalDynamicValues sourceRel,
                                                                                       List<Integer> autoIncParamIndex,
                                                                                       ExecutionContext ec,
                                                                                       TableMeta tableMeta) {
         final ImmutableList.Builder<ImmutableList<RexNode>> tuplesBuilder = ImmutableList.builder();
-        final RexBuilder rexBuilder = input.getCluster().getRexBuilder();
+        final RexBuilder rexBuilder = sourceRel.getCluster().getRexBuilder();
 
         final AtomicInteger sequenceParamIndex = new AtomicInteger(0);
         sequenceParamIndex.addAndGet(
-            input.getTuples().get(0).stream().filter(r -> !(r instanceof RexSequenceParam || r instanceof RexLiteral))
+            sourceRel.getTuples().get(0).stream()
+                .filter(r -> !(r instanceof RexSequenceParam || r instanceof RexLiteral))
                 .mapToInt(r -> 1).sum());
 
         final AtomicInteger rexIndex = new AtomicInteger(0);
-        ImmutableList<RexNode> tuple = input.tuples.get(0);
+        ImmutableList<RexNode> tuple = sourceRel.tuples.get(0);
         final ImmutableList.Builder<RexNode> tupleBuilder = ImmutableList.builder();
         Ord.zip(tuple).forEach(o -> {
             final RexNode rex = o.getValue();

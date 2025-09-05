@@ -1,0 +1,34 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists omc_t1;
+
+create table omc_t1 (
+a int,
+b bigint,
+c varchar(20),
+primary key(a)
+) engine = InnoDB
+broadcast;
+
+insert into omc_t1 values (1, 101, 'a'),
+(2, 102, 'b'),
+(3, 103, 'c'),
+(4, 201, 'd'),
+(5, 202, 'e'),
+(6, 203, 'f'),
+(7, 301, 'g');
+
+select * from omc_t1 order by a;
+
+alter table omc_t1 modify column c varchar(200), ALGORITHM=OMC;
+
+show full create table omc_t1;
+
+select * from omc_t1 order by a;
+
+alter table omc_t1 modify column a bigint;
+
+show full create table omc_t1;
+
+select * from omc_t1 order by a;
+

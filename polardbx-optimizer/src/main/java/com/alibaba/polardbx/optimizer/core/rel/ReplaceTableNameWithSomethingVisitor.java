@@ -531,7 +531,7 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     @Override
     public SqlNode visit(SqlDynamicParam param) {
-        if (param.getIndex() == -4 && correlateFieldInViewMap != null) {
+        if (param.getIndex() == PlannerUtils.EXPLAIN_SUBQUERY_PARAM_INDEX && correlateFieldInViewMap != null) {
             return buildDynamicParamForCorrelatedSubquery(isExplain, param, correlateFieldInViewMap);
         }
 

@@ -716,6 +716,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
 
         assertSequenceStartValue(tableName);
+
+        purge();
     }
 
     @Test
@@ -751,6 +753,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
         insert = String.format("insert into %s(a,b) values (1,1)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        purge();
     }
 
     void assertSequenceStartValue(String tableName) {
@@ -761,5 +765,10 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         } catch (SQLException e) {
             Assert.fail();
         }
+    }
+
+    public void purge() {
+        String sql = "purge recyclebin";
+        JdbcUtil.executeUpdate(tddlConnection, sql);
     }
 }

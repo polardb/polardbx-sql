@@ -7,6 +7,7 @@ import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
@@ -22,7 +23,6 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -30,6 +30,10 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_RECENTLY_EXECUTED_PERIOD;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * @author fangwu
@@ -71,6 +75,7 @@ public class BaselineInfoTest {
         b1.clearAllUnfixedPlan();
         Assert.assertTrue(b1.getUnacceptedPlans().size() == 0);
         Assert.assertTrue(b1.getAcceptedPlans().size() == 1);
+        Assert.assertTrue(b1.getFixPlans().iterator().next().getTablesHashCode() == PlanInfo.REBUILD_PLAN_HASH_CODE);
     }
 
     @Test
@@ -122,7 +127,7 @@ public class BaselineInfoTest {
         Assert.assertTrue(!b2.isHotEvolution());
     }
 
-    @Ignore
+    @Test
     public void testMergeExpiredPlan() {
         BaselineInfo b1 = new BaselineInfo("test sql", Collections.emptySet());
         BaselineInfo b2 = new BaselineInfo("test sql", Collections.emptySet());
@@ -207,6 +212,60 @@ public class BaselineInfoTest {
         assert !PlanManagerUtil.baselineSupported(new PhyTableOperation(cluster, cluster.traitSet()));
     }
 
+    /**
+     * 当重建加载计划为空时，直接返回。
+     */
+    @Test
+    public void testResetWhenRebuildIsNull() {
+        BaselineInfo baselineInfo = new BaselineInfo("test sql", Collections.emptySet());
+        assertNull(baselineInfo.getRebuildAtLoadPlan());
+        baselineInfo.resetRebuildAtLoadPlanIfMismatched(123);
+        assertNull(baselineInfo.getRebuildAtLoadPlan());
+    }
+
+    /**
+     * 当当前哈希值与提供的哈希值匹配时，不重置重建加载计划。
+     */
+    @Test
+    public void testResetWhenHashMatched() {
+        BaselineInfo baselineInfo = new BaselineInfo("test sql", Collections.emptySet());
+        PlanInfo pMock = mock(PlanInfo.class);
+        when(pMock.getTablesHashCode()).thenReturn(123);
+        baselineInfo.computeRebuiltAtLoadPlanIfNotExists(() -> pMock);
+        assertTrue(baselineInfo.getRebuildAtLoadPlan() == pMock);
+        baselineInfo.resetRebuildAtLoadPlanIfMismatched(123);
+        assertTrue(baselineInfo.getRebuildAtLoadPlan() == pMock);
+    }
+
+    /**
+     * 当当前哈希值与提供的哈希值不匹配时，重置重建加载计划。
+     */
+    @Test
+    public void testResetWhenHashNotMatched() {
+        BaselineInfo baselineInfo = new BaselineInfo("test sql", Collections.emptySet());
+        PlanInfo pMock = mock(PlanInfo.class);
+        when(pMock.getTablesHashCode()).thenReturn(122);
+        baselineInfo.computeRebuiltAtLoadPlanIfNotExists(() -> pMock);
+        assertTrue(baselineInfo.getRebuildAtLoadPlan() == pMock);
+        baselineInfo.resetRebuildAtLoadPlanIfMismatched(123);
+        assertTrue(baselineInfo.getRebuildAtLoadPlan() == null);
+    }
+
+    @Test
+    public void testHotEvolution() {
+        BaselineInfo baselineInfo = new BaselineInfo("test sql", Collections.emptySet());
+        baselineInfo.setHotEvolution(true);
+        baselineInfo.setExtend(baselineInfo.encodeExtend());
+        String json = BaselineInfo.serializeToJson(baselineInfo, true);
+        System.out.println(json);
+
+        BaselineInfo baselineInfo2 = BaselineInfo.deserializeFromJson(json);
+
+        assert baselineInfo2.isHotEvolution();
+        assert BaselineInfo.hotEvolution(baselineInfo.getExtend());
+        assert BaselineInfo.hotEvolution(baselineInfo2.getExtend());
+    }
+
     private static PlanInfo buildFixPlan() {
         PlanInfo p =
             new PlanInfo(1, "", System.currentTimeMillis() / 1000, System.currentTimeMillis() / 1000, 0, 1D, 1D,
@@ -219,6 +278,11 @@ public class BaselineInfoTest {
         PlanInfo p =
             new PlanInfo(1, "", System.currentTimeMillis() / 1000, System.currentTimeMillis() / 1000, 0, 1D, 1D,
                 true, false, "", "", "", 1);
+        VolcanoPlanner planner = new VolcanoPlanner();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        final RelDataTypeFactory typeFactory = new SqlTypeFactoryImpl(RelDataTypeSystem.DEFAULT);
+        RelOptCluster cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
+        p.resetPlan(new Gather(cluster, cluster.traitSet(), null));
         p.setId(planId.incrementAndGet());
         return p;
     }
@@ -229,6 +293,11 @@ public class BaselineInfoTest {
                 (System.currentTimeMillis() - InstConfUtil.getLong(SPM_RECENTLY_EXECUTED_PERIOD) - 1000) / 1000, 0, 1D,
                 1D,
                 true, false, "", "", "", 1);
+        VolcanoPlanner planner = new VolcanoPlanner();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        final RelDataTypeFactory typeFactory = new SqlTypeFactoryImpl(RelDataTypeSystem.DEFAULT);
+        RelOptCluster cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
+        p.resetPlan(new Gather(cluster, cluster.traitSet(), null));
         p.setId(planId.incrementAndGet());
         return p;
     }

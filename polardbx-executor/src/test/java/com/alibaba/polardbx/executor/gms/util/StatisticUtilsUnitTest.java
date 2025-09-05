@@ -20,6 +20,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -40,10 +41,18 @@ import static com.alibaba.polardbx.common.properties.ConnectionParams.MAINTENANC
 import static com.alibaba.polardbx.common.utils.Assert.assertTrue;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.SELECT_TABLE_ROWS_SQL;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.getIndexInfoFromGsi;
+import static com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils.TYPE_FACTORY;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyFloat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,11 +62,11 @@ import static org.mockito.Mockito.when;
  */
 public class StatisticUtilsUnitTest {
     @Test
-    public void testSketchTableDdlNormal() {
+    public void testSketchTableDdlNormal() throws Exception {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
         // 测试用例1：当参数正确时，不抛出异常
-        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
-            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = mockStatic(GlobalIndexMeta.class);
         ) {
             OptimizerContext optimizerContext = mock(OptimizerContext.class);
             SchemaManager schemaManager = mock(SchemaManager.class);
@@ -67,17 +76,20 @@ public class StatisticUtilsUnitTest {
             when(schemaManager.getTable("test_table")).thenReturn(mock(TableMeta.class));
             globalIndexMetaMockedStatic.when(() -> GlobalIndexMeta.getTableIndexMap(any(), any()))
                 .thenReturn(Maps.newHashMap());
-            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
+            StatisticSubProcessUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
         }
     }
 
     @Test
-    public void testSketchTableDdlFileStore() {
+    public void testSketchTableDdlFileStore() throws Exception {
         // 测试用例2：如果是文件存储表，则直接返回而不执行后续操作
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
-        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
-            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
-            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = Mockito.mockStatic(StatisticUtils.class);) {
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = mockStatic(GlobalIndexMeta.class);
+            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = mockStatic(StatisticUtils.class);
+            MockedStatic<StatisticSubProcessUtils> statisticSubProcessUtilsMockedStatic = mockStatic(
+                StatisticSubProcessUtils.class);
+        ) {
             OptimizerContext optimizerContext = mock(OptimizerContext.class);
             SchemaManager schemaManager = mock(SchemaManager.class);
             optimizerContextMockedStatic.when(() -> OptimizerContext.getContext("test_schema"))
@@ -90,11 +102,11 @@ public class StatisticUtilsUnitTest {
 
             statisticUtilsMockedStatic.when(() -> StatisticUtils.isFileStore(any(), any()))
                 .thenReturn(true);
-            statisticUtilsMockedStatic.when(
-                    () -> StatisticUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
+            statisticSubProcessUtilsMockedStatic.when(
+                    () -> StatisticSubProcessUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
                 .thenCallRealMethod();
 
-            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
+            StatisticSubProcessUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
         }
     }
 
@@ -102,10 +114,12 @@ public class StatisticUtilsUnitTest {
     public void testSketchTableDdl_JobInterrupted() {
         // 测试用例3：如果DDL作业被取消，则抛出TddlRuntimeException
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
-        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
-            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
-            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = Mockito.mockStatic(StatisticUtils.class);
-            MockedStatic<CrossEngineValidator> crossEngineValidatorMockedStatic = Mockito.mockStatic(
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = mockStatic(GlobalIndexMeta.class);
+            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = mockStatic(StatisticUtils.class);
+            MockedStatic<StatisticSubProcessUtils> statisticSubProcessUtilsMockedStatic = mockStatic(
+                StatisticSubProcessUtils.class);
+            MockedStatic<CrossEngineValidator> crossEngineValidatorMockedStatic = mockStatic(
                 CrossEngineValidator.class);
         ) {
             Map<String, java.util.Map<String, List<String>>> indexMap = Maps.newHashMap();
@@ -132,13 +146,13 @@ public class StatisticUtilsUnitTest {
                 .thenCallRealMethod();
             statisticUtilsMockedStatic.when(() -> StatisticUtils.isFileStore(any(), any()))
                 .thenReturn(false);
-            statisticUtilsMockedStatic.when(
-                    () -> StatisticUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
+            statisticSubProcessUtilsMockedStatic.when(
+                    () -> StatisticSubProcessUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
                 .thenCallRealMethod();
             crossEngineValidatorMockedStatic.when(() -> CrossEngineValidator.isJobInterrupted(any()))
                 .thenReturn(true);
 
-            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
+            StatisticSubProcessUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
             Assert.fail();
         } catch (Exception e) {
             assertTrue(e.getMessage().contains("4636"));
@@ -146,15 +160,17 @@ public class StatisticUtilsUnitTest {
     }
 
     @Test
-    public void testSketchTableDdlRebuild() {
+    public void testSketchTableDdlRebuild() throws Exception {
         // 测试用例5：当需要强制重建时，调用rebuildShardParts方法
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
-        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
-            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
-            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = Mockito.mockStatic(StatisticUtils.class);
-            MockedStatic<CrossEngineValidator> crossEngineValidatorMockedStatic = Mockito.mockStatic(
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = mockStatic(GlobalIndexMeta.class);
+            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = mockStatic(StatisticUtils.class);
+            MockedStatic<StatisticSubProcessUtils> statisticSubProcessUtilsMockedStatic = mockStatic(
+                StatisticSubProcessUtils.class);
+            MockedStatic<CrossEngineValidator> crossEngineValidatorMockedStatic = mockStatic(
                 CrossEngineValidator.class);
-            MockedStatic<StatisticManager> statisticManagerMockedStatic = Mockito.mockStatic(StatisticManager.class);
+            MockedStatic<StatisticManager> statisticManagerMockedStatic = mockStatic(StatisticManager.class);
 
         ) {
             Map<String, java.util.Map<String, List<String>>> indexMap = Maps.newHashMap();
@@ -175,8 +191,8 @@ public class StatisticUtilsUnitTest {
 
             statisticUtilsMockedStatic.when(() -> StatisticUtils.isFileStore(any(), any()))
                 .thenReturn(false);
-            statisticUtilsMockedStatic.when(
-                    () -> StatisticUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
+            statisticSubProcessUtilsMockedStatic.when(
+                    () -> StatisticSubProcessUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
                 .thenCallRealMethod();
             statisticUtilsMockedStatic.when(() -> StatisticUtils.getIndexInfoFromGsi(any(), any(), any()))
                 .thenCallRealMethod();
@@ -190,14 +206,14 @@ public class StatisticUtilsUnitTest {
 
             ExecutionContext executionContext = new ExecutionContext();
 
-            StatisticUtils.sketchTableDdl("test_schema", "test_table", true, executionContext);
+            StatisticSubProcessUtils.sketchTableDdl("test_schema", "test_table", true, executionContext);
 
             verify(statisticManager, times(2)).rebuildShardParts(any(), any(), any(), any(), any());
             verify(statisticManager, times(0)).updateAllShardParts(any(), any(), any(), any(), any());
 
             clearInvocations(statisticManager);
 
-            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, executionContext);
+            StatisticSubProcessUtils.sketchTableDdl("test_schema", "test_table", false, executionContext);
 
             verify(statisticManager, times(0)).rebuildShardParts(any(), any(), any(), any(), any());
             verify(statisticManager, times(2)).updateAllShardParts(any(), any(), any(), any(), any());
@@ -376,7 +392,7 @@ public class StatisticUtilsUnitTest {
             new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnB", "", -1L, null, null, null, false)
         );
         GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean = new GsiMetaManager.GsiIndexMetaBean(null, null, null, true,
-            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null);
+            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null, null);
         Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = new HashMap<>();
         gsiPublished.put("index1", gsiIndexMetaBean);
         when(mockTableMeta.getGsiPublished()).thenReturn(gsiPublished);
@@ -402,7 +418,7 @@ public class StatisticUtilsUnitTest {
             new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnC", "", -1L, null, null, null, false)
         );
         GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean = new GsiMetaManager.GsiIndexMetaBean(null, null, null, false,
-            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null);
+            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null, null);
         Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = new HashMap<>();
         gsiPublished.put("index1", gsiIndexMetaBean);
         when(mockTableMeta.getGsiPublished()).thenReturn(gsiPublished);
@@ -427,7 +443,7 @@ public class StatisticUtilsUnitTest {
             new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnB", "", -1L, null, null, null, true)
         );
         GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean = new GsiMetaManager.GsiIndexMetaBean(null, null, null, true,
-            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null);
+            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null, null);
         // 假设有两个相同的非唯一GSI
         Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = new HashMap<>();
         gsiPublished.put("index1", gsiIndexMetaBean);
@@ -499,6 +515,36 @@ public class StatisticUtilsUnitTest {
         assertEquals(2, colDoneSet.size());
         assertTrue(colDoneSet.contains("c1"));
         assertTrue(colDoneSet.contains("c1,c2"));
+    }
+
+    @Test
+    public void testBuildTopnAndHistogram() {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+
+        String schema = "test_schema";
+        String table = "test_table";
+        StatisticManager statisticManager = mock(StatisticManager.class);
+        StatisticManager.CacheLine cacheLine = mock(StatisticManager.CacheLine.class);
+        when(statisticManager.getCacheLine(anyString(), anyString())).thenReturn(cacheLine);
+
+        List<ColumnMeta> analyzeColumnList = Lists.newArrayList();
+        analyzeColumnList.add(
+            new ColumnMeta("schema", "table", "column", new Field("1", "id",
+                TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT))));
+
+        try (MockedStatic<StatisticManager> statisticManagerMockedStatic = mockStatic(StatisticManager.class);
+            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = mockStatic(StatisticUtils.class);) {
+            statisticManagerMockedStatic.when(StatisticManager::getInstance).thenReturn(statisticManager);
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.canUseNewTopN(anyString(), anyString(), anyString()))
+                .thenReturn(true);
+            statisticUtilsMockedStatic.when(
+                () -> StatisticUtils.buildTopnAndHistogram(anyString(), anyString(), anyList(), anyList(),
+                    any(), anyFloat(), anyDouble(), anyInt(), anyBoolean())).thenCallRealMethod();
+
+            StatisticUtils.buildTopnAndHistogram(schema, table, analyzeColumnList, Lists.newArrayList(), null, 1.0f,
+                1.0, 10, false);
+        }
+
     }
 
     private IndexMeta createIndex(boolean isUnique) {

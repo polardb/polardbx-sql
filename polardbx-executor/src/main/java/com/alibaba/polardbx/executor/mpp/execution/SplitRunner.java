@@ -20,7 +20,6 @@ import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.Closeable;
-import java.util.function.Supplier;
 
 public interface SplitRunner extends Closeable {
     boolean isFinished();
@@ -43,5 +42,5 @@ public interface SplitRunner extends Closeable {
      */
     boolean moveLowPrioritizedQuery(long executeTime);
 
-    void runtimeStatsSupplier(Supplier<DriverContext.DriverRuntimeStatistics> supplier);
+    DriverContext.DriverRuntimeStatisticsUpdater getUpdater();
 }

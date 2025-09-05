@@ -90,6 +90,11 @@ public enum SQL_REWRITE_RULE_PHASE {
     MULTIJOIN_REORDER_TO_JOIN(RuleToUse.MULTIJOIN_REORDER_TO_JOIN, HepMatchOrder.BOTTOM_UP),
 
     /**
+     * DML的RemoveProjectRule会将两层LogicalProject合并掉，理论上CBO出来不允许两层LogicalProject
+     */
+    PROJECT_MERGE_RULE(RuleToUse.PROJECT_MERGE_RULE),
+
+    /**
      * CONVERT rules for INSERT, UPDATE, DELETE
      */
     CONVERT_MODIFY(RuleToUse.CONVERT_MODIFY),

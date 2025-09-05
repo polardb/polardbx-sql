@@ -48,10 +48,8 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (count) -> String.format("insert into %%s(a,b) select %d,%d+1", count, count);
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB - 1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-                1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-                1);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false);
             System.out.println("modifyWithInsertSelect 1");
             return null;
         });
@@ -68,10 +66,8 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB + 1) && (Float.parseFloat(colC)
                     == Float.parseFloat(colD) + 1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-                1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-                1);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false);
             System.out.println("modifyWithInsertSelect 2");
             return null;
         });
@@ -86,10 +82,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (count) -> String.format("insert into %%s select * from %s where c=%d", selectTableName, count);
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (Objects.equals(colA, colB) && colC.equalsIgnoreCase(colD));
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-                1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-                1);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+                checker, false, true);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+                checker, false, false);
             System.out.println("modifyWithInsertSelect 3");
             return null;
         });
@@ -123,9 +119,9 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB - 1);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-                1, true);
+                true);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-                1, true);
+                true);
             System.out.println("modifyWithInsertSelect 1");
             return null;
         });
@@ -141,9 +137,9 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB - 1);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-                1, true);
+                true);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-                1, true);
+                true);
             System.out.println("modifyWithInsertSelect 2");
             return null;
         });
@@ -160,9 +156,9 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB + 1);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-                1, true);
+                true);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-                1, true);
+                true);
             System.out.println("modifyWithInsertSelect 3");
             return null;
         });
@@ -177,10 +173,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (count) -> String.format("insert into %%s select * from %s where c=%d", selectTableName, count);
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (Objects.equals(colA, colB));
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-                1, true);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-                1, true);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+                checker, false, true, true);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator, generator,
+                checker, false, false, true);
             System.out.println("modifyWithInsertSelect 4");
             return null;
         });
@@ -215,10 +211,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (count) -> String.format("insert into %%s(a,e) select %d,%d+1", count, count);
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB - 1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
-                1);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
-                false, 1);
+                true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
+                false);
             System.out.println("modifyWithInsertSelect 1");
             return null;
         });
@@ -237,10 +233,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                     count);
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB + 1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
-                1);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
-                false, 1);
+                true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
+                false);
             System.out.println("modifyWithInsertSelect 2");
             return null;
         });
@@ -257,10 +253,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (count) -> String.format("insert into %%s select * from %s where c=%d", selectTableName, count);
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (Objects.equals(colA, colB));
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
-                1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
-                false, 1);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator1, generator2,
+                checker, false, true);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator1, generator2,
+                checker, false, false);
             System.out.println("modifyWithInsertSelect 3");
             return null;
         });
@@ -296,10 +292,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB - 1)
                     && (Float.parseFloat(colC) == Float.parseFloat(colD) - 1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
-                1);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
-                false, 1);
+                true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
+                false);
             System.out.println("modifyMultiWithInsertSelect 1");
             return null;
         });
@@ -319,10 +315,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (colA == colB + 1)
                     && (Float.parseFloat(colC) + 1 == Float.parseFloat(colD));
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
-                1);
             concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
-                false, 1);
+                true);
+            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
+                false);
             System.out.println("modifyMultiWithInsertSelect 2");
             return null;
         });
@@ -339,10 +335,10 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (count) -> String.format("insert into %%s select * from %s where c=%d", selectTableName, count);
             QuadFunction<Integer, Integer, String, String, Boolean> checker =
                 (colA, colB, colC, colD) -> (Objects.equals(colA, colB)) && (colC.equalsIgnoreCase(colD));
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
-                1);
-            concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
-                false, 1);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator1, generator2,
+                checker, false, true);
+            concurrentTestInternalWithoutGeneratedColumn(tableName, colDef, alterSql, selectSql, generator1, generator2,
+                checker, false, false);
             System.out.println("modifyMultiWithInsertSelect 3");
             return null;
         });
@@ -386,7 +382,7 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (colA, colB, colC, colD) -> (colA == colB - 1)
                     && (Float.parseFloat(colC) == Float.parseFloat(colD) - 1);
             concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
-                false, false, 1, createSql);
+                false, false, createSql);
             System.out.println("modifyMultiWithInsertSelect single");
             return null;
         });
@@ -414,7 +410,7 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
                 (colA, colB, colC, colD) -> (colA == colB + 1)
                     && (Float.parseFloat(colC) + 1 == Float.parseFloat(colD));
             concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
-                false, false, 1, createSql);
+                false, false, createSql);
             System.out.println("modifyMultiWithInsertSelect broadcast");
             return null;
         });

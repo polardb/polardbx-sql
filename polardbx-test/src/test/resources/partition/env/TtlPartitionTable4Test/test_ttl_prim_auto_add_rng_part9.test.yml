@@ -1,0 +1,59 @@
+## DISABLE_FAST_SQL_PARSER
+## RESERVE_SEMICOLONS
+
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+set ENABLE_DROP_TRUNCATE_CCI_PARTITION=true;
+set TTL_CLEANUP_BOUND_INTERVAL_COUNT = 10;
+  
+  ## timezone_on_tz0800
+create table auto_rng_part_tc9_t3(
+a int not null auto_increment,
+b bigint not null,
+c varchar(32),
+primary key(a)
+)
+partition by key(a)
+partitions 4;
+
+insert into auto_rng_part_tc9_t3(a,b,c) values (1, 1717387200000/*2024-06-03 12:00:00 tz0800*/, '2024-06-03 12:00:00 tz0800');
+insert into auto_rng_part_tc9_t3(a,b,c) values (2, 1717473600000/*2024-06-04 12:00:00 tz0800*/, '2024-06-04 12:00:00 tz0800');
+insert into auto_rng_part_tc9_t3(a,b,c) values (3, 1717560000000/*2024-06-05 12:00:00 tz0800*/, '2024-06-05 12:00:00 tz0800');
+insert into auto_rng_part_tc9_t3(a,b,c) values (4, 1717646400000/*2024-06-06 12:00:00 tz0800*/, '2024-06-06 12:00:00 tz0800');
+
+select * from auto_rng_part_tc9_t3 order by a;
+
+alter table auto_rng_part_tc9_t3 modify ttl set ttl_expr= from_unixtime(`b`/1000) expire after 3 DAY timezone '+08:00',ttl_part_interval=interval(1,DAY),archive_type='ROW', ttl_cleanup='on', archive_table_post_allocate=1, archive_table_pre_allocate=3;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-04 11:00:00';
+alter table auto_rng_part_tc9_t3 cleanup expired data
+with
+ttl_cleanup='off',
+ttl_cleanup_policy='deleting',
+ttl_cleanup_bound='2020-04-13',
+ttl_part_interval=interval(1,day),
+archive_table_post_allocate=1,
+archive_table_pre_allocate=3
+;
+select * from auto_rng_part_tc9_t3 order by a;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-04 11:00:00';
+/*+TDDL:TTL_DEBUG_CURRENT_DATETIME='2024-06-12 11:00:00'*/create table auto_rng_part_tc9_t3_bk like auto_rng_part_tc9_t3 engine=columnar archive_mode='ttl';
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-12 11:00:00';
+/*+TDDL:TTL_DEBUG_CURRENT_DATETIME='2024-06-12 11:00:00'*/alter table auto_rng_part_tc9_t3 cleanup expired data
+with
+ttl_cleanup='off',
+ttl_cleanup_policy='deleting',
+ttl_cleanup_bound='2020-04-13',
+ttl_part_interval=interval(1,day),
+archive_table_post_allocate=1,
+archive_table_pre_allocate=3
+;
+select * from auto_rng_part_tc9_t3 order by a;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-12 11:00:00';
+/*+TDDL:TTL_DEBUG_CURRENT_DATETIME='2024-06-12 11:00:00'*/alter table auto_rng_part_tc9_t3 cleanup expired data;
+show create table auto_rng_part_tc9_t3;
+select * from auto_rng_part_tc9_t3 order by a;

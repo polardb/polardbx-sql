@@ -38,11 +38,15 @@ public class IndexMetaTest {
         columnNames.add("a");
         columnNames.add("b");
 
+        Map<String, String> isNullable = new HashMap<>();
+        isNullable.put("a", "YES");
+        isNullable.put("b", "NO");
+
         when(tableMeta.getPhysicalColumns()).thenReturn(columnMetas);
 
         List<GsiMetaManager.IndexRecord> records =
-            GsiUtils.buildIndexMetaByAddColumns(tableMeta, columnNames, "wumu", "t1", "gsi1", 1,
-                IndexStatus.ABSENT);
+            GsiUtils.buildIndexMetaByAddColumns(columnNames, "wumu", "t1", "gsi1", 1,
+                IndexStatus.ABSENT, isNullable, 0);
 
         Assert.assertEquals(records.size(), 2);
         Assert.assertNull(records.get(0).getIndexType());

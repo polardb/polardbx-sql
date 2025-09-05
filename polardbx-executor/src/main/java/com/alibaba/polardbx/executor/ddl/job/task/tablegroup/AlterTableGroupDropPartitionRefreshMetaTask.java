@@ -32,15 +32,7 @@ import lombok.Getter;
 
 import java.sql.Connection;
 import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Getter
@@ -89,11 +81,11 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
         partitionGroupAccessor.setConnection(metaDbConnection);
 
         OptimizerContext oc =
-            Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
         TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigByName(tableGroupName);
         if (GeneralUtil.isEmpty(tableGroupConfig.getTables())) {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
-                tableGroupName + " is empty");
+                    tableGroupName + " is empty");
         }
         boolean onlyOneTable = tableGroupConfig.getTables().size() == 1;
         List<String> tableNames = dropPartitionGroup ? tableGroupConfig.getTables() : ImmutableList.of(tableName);
@@ -102,21 +94,21 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
         if (partitionInfo == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
-                "PartitionInfo is not exists for table:" + firstTb);
+                    "PartitionInfo is not exists for table:" + firstTb);
         }
 
         List<TablePartitionRecord> inValidTablePartitions;
         if (partitionInfo.containSubPartitions()) {
             inValidTablePartitions = tbAccessor.getInValidTablePartitionsByDbNameTbNameLevel(schemaName, firstTb,
-                TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION);
+                    TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION);
         } else {
             inValidTablePartitions = tbAccessor.getInValidTablePartitionsByDbNameTbNameLevel(schemaName, firstTb,
-                TablePartitionRecord.PARTITION_LEVEL_PARTITION);
+                    TablePartitionRecord.PARTITION_LEVEL_PARTITION);
         }
 
         if (GeneralUtil.isEmpty(inValidTablePartitions)) {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
-                "invalidTablePartitionRecord is not exists for table:" + firstTb);
+                    "invalidTablePartitionRecord is not exists for table:" + firstTb);
         } else {
             if (onlyOneTable || dropPartitionGroup) {
                 for (TablePartitionRecord partitionRecord : inValidTablePartitions) {
@@ -134,11 +126,11 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
                     }
                 } else {
                     Optional<PartitionGroupRecord> partitionGroupRecordOpt =
-                        partitionGroupRecords.stream().filter(o -> o.partition_name.equalsIgnoreCase(partition))
-                            .findFirst();
+                            partitionGroupRecords.stream().filter(o -> o.partition_name.equalsIgnoreCase(partition))
+                                    .findFirst();
                     if (!partitionGroupRecordOpt.isPresent()) {
                         throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
-                            "partition group:" + partition + " is not exists");
+                                "partition group:" + partition + " is not exists");
                     }
                     if (dropPartitionGroup) {
                         tbAccessor.deletePartitionBySchGidL2(schemaName, partitionGroupRecordOpt.get().id);
@@ -154,18 +146,18 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
                     PartitionSpec partitionSpec = partitionInfo.getPartitionBy().getPartitionByPartName(partition);
                     for (PartitionSpec subPartSpec : partitionSpec.getSubPartitions()) {
                         Optional<PartitionGroupRecord> partitionGroupRecordOpt =
-                            partitionGroupRecords.stream()
-                                .filter(o -> o.partition_name.equalsIgnoreCase(subPartSpec.getName()))
-                                .findFirst();
+                                partitionGroupRecords.stream()
+                                        .filter(o -> o.partition_name.equalsIgnoreCase(subPartSpec.getName()))
+                                        .findFirst();
                         if (!partitionGroupRecordOpt.isPresent()) {
                             throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
-                                "partition group:" + subPartSpec.getName() + " is not exists");
+                                    "partition group:" + subPartSpec.getName() + " is not exists");
                         }
                         if (dropPartitionGroup) {
                             tbAccessor.deletePartitionBySchGidL2(schemaName, partitionGroupRecordOpt.get().id);
                         } else {
                             tbAccessor.deletePartitionBySchTbGidL2(schemaName, tableName,
-                                partitionGroupRecordOpt.get().id);
+                                    partitionGroupRecordOpt.get().id);
                         }
                     }
                 }
@@ -210,8 +202,8 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
         tablePartitionAccessor.setConnection(metaDbConnection);
         partitionGroupAccessor.setConnection(metaDbConnection);
         TableGroupConfig tableGroupConfig =
-            OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
-                .getTableGroupConfigByName(tableGroupName);
+                OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+                        .getTableGroupConfigByName(tableGroupName);
 
         List<String> tableNames = dropPartitionGroup ? tableGroupConfig.getTables() : ImmutableList.of(tableName);
 
@@ -222,14 +214,14 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
         for (String tableName : tableNames) {
             if (!StringUtils.isEmpty(targetTableGroupName) && !tableGroupName.equalsIgnoreCase(targetTableGroupName)) {
                 TableGroupConfig newTableGroupConfig =
-                    OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
-                        .getTableGroupConfigByName(targetTableGroupName);
+                        OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+                                .getTableGroupConfigByName(targetTableGroupName);
 
                 long newTableGroupId = newTableGroupConfig.getTableGroupRecord().id;
 
                 List<TablePartitionRecord> tablePartitionRecords =
-                    tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
-                        TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
+                        tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
+                                TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
                 assert tablePartitionRecords.size() == 1;
 
                 // 1.1、update table's groupid
@@ -238,24 +230,24 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
                 List<TablePartitionRecord> phyTablePartitionRecords;
                 if (partitionInfo.containSubPartitions()) {
                     phyTablePartitionRecords =
-                        tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
-                            TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION);
+                            tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
+                                    TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION);
                 } else {
                     phyTablePartitionRecords =
-                        tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
-                            TablePartitionRecord.PARTITION_LEVEL_PARTITION);
+                            tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
+                                    TablePartitionRecord.PARTITION_LEVEL_PARTITION);
                 }
                 List<PartitionGroupRecord> partitionGroupRecords = newTableGroupConfig.getPartitionGroupRecords();
 
                 for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
                     TablePartitionRecord tablePartitionRecord =
-                        phyTablePartitionRecords.stream()
-                            .filter(tp -> tp.getPartName().equalsIgnoreCase(partitionGroupRecord.getPartition_name()))
-                            .findFirst().orElse(null);
+                            phyTablePartitionRecords.stream()
+                                    .filter(tp -> tp.getPartName().equalsIgnoreCase(partitionGroupRecord.getPartition_name()))
+                                    .findFirst().orElse(null);
 
                     if (tablePartitionRecord == null) {
                         throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                            "can't find the partition:" + partitionGroupRecord.getPartition_name());
+                                "can't find the partition:" + partitionGroupRecord.getPartition_name());
                     }
 
                     // 1.2、update partition's groupid
@@ -264,25 +256,25 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
             }
             tablePartitionAccessor.deleteTablePartitionConfigsForDeltaTable(schemaName, tableName);
             List<TablePartitionRecord> logicalTableRecords =
-                tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
-                    TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
+                    tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
+                            TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
             assert logicalTableRecords.size() == 1;
 
             List<TablePartitionRecord> tablePartitionRecords =
-                tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
-                    TablePartitionRecord.PARTITION_LEVEL_PARTITION);
+                    tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
+                            TablePartitionRecord.PARTITION_LEVEL_PARTITION);
 
             List<TablePartitionRecord> tableSubPartitionRecords =
-                tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
-                    TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION);
+                    tablePartitionAccessor.getValidTablePartitionsByDbNameTbNameLevel(schemaName, tableName,
+                            TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION);
 
             Map<String, List<TablePartitionRecord>> subPartRecordInfos =
-                prepareRecordForAllSubpartitions(partitionInfo, tablePartitionRecords, tableSubPartitionRecords);
+                    prepareRecordForAllSubpartitions(partitionInfo, tablePartitionRecords, tableSubPartitionRecords);
 
             tablePartitionAccessor.addNewTablePartitionConfigs(logicalTableRecords.get(0),
-                tablePartitionRecords,
-                subPartRecordInfos,
-                isUpsert, false);
+                    tablePartitionRecords,
+                    subPartRecordInfos,
+                    isUpsert, false);
         }
     }
 
@@ -292,10 +284,11 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
     }
 
     private Map<String, List<TablePartitionRecord>> prepareRecordForAllSubpartitions(
-        PartitionInfo partitionInfo,
-        List<TablePartitionRecord> parentRecords,
-        List<TablePartitionRecord> subPartRecords) {
+            PartitionInfo partitionInfo,
+            List<TablePartitionRecord> parentRecords,
+            List<TablePartitionRecord> subPartRecords) {
 
+        Collections.sort(parentRecords, Comparator.comparingLong(TablePartitionRecord::getPartPosition));
         Map<String, List<TablePartitionRecord>> subPartRecordInfos = new HashMap<>();
         if (partitionInfo.getPartitionBy().getSubPartitionBy() == null) {
             return subPartRecordInfos;
@@ -303,10 +296,16 @@ public class AlterTableGroupDropPartitionRefreshMetaTask extends BaseDdlTask {
 
         for (int k = 0; k < parentRecords.size(); k++) {
             TablePartitionRecord parentRecord = parentRecords.get(k);
+            parentRecord.setPartPosition((long) (k + 1));
             Map<Long, List<TablePartitionRecord>> subPartMap = subPartRecords.stream()
-                .collect(Collectors.groupingBy(TablePartitionRecord::getParentId));
+                    .collect(Collectors.groupingBy(TablePartitionRecord::getParentId));
             List<TablePartitionRecord> subPartRecList = subPartMap.get(parentRecord.id);
             if (subPartRecList != null) {
+                Collections.sort(subPartRecList, Comparator.comparingLong(TablePartitionRecord::getPartPosition));
+                for (int i = 0; i < subPartRecList.size(); i++) {
+                    TablePartitionRecord subPartRecord = subPartRecList.get(i);
+                    subPartRecord.setPartPosition((long) (i + 1));
+                }
                 subPartRecordInfos.put(parentRecord.getPartName(), subPartRecList);
             }
         }

@@ -20,6 +20,7 @@ package com.alibaba.polardbx.qatest.dql.auto.hint;
 
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.Lists;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+@FileStoreIgnore
 public class ScanHintTest extends AutoReadBaseTestCase {
 
     @Parameterized.Parameters(

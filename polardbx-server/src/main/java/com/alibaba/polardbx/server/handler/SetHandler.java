@@ -390,37 +390,30 @@ public final class SetHandler {
                             return false;
                         }
                         int policy = c.getVarIntegerValue(oriValue);
-                        String strPolicy;
-                        switch (policy) {
-                        case 3:
-                            c.setTrxPolicy(ITransactionPolicy.ALLOW_READ_CROSS_DB);
-                            strPolicy = "ALLOW_READ";
-                            break;
-                        case 4:
-                            if (isIgnoreSettingNoTransaction(c)) {
+
+                        try {
+                            final ITransactionPolicy trxPolicy = ITransactionPolicy.of(policy);
+
+                            if (trxPolicy == null) {
+                                occurError(inProcedureCall, key.getName(), oriValue, c);
+                                return false;
+                            }
+
+                            if (isIgnoreSettingNoTransaction(policy, c)) {
                                 // Ignore setting NO_TRANSACTION by "SET transaction policy 4"
                                 continue;
                             }
-                            c.setTrxPolicy(ITransactionPolicy.NO_TRANSACTION);
-                            strPolicy = "NO_TRANSACTION";
-                            break;
-                        case 6:
-                        case 7:
-                            c.setTrxPolicy(ITransactionPolicy.XA);
-                            strPolicy = "XA";
-                            break;
-                        case 8:
-                            c.setTrxPolicy(ITransactionPolicy.TSO);
-                            strPolicy = "TSO";
-                            break;
-                        default:
-                            occurError(inProcedureCall, "transaction policy", oriValue, c);
+
+                            c.setTrxPolicy(trxPolicy);
+                            c.getExtraServerVariables().put("TRANSACTION POLICY".toLowerCase(), policy);
+                            c.getExtraServerVariables().put("TRANS.POLICY".toLowerCase(), trxPolicy.toString());
+                            c.getExtraServerVariables()
+                                .put(TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(),
+                                    trxPolicy.toString());
+                        } catch (Exception ex) {
+                            occurError(inProcedureCall, key.getName(), oriValue, c);
                             return false;
                         }
-                        c.getExtraServerVariables().put(key.getName().toLowerCase(), policy);
-                        c.getExtraServerVariables().put("TRANS.POLICY".toLowerCase(), strPolicy);
-                        c.getExtraServerVariables()
-                            .put(TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(), strPolicy);
                     } else if ("TRANS.POLICY".equalsIgnoreCase(key.getName())
                         || TransactionAttribute.DRDS_TRANSACTION_POLICY.equalsIgnoreCase(key.getName())) {
                         // 自动提交模式
@@ -437,38 +430,27 @@ public final class SetHandler {
                             }
                         } else {
                             String policy = StringUtils.strip(c.getVarStringValue(oriValue), "'\"");
-                            int intPolicy = 0;
                             // 设置 DRDS 事务策略
                             // SET TRANS.POLICY = TDDL | FLEXIBLE | ...
-                            if ("ALLOW_READ".equalsIgnoreCase(policy)) {
-                                c.setTrxPolicy(ITransactionPolicy.ALLOW_READ_CROSS_DB);
-                                intPolicy = 3;
-                            } else if ("NO_TRANSACTION".equalsIgnoreCase(policy)) {
-                                c.setTrxPolicy(ITransactionPolicy.NO_TRANSACTION);
-                                intPolicy = 4;
-                            } else if ("XA".equalsIgnoreCase(policy)
-                                || "BEST_EFFORT".equalsIgnoreCase(policy)
-                                || "2PC".equalsIgnoreCase(policy)
-                                || "FLEXIBLE".equalsIgnoreCase(policy)) {
-                                // to keep compatible
-                                c.setTrxPolicy(ITransactionPolicy.XA);
-                                intPolicy = 6;
-                            } else if ("TSO".equalsIgnoreCase(policy)) {
-                                c.setTrxPolicy(ITransactionPolicy.TSO);
-                                intPolicy = 8;
-                            } else if ("BEST_EFFORT".equalsIgnoreCase(policy) || "2PC".equalsIgnoreCase(policy)
-                                || "FLEXIBLE".equalsIgnoreCase(policy)) {
-                                // to keep compatible
-                                c.setTrxPolicy(ITransactionPolicy.XA);
-                                intPolicy = 6;
-                            } else {
+                            try {
+                                final ITransactionPolicy trxPolicy = ITransactionPolicy.of(policy);
+
+                                if (trxPolicy == null) {
+                                    occurError(inProcedureCall, key.getName(), oriValue, c);
+                                    return false;
+                                }
+
+                                c.setTrxPolicy(trxPolicy);
+                                c.getExtraServerVariables()
+                                    .put("TRANSACTION POLICY".toLowerCase(), trxPolicy.getIntPolicy());
+                                c.getExtraServerVariables().put("TRANS.POLICY".toLowerCase(), policy.toUpperCase());
+                                c.getExtraServerVariables()
+                                    .put(TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(),
+                                        policy.toUpperCase());
+                            } catch (Exception ex) {
                                 occurError(inProcedureCall, key.getName(), oriValue, c);
                                 return false;
                             }
-                            c.getExtraServerVariables().put("TRANSACTION POLICY".toLowerCase(), intPolicy);
-                            c.getExtraServerVariables().put("TRANS.POLICY".toLowerCase(), policy.toUpperCase());
-                            c.getExtraServerVariables()
-                                .put(TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(), policy.toUpperCase());
                         }
                     } else if (TransactionAttribute.SHARE_READ_VIEW.equalsIgnoreCase(key.getName())) {
                         String stripVal = StringUtils.strip(RelUtils.stringValue(oriValue), "'\"");
@@ -1312,30 +1294,24 @@ public final class SetHandler {
 
             if (null != statement.getPolicy()) {
                 int policy = Integer.parseInt(statement.getPolicy());
-                switch (policy) {
-                case 3:
-                    c.setTrxPolicy(ITransactionPolicy.ALLOW_READ_CROSS_DB);
-                    break;
-                case 4:
-                    if (isIgnoreSettingNoTransaction(c)) {
-                        // Ignore setting NO_TRANSACTION by "SET transaction policy 4"
-                        break;
+                try {
+                    final ITransactionPolicy trxPolicy = ITransactionPolicy.of(policy);
+
+                    if (trxPolicy == null) {
+                        occurError(inProcedureCall, "'transaction policy'",
+                            SqlLiteral.createCharString(statement.getPolicy(), SqlParserPos.ZERO), c);
+                        return false;
                     }
-                    c.setTrxPolicy(ITransactionPolicy.NO_TRANSACTION);
-                    break;
-                case 6:
-                case 7:
-                    c.setTrxPolicy(ITransactionPolicy.XA);
-                    break;
-                case 8:
-                    c.setTrxPolicy(ITransactionPolicy.TSO);
-                    break;
-                default:
-                    c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR,
-                        "Variable 'transaction policy' can't be set to the value of " + String.valueOf(
-                            statement.getPolicy()));
+
+                    if (!isIgnoreSettingNoTransaction(policy, c)) {
+                        // Ignore setting NO_TRANSACTION by "SET transaction policy 4"
+                        c.setTrxPolicy(trxPolicy);
+                    }
+                } catch (Exception ex) {
+                    occurError(inProcedureCall, "'transaction policy'",
+                        SqlLiteral.createCharString(statement.getPolicy(), SqlParserPos.ZERO), c);
                     return false;
-                } // end of switch
+                }
             } // end of if
         } else if (result instanceof SqlSetNames) {
             // not support collate
@@ -1488,8 +1464,8 @@ public final class SetHandler {
 
     // return value demonstrates whether write packet
     protected static boolean handleGlobalVariable(ServerConnection c, List<Pair<String, String>> globalCNVariableList,
-                                                List<Pair<SqlNode, SqlNode>> globalDNVariableList,
-                                                List<Pair<String, String>> globalCdcVariableList) {
+                                                  List<Pair<SqlNode, SqlNode>> globalDNVariableList,
+                                                  List<Pair<String, String>> globalCdcVariableList) {
 
         if (ConfigDataMode.isColumnarMode() && !globalDNVariableList.isEmpty()) {
             c.writeErrMessage(ErrorCode.ER_NOT_SUPPORTED_YET, "SET GLOBAL is not supported in read only mode");
@@ -1581,7 +1557,7 @@ public final class SetHandler {
             if (InstConfUtil.getValBool(TddlConstants.ENABLE_STRICT_SET_GLOBAL)) {
 
                 c.writeErrMessage(ErrorCode.ER_GLOBAL_VARIABLE, "User " + c.getUser() +
-                    "is not allowed to execute set global ");
+                    " is not allowed to execute set global ");
                 return true;
             }
 
@@ -1954,7 +1930,10 @@ public final class SetHandler {
                 oriValue));
     }
 
-    protected static boolean isIgnoreSettingNoTransaction(ServerConnection c) {
+    static boolean isIgnoreSettingNoTransaction(int policy, ServerConnection c) {
+        if (4 != policy) {
+            return false;
+        }
         // Session variable.
         Object sessionVar = c.getConnectionVariables()
             .get(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION);

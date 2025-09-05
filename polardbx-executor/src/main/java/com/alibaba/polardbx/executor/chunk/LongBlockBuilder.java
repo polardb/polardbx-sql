@@ -16,18 +16,20 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.executor.operator.util.DriverObjectPool;
 import com.alibaba.polardbx.executor.operator.util.ObjectPools;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Preconditions;
-import it.unimi.dsi.fastutil.longs.LongArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 public class LongBlockBuilder extends AbstractBlockBuilder {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(LongBlockBuilder.class).instanceSize();
 
     protected final BatchedArrayList.BatchLongArrayList values;
+
+    @FieldMemoryCounter(value = false)
     private DriverObjectPool<long[]> objectPool;
+
     private int chunkLimit;
 
     public LongBlockBuilder(int capacity) {
@@ -111,5 +113,10 @@ public class LongBlockBuilder extends AbstractBlockBuilder {
             return 0;
         }
         return Long.hashCode(values.getLong(position));
+    }
+
+    @Override
+    public long getMemoryUsage() {
+        return INSTANCE_SIZE + values.getMemoryUsage() + valueIsNull.getMemoryUsage();
     }
 }

@@ -27,9 +27,13 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.github.benmanes.caffeine.cache.Weigher;
 import com.google.common.base.Preconditions;
+import io.airlift.slice.SizeOf;
 import org.apache.hadoop.fs.Path;
+import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.text.MessageFormat;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
@@ -49,18 +53,18 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
     public static final String IN_MEMORY = "IN MEMORY";
 
     // mark word (8 Bytes) + class pointer (4 Bytes) + long value (8 Bytes)
-    private static final int LONG_OBJECT_IN_BYTES = 20;
+    private static final int LONG_OBJECT_IN_BYTES = ClassLayout.parseClass(Long.class).instanceSize();
 
     /**
      * Caching the block collections that covering all blocks in row-group which the block in collection belongs to.
      */
-    private Cache<Long, SimplifiedBlockCache> validCache;
+    private Cache<BlockCacheKey, SimplifiedBlockCache> validCache;
 
     /**
      * The in-flight cache is responsible for caching the block collection
      * that does not completely contain the all blocks in row-group they belong to.
      */
-    private LoadingCache<Long, BlockCache> inFlightCache;
+    private LoadingCache<BlockCacheKey, BlockCache> inFlightCache;
 
     private AtomicLong size;
     private AtomicLong hitCount;
@@ -68,20 +72,76 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
     private AtomicLong missCount;
     private AtomicLong quotaExceedCount;
 
+    public static class BlockCacheKey {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(BlockCacheKey.class).instanceSize();
+        private static final int STRING_INSTANCE_SIZE = ClassLayout.parseClass(String.class).instanceSize();
+
+        final String path;
+        final int stripeId;
+        final int columnId;
+        final int rowGroupId;
+        final int hashCode;
+
+        public int getMemorySize() {
+            return INSTANCE_SIZE + STRING_INSTANCE_SIZE + VMSupport.align((int) SizeOf.sizeOfCharArray(path.length()));
+        }
+
+        public BlockCacheKey(Path path, int stripeId, int columnId, int rowGroupId) {
+            this.path = path.toString();
+            this.stripeId = stripeId;
+            this.columnId = columnId;
+            this.rowGroupId = rowGroupId;
+
+            // build hash code.
+            int result = 1;
+            result = 31 * result + path.hashCode();
+            result = 31 * result + stripeId;
+            result = 31 * result + columnId;
+            result = 31 * result + rowGroupId;
+            this.hashCode = result;
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof BlockCacheKey)) {
+                return false;
+            }
+            BlockCacheKey other = (BlockCacheKey) obj;
+            return other.path.equals(path) && other.stripeId == stripeId
+                && other.columnId == columnId && other.rowGroupId == rowGroupId;
+        }
+
+        @Override
+        public String toString() {
+            return new StringBuilder(path)
+                .append('$').append(stripeId)
+                .append('$').append(columnId)
+                .append('$').append(rowGroupId)
+                .toString();
+        }
+    }
+
     /**
      * The CacheId is combined by:
      * pathId (tableId + fileId) (32bit) + rowGroupId (16bit) + stripeId (4bit) + columnId (12bit).
      */
-    public static long buildBlockCacheKey(Path path, int stripeId, int columnId, int rowGroupId) {
-        // The current method is not secure enough. The ideal situation is a compressed value of two digits:
-        // table_id + file_id
-        int pathHash = path.toString().hashCode();
+    public static BlockCacheKey buildBlockCacheKey(Path path, int stripeId, int columnId, int rowGroupId) {
+//        // The current method is not secure enough. The ideal situation is a compressed value of two digits:
+//        // table_id + file_id
+//        int pathHash = path.toString().hashCode();
+//
+//        // rowGroupId (16bit) + stripeId (4bit) + columnId (12bit)
+//        int s = (stripeId << 12) | (columnId & 0x0FFF);
+//        int innerId = (rowGroupId << 16) | (s & 0xFFFF);
+//
+//        return (((long) pathHash) << 32) | (innerId & 0xffffffffL);
 
-        // rowGroupId (16bit) + stripeId (4bit) + columnId (12bit)
-        int s = (stripeId << 12) | (columnId & 0x0FFF);
-        int innerId = (rowGroupId << 16) | (s & 0xFFFF);
-
-        return (((long) pathHash) << 32) | (innerId & 0xffffffffL);
+        return new BlockCacheKey(path, stripeId, columnId, rowGroupId);
     }
 
     public SimpleBlockCacheManager() {
@@ -92,14 +152,14 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
         this.flightCount = new AtomicLong(0L);
         this.validCache = Caffeine.newBuilder()
             .maximumWeight(MAXIMUM_MEMORY_SIZE)
-            .weigher((Weigher<Long, SimplifiedBlockCache>) (key, value) ->
+            .weigher((Weigher<BlockCacheKey, SimplifiedBlockCache>) (key, value) ->
 
                 // calculate memory size of block cache for cache weight.
-                LONG_OBJECT_IN_BYTES + value.memorySize()
+                key.getMemorySize() + value.memorySize()
             )
-            .removalListener((longValue, simplifiedBlockCache, removalCause) -> {
+            .removalListener((blockCacheKey, simplifiedBlockCache, removalCause) -> {
                     // decrement memory size when invalidate block cache.
-                    size.getAndAdd(-(LONG_OBJECT_IN_BYTES + simplifiedBlockCache.memorySize()));
+                    size.getAndAdd(-(blockCacheKey.getMemorySize() + simplifiedBlockCache.memorySize()));
                     quotaExceedCount.getAndIncrement();
                 }
             )
@@ -107,13 +167,13 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
 
         this.inFlightCache = Caffeine.newBuilder()
             .maximumSize(MAXIMUM_IN_FLIGHT_ENTRIES)
-            .removalListener((RemovalListener<Long, BlockCache>) (longValue, blockCache, removalCause) -> {
+            .removalListener((RemovalListener<BlockCacheKey, BlockCache>) (blockCacheKey, blockCache, removalCause) -> {
                 // decrement memory size when invalidate block cache.
             })
             .expireAfterWrite(IN_FLIGHT_CACHE_TTL_IN_SECOND, TimeUnit.SECONDS)
-            .build(new CacheLoader<Long, BlockCache>() {
+            .build(new CacheLoader<BlockCacheKey, BlockCache>() {
                 @Override
-                public BlockCache load(Long key) {
+                public BlockCache load(BlockCacheKey key) {
 
                     // calculate memory size of block cache and cache key
                     BlockCache result = new BlockCache();
@@ -270,7 +330,7 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
     }
 
     private static class SimplifiedBlockCache {
-        private static final int BASE_MEMORY_SIZE = 30;
+        private static final int BASE_MEMORY_SIZE = ClassLayout.parseClass(SimplifiedBlockCache.class).instanceSize();
         /**
          * The fixed limitation of block position count.
          * It must be less than 4096.
@@ -294,7 +354,9 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
         }
 
         public int memorySize() {
-            int totalSize = BASE_MEMORY_SIZE;
+            int totalSize = BASE_MEMORY_SIZE
+                + VMSupport.align((int) SizeOf.sizeOf(blocks));
+
             if (blocks != null) {
                 for (int i = 0; i < blocks.length; i++) {
                     if (blocks[i] != null) {
@@ -396,7 +458,7 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
                 continue;
             }
             // Collect all valid cache containing the blocks in selected row-groups.
-            long cacheKey = buildBlockCacheKey(path, stripeId, columnId, groupId);
+            BlockCacheKey cacheKey = buildBlockCacheKey(path, stripeId, columnId, groupId);
             SimplifiedBlockCache blockCache = validCache.getIfPresent(cacheKey);
             if (blockCache != null) {
                 result.put(groupId, blockCache.newIterator());
@@ -418,7 +480,7 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
                 continue;
             }
             // Collect all in-flight cache containing the part of blocks in selected row-groups.
-            long cacheKey = buildBlockCacheKey(path, stripeId, columnId, groupId);
+            BlockCacheKey cacheKey = buildBlockCacheKey(path, stripeId, columnId, groupId);
             BlockCache blockCache = inFlightCache.getIfPresent(cacheKey);
             if (blockCache != null) {
                 flightCount.incrementAndGet();
@@ -433,8 +495,12 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
     public void putCache(Block block, int chunkLimit, int totalRows, Path path, int stripeId, int rowGroupId,
                          int columnId,
                          int position, int rows) {
+        if (block == null || block.getPositionCount() != rows || path == null) {
+            return;
+        }
+
         Preconditions.checkArgument(block != null && block.getPositionCount() == rows);
-        long cacheKey = buildBlockCacheKey(path, stripeId, columnId, rowGroupId);
+        BlockCacheKey cacheKey = buildBlockCacheKey(path, stripeId, columnId, rowGroupId);
 
         try {
             // automatically increment size in flight

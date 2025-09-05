@@ -63,17 +63,14 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.KeyWordsUtil;
-import com.alibaba.polardbx.repo.mysql.handler.LogicalShowTablesMyHandler;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlCreateDatabase;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlShowCreateTable;
-import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.sql.Connection;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -121,7 +118,7 @@ public class LogicalCreateDatabaseLikeAsHandler extends LogicalCommonDdlHandler 
             try {
                 String createAutoModeSql =
                     DrdsToAutoTableCreationSqlUtil.convertDrdsModeCreateTableSqlToAutoModeSql(createTableSql, true,
-                        maxPhyPartitionNum, maxPartitionColumnNum);
+                        maxPhyPartitionNum, maxPartitionColumnNum, executionContext);
                 tableAndCreateSqlAuto.put(tableName, createAutoModeSql);
             } catch (Throwable e) {
                 throw new TddlRuntimeException(ErrorCode.ER_AUTO_CONVERT, e, e.getMessage());

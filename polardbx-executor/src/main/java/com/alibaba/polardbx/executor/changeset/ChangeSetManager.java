@@ -68,6 +68,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.MapUtils;
 
+import java.sql.Connection;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -149,6 +150,7 @@ public class ChangeSetManager {
                                              Map<String, String> targetTableLocations,
                                              ComplexTaskMetaManager.ComplexTaskType taskType,
                                              ChangeSetCatchUpStatus status, Long changeSetId,
+                                             List<String> notUsingBinaryStringColumns,
                                              ExecutionContext originEc) {
         if (sourcePhyTableNames == null || sourcePhyTableNames.isEmpty()) {
             return;
@@ -160,7 +162,7 @@ public class ChangeSetManager {
             HandlerCommon.upgradeEncoding(originEc, schemaName, logicalTableName);
         }
 
-        prepareColumns(originEc, logicalTableName, indexName);
+        prepareColumns(originEc, logicalTableName, indexName, notUsingBinaryStringColumns);
 
         changeSetMetaManager.getChangeSetReporter().loadChangeSetMeta(changeSetId);
 
@@ -370,6 +372,7 @@ public class ChangeSetManager {
 
         ExecutionContext ec = originEc.copy();
         ec.getAsyncDDLContext().setAsyncDDLSupported(false);
+        ec.setTxIsolation(Connection.TRANSACTION_READ_COMMITTED);
 
         Pair<String, String> groupAndPhyTable =
             ChangeSetUtils.getTargetGroupNameAndPhyTableName(sourceTable, sourceGroup, taskType, targetTableLocations);
@@ -605,7 +608,7 @@ public class ChangeSetManager {
         final List<Row> insertKeys = insertData.get(meta.getFullSourceTable());
         final List<Row> deleteKeys = deleteData.get(meta.getFullSourceTable());
 
-        int batchSize = task.getParams().getCatchupBatchSize();
+        int batchSize = task.getCatchUpBatchSize(lock);
         ITransactionManager tm = ExecutorContext.getContext(meta.getSchemaName()).getTransactionManager();
 
         int phyParallelism = OptimizerContext.getContext(schemaName).getParamManager()
@@ -636,6 +639,7 @@ public class ChangeSetManager {
                                         insertEc.getTransaction().commit();
                                         return true;
                                     } catch (Exception e) {
+                                        insertEc.getTransaction().rollback();
                                         LOG.error("apply change set statement failed!", e);
                                         throw e;
                                     }
@@ -681,6 +685,7 @@ public class ChangeSetManager {
                                         insertEc.getTransaction().commit();
                                         return true;
                                     } catch (Exception e) {
+                                        insertEc.getTransaction().rollback();
                                         LOG.error("apply change set statement failed!", e);
                                         throw e;
                                     }
@@ -725,7 +730,8 @@ public class ChangeSetManager {
         futures.clear();
     }
 
-    private void prepareColumns(ExecutionContext ec, String tableName, String indexName) {
+    private void prepareColumns(ExecutionContext ec, String tableName, String indexName,
+                                List<String> notUsingBinaryStringColumns) {
         final SchemaManager sm = ec.getSchemaManager();
         final TableMeta baseTableMeta = sm.getTable(tableName);
         final TableMeta targetTableMeta = indexName == null ? sm.getTable(tableName) : sm.getTable(indexName);
@@ -736,25 +742,22 @@ public class ChangeSetManager {
 
         List<String> targetTableColumns = new ArrayList<>();
         List<String> sourceTableColumns = new ArrayList<>();
-        List<String> notUsingBinaryStringColumns = new ArrayList<>();
         for (ColumnMeta columnMeta : baseTableMeta.getWriteColumns()) {
             String columnName = columnMeta.getName();
-            if (targetTableMeta.containsColumn(columnName)) {
+            if (targetTableMeta.containsColumn(columnName) && !columnMeta.isGeneratedColumn()) {
                 if (isModify && columnMultiWriteMapping.get(columnName.toLowerCase()) != null) {
                     targetTableColumns.add(columnMultiWriteMapping.get(columnName.toLowerCase()));
                 } else {
                     targetTableColumns.add(columnName);
                 }
                 sourceTableColumns.add(columnName);
-                if (DataTypeUtil.isStringType(columnMeta.getDataType())) {
-                    notUsingBinaryStringColumns.add(columnName);
-                }
             }
         }
 
         setSourceTableColumns(sourceTableColumns);
         setTargetTableColumns(targetTableColumns);
-        setNotUsingBinaryStringColumns(notUsingBinaryStringColumns);
+        setNotUsingBinaryStringColumns(
+            notUsingBinaryStringColumns == null ? new ArrayList<>() : notUsingBinaryStringColumns);
     }
 
     public PhyTableOperation genPhySelectPlan(ExecutionContext ec, ChangeSetTask task, List<Row> rowPks, boolean lock) {
@@ -916,7 +919,7 @@ public class ChangeSetManager {
                                  List<Row> rowPks, boolean lock) {
 
         if (rateLimiter != null) {
-            rateLimiter.acquire(task.getParams().catchupBatchSize);
+            rateLimiter.acquire(task.getCatchUpBatchSize(lock));
         }
         long start = System.currentTimeMillis();
 
@@ -955,7 +958,7 @@ public class ChangeSetManager {
                                  List<Row> rowPks, boolean lock) {
 
         if (rateLimiter != null) {
-            rateLimiter.acquire(task.getParams().catchupBatchSize);
+            rateLimiter.acquire(task.getCatchUpBatchSize(lock));
         }
         long start = System.currentTimeMillis();
 
@@ -1267,6 +1270,7 @@ public class ChangeSetManager {
          * Parameters of catchup
          */
         public int catchupBatchSize;
+        public int catchupWithLockBatchSize;
         public long catchupSpeedLimit;
         public long catchupSpeedMin;
 
@@ -1281,6 +1285,7 @@ public class ChangeSetManager {
         public ChangeSetParams(ParamManager pm) {
             this.taskMemoryLimitBytes = pm.getLong(ConnectionParams.CHANGE_SET_MEMORY_LIMIT);
             this.catchupBatchSize = pm.getInt(ConnectionParams.CHANGE_SET_APPLY_BATCH);
+            this.catchupWithLockBatchSize = pm.getInt(ConnectionParams.CHANGE_SET_APPLY_LOCK_BATCH);
             this.catchupSpeedLimit = pm.getLong(ConnectionParams.CHANGE_SET_APPLY_SPEED_LIMITATION);
             this.catchupSpeedMin = pm.getLong(ConnectionParams.CHANGE_SET_APPLY_SPEED_MIN);
             this.replayTimes = pm.getInt(ConnectionParams.CHANGE_SET_REPLAY_TIMES);
@@ -1308,6 +1313,14 @@ public class ChangeSetManager {
                 "ChangeSetTask{Table=%s, targetTable=%s, taskStatus=%s, sourcePhyTableName=%s, taskType=%s}",
                 meta.getChangeSetName(), meta.getTargetTableName(), taskStatus, meta.getSourcePhysicalTable(),
                 meta.getTaskType());
+        }
+
+        public int getCatchUpBatchSize(boolean lock) {
+            if (lock) {
+                return params.getCatchupWithLockBatchSize();
+            } else {
+                return params.getCatchupBatchSize();
+            }
         }
     }
 

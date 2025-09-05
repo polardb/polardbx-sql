@@ -25,10 +25,14 @@ import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlInsert;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlSelect;
 
@@ -245,10 +249,12 @@ public class PhyTableInsertBuilder extends PhyOperationBuilderCommon {
         FillTargetTableNameVisitor targetTableNameVisitor =
             new FillTargetTableNameVisitor(Lists.newArrayList(tableName));
         SqlInsert newSqlInsert = (SqlInsert) targetTableNameVisitor.visit(sqlTemplate);
-        List<Map<Integer, ParameterContext>> batchParams = new ArrayList<>();
-        for (int index : valueIndices) {
-            batchParams.add(parameterSettings.getBatchParameters().get(index));
-        }
+
+        final List<Map<Integer, ParameterContext>> batchParams = new ArrayList<>();
+        final LoadDataValuesBatchVisitor loadDataValuesBatchVisitor =
+            new LoadDataValuesBatchVisitor(valueIndices, parameterSettings, batchParams);
+        newSqlInsert = loadDataValuesBatchVisitor.visit(newSqlInsert);
+
         return new Pair<>(newSqlInsert, batchParams);
     }
 }

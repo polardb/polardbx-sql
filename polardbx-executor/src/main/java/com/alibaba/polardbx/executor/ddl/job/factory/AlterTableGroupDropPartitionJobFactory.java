@@ -45,12 +45,7 @@ import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 /**
  * @author luoyanxin
@@ -60,7 +55,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
     public AlterTableGroupDropPartitionJobFactory(DDL ddl, AlterTableGroupDropPartitionPreparedData preparedData,
                                                   Map<String, AlterTableGroupItemPreparedData> tablesPrepareData,
                                                   Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap,
-                                                  Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
+                                                  Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap,
                                                   Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                   Map<String, Map<String, Set<String>>> sourceTablesTopology,
                                                   Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
@@ -161,7 +156,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
 
         AlterTableGroupDropPartitionBuilder alterTableGroupDropPartitionBuilder =
             new AlterTableGroupDropPartitionBuilder(ddl, preparedData, executionContext);
-        Map<String, Map<String, List<List<String>>>> tablesTopologyMap =
+        Map<String, TreeMap<String, List<List<String>>>> tablesTopologyMap =
             alterTableGroupDropPartitionBuilder.build().getTablesTopologyMap();
         Map<String, Map<String, Set<String>>> targetTablesTopology =
             alterTableGroupDropPartitionBuilder.getTargetTablesTopology();
@@ -186,7 +181,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
         BaseDdlTask tableGroupSyncTask = null;
         boolean emptyTaskAdded = false;
 
-        for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
+        for (Map.Entry<String, TreeMap<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             AlterTableDropPartitionSubTaskJobFactory subTaskJobFactory =
                 new AlterTableDropPartitionSubTaskJobFactory(ddl,
                     (AlterTableGroupDropPartitionPreparedData) preparedData,
@@ -201,7 +196,8 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
                     taskType,
                     executionContext);
             ExecutableDdlJob subDdlJob = subTaskJobFactory.create();
-            List<DdlTask> subTasks = subDdlJob.getAllTasks();
+            List<DdlTask> subTasks = subTaskJobFactory.getAllTaskList();
+
             DdlTask dropUselessTableTask =
                 ComplexTaskFactory.CreateDropUselessPhyTableTask(schemaName, entry.getKey(),
                     getTheDeletedPartitionsLocation((AlterTableGroupDropPartitionPreparedData) preparedData,
@@ -209,10 +205,14 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
                     null, executionContext);
             executableDdlJob.getExcludeResources().addAll(subDdlJob.getExcludeResources());
             executableDdlJob.addTaskRelationship(tailTask, subTasks.get(0));
-            executableDdlJob.addTaskRelationship(subTasks.get(0), subTasks.get(1));
-            executableDdlJob.addTaskRelationship(subTasks.get(1), subTasks.get(2));
+            DdlTask subTailTask = subTasks.get(0);
+            if (executionContext.getParamManager().getBoolean(ConnectionParams.DISABLE_PARTITION_BEFORE_DROP)) {
+                executableDdlJob.addTaskRelationship(subTasks.get(0), subTasks.get(1));
+                executableDdlJob.addTaskRelationship(subTasks.get(1), subTasks.get(2));
+                subTailTask = subTasks.get(2);
+            }
             if (subTaskJobFactory.getCdcTableGroupDdlMarkTask() != null) {
-                executableDdlJob.addTaskRelationship(subTasks.get(subTasks.size() - 1),
+                executableDdlJob.addTaskRelationship(subTailTask,
                     subTaskJobFactory.getCdcTableGroupDdlMarkTask());
                 if (!emptyTaskAdded) {
                     executableDdlJob.addTaskRelationship(subTaskJobFactory.getCdcTableGroupDdlMarkTask(),
@@ -233,7 +233,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
                 executableDdlJob.addTaskRelationship(tableGroupSyncTask, dropUselessTableTask);
                 emptyTaskAdded = true;
             } else {
-                executableDdlJob.addTaskRelationship(subTasks.get(subTasks.size() - 1),
+                executableDdlJob.addTaskRelationship(subTailTask,
                     bringUpAlterTableGroupTasks.get(0));
             }
             executableDdlJob.labelAsTail(dropUselessTableTask);

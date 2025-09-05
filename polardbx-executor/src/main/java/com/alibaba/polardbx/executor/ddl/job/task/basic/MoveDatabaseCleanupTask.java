@@ -55,10 +55,12 @@ public class MoveDatabaseCleanupTask extends BaseDdlTask {
         List<String> uselessGroupList = new ArrayList<>();
         ComplexTaskOutlineAccessor complexTaskOutlineAccessor = new ComplexTaskOutlineAccessor();
         complexTaskOutlineAccessor.setConnection(metaDbConnection);
-        complexTaskOutlineAccessor
+        /*complexTaskOutlineAccessor
             .deleteScaleOutSubTaskByJobId(getJobId(), ComplexTaskMetaManager.ComplexTaskType.MOVE_DATABASE.getValue());
+
         complexTaskOutlineAccessor
-            .invalidScaleOutTaskByJobId(getJobId(), ComplexTaskMetaManager.ComplexTaskType.MOVE_DATABASE.getValue());
+            .invalidScaleOutTaskByJobId(getJobId(), ComplexTaskMetaManager.ComplexTaskType.MOVE_DATABASE.getValue());*/
+        complexTaskOutlineAccessor.deleteComplexTaskByJobId(schemaName, getJobId());
         virtualStorageOutDatedGroup.put(VIRTUAL_STORAGE_ID, uselessGroupList);
         for (Map.Entry<String, String> entry : sourceTargetGroupMap.entrySet()) {
             virtualStorageOutDatedGroup.get(VIRTUAL_STORAGE_ID).add(entry.getValue());

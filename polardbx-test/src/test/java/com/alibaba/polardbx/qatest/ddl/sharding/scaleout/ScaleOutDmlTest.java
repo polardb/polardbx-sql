@@ -472,6 +472,16 @@ public class ScaleOutDmlTest extends ScaleOutBaseTest {
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8  dbpartition by hash(`pk`) tbpartition by hash(`num2`) tbpartitions 4";
         createTables.add(createTable);
 
+        createTable = "CREATE TABLE t_order_with_local_partition (\n"
+            + "    id bigint,\n"
+            + "    gmt_modified DATETIME PRIMARY KEY NOT NULL\n"
+            + ")\n"
+            + "dbpartition by hash(id)\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "INTERVAL 1 MONTH\n"
+            + "EXPIRE AFTER 12;";
+        createTables.add(createTable);
+
         return createTables;
     }
 }

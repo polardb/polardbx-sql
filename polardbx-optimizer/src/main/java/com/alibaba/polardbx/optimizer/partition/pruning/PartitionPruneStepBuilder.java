@@ -31,6 +31,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
+import com.alibaba.polardbx.optimizer.partition.FullScanTableBlackListManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
@@ -167,10 +168,15 @@ public class PartitionPruneStepBuilder {
                                                                               ExecutionContext ec,
                                                                               ExecutionContext[] newEcOutput,
                                                                               PartitionInfo partInfo,
+                                                                              PartKeyLevel targetPartLevel,
                                                                               RelDataType tbRelRowType) {
         RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
 
-        List<ColumnMeta> partColFldList = partInfo.getPartitionBy().getPartitionFieldList();
+        PartitionByDefinition partBy = partInfo.getPartitionBy();
+        if (targetPartLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            partBy = partBy.getSubPartitionBy();
+        }
+        List<ColumnMeta> partColFldList = partBy.getPartitionFieldList();
 
         /**
          * map.key: colName
@@ -1623,9 +1629,11 @@ public class PartitionPruneStepBuilder {
                                                                    RelDataType relRowType,
                                                                    RexNode partPredInfo,
                                                                    ExecutionContext ec) {
-
+        PartitionPruneStep partStepRs = null;
         if (partPredInfo == null) {
-            return genFullScanPruneStepInfoInner(partInfo, partInfo.getPartitionBy().getPhysicalPartLevel(), true);
+            partStepRs =
+                genFullScanPruneStepInfoInner(partInfo, partInfo.getPartitionBy().getPhysicalPartLevel(), true);
+            return partStepRs;
         }
 
         AtomicInteger constExprIdGenerator = new AtomicInteger(0);
@@ -1655,10 +1663,11 @@ public class PartitionPruneStepBuilder {
                 new PartitionPruneSubPartStepOr(partInfo.getPartitionBy(), subPartPruneStep);
             PartitionPruneSubPartStepAnd subPartStepAnd =
                 new PartitionPruneSubPartStepAnd(partPruneStep, subPartStepOr);
-            return subPartStepAnd;
+            partStepRs = subPartStepAnd;
         } else {
-            return partPruneStep;
+            partStepRs = partPruneStep;
         }
+        return partStepRs;
     }
 
     /**

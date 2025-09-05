@@ -16,11 +16,13 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.memory.FieldMemoryCounter;
 import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
+import org.openjdk.jol.util.VMSupport;
 
 import java.util.Arrays;
 import java.util.Map;
@@ -37,6 +39,8 @@ public class EnumBlock extends AbstractCommonBlock {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(EnumBlock.class).instanceSize();
 
     private int[] offsets;
+
+    @FieldMemoryCounter(value = false)
     private final Map<String, Integer> enumValues;
     private char[] data;
 
@@ -229,8 +233,11 @@ public class EnumBlock extends AbstractCommonBlock {
 
     @Override
     public void updateSizeInfo() {
-        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data) + sizeOf(offsets);
-        elementUsedBytes = Byte.BYTES * positionCount + sizeOf(data) + Integer.BYTES * positionCount;
+        elementUsedBytes = INSTANCE_SIZE
+            + VMSupport.align((int) sizeOf(isNull))
+            + VMSupport.align((int) sizeOf(data))
+            + VMSupport.align((int) sizeOf(offsets));
+        estimatedSize = elementUsedBytes;
     }
 }
 

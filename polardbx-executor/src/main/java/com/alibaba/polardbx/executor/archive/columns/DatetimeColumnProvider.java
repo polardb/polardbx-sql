@@ -24,7 +24,6 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
-import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.archive.pruning.OssAggPruner;
 import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
@@ -33,7 +32,6 @@ import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.sql.SqlKind;
@@ -44,7 +42,7 @@ import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
-import java.sql.Timestamp;
+import java.nio.ByteBuffer;
 import java.sql.Types;
 import java.time.ZoneId;
 import java.util.Map;
@@ -142,7 +140,7 @@ class DatetimeColumnProvider implements ColumnProvider<Long> {
             blockBuilder.appendNull();
         } else {
             final int scale = dataType.getScale();
-            byte[] bytes = row.getBytes(columnId);
+            ByteBuffer bytes = row.getBytes(columnId);
 
             long result = ColumnProvider.convertDateTimeToLong(bytes, scale);
 

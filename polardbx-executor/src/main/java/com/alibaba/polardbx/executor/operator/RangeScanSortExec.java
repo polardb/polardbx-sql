@@ -7,6 +7,7 @@ import com.alibaba.polardbx.executor.chunk.BlackHoleBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
+import com.alibaba.polardbx.executor.mpp.planner.RangeScanUtils;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -19,35 +20,71 @@ import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.core.Sort;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_EXECUTE_ON_MYSQL;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_EXECUTOR;
 
-public class RangeScanSortExec extends TableScanSortExec {
+public class RangeScanSortExec extends TableScanExec {
+
+    protected long fetched;
+    protected long skipped;
 
     public RangeScanSortExec(LogicalView logicalView, ExecutionContext context, TableScanClient scanClient,
                              long maxRowCount, long skipped, long fetched, SpillerFactory spillerFactory,
                              List<DataType> dataTypeList) {
-        super(logicalView, context, scanClient, maxRowCount, skipped, fetched, spillerFactory, dataTypeList);
+        super(logicalView, context, scanClient, maxRowCount, spillerFactory, dataTypeList);
+        this.skipped = skipped;
+        this.fetched = fetched;
     }
 
     @Override
     void doOpen() {
-        checkStatus();
-        reorderSplits();
-        if (fetched > 0) {
-            realOpen();
+        if (fetched <= 0) {
+            return;
         }
+        try {
+            checkStatus();
+            reorderSplits();
+
+            if (dataTypes == null) {
+                createDataTypes();
+                createBlockBuilders();
+            }
+            if (scanClient.getSplitNum() != 0) {
+                scanClient.executePrefetchThread(false);
+            } else {
+                log.warn(
+                    "TableScanExec open with empty splits, logicalView=" + logicalView.getRelatedId() + ",tableName="
+                        + logicalView.getTableNames());
+            }
+        } catch (Throwable e) {
+            TddlRuntimeException exception =
+                new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_MYSQL, e, e.getMessage());
+            this.isFinish = true;
+            scanClient.setException(exception);
+            scanClient.throwIfFailed();
+        }
+    }
+
+    @Override
+    public void addSplit(Split split) {
+        if (fetched > 0) {
+            JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
+            jdbcSplit.setLimit(skipped + fetched);
+        }
+        super.addSplit(split);
     }
 
     /**
      * Reorders splits. This method sorts splits based on the logical table name and schema,
      * and then updates the sorted list in the scanClient.
      */
-    private void reorderSplits() {
+    protected void reorderSplits() {
         List<Split> splitList = scanClient.splitList;
         String logicalTableName = logicalView.getTableNames().get(0);
         String logicalSchema = logicalView.getSchemaName();
@@ -71,7 +108,7 @@ public class RangeScanSortExec extends TableScanSortExec {
      * 3. Verifies that the logical view contains only one table.
      * If any check fails, a TddlRuntimeException is thrown.
      */
-    private void checkStatus() {
+    protected void checkStatus() {
         // Check if there are no more splits to process
         if (!scanClient.noMoreSplit()) {
             throw new TddlRuntimeException(ERR_EXECUTE_ON_MYSQL, "RangeScanSortExec input split not ready");
@@ -83,16 +120,8 @@ public class RangeScanSortExec extends TableScanSortExec {
         if (!allJdbcSplit) {
             throw new TddlRuntimeException(ERR_EXECUTOR, "all splits should be jdbc split under range scan mode");
         }
-        // Check if the logical view contains exactly one table
-        if (logicalView.getTableNames().size() != 1) {
-            throw new TddlRuntimeException(ERR_EXECUTOR,
-                "logical view should contains only one table under range scan mode");
-        }
 
-        boolean allSplitHasOnePhyTable = splitList.stream().allMatch(split -> {
-            JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
-            return jdbcSplit.getTableNames().size() == 1 && jdbcSplit.getTableNames().get(0).size() == 1;
-        });
+        boolean allSplitHasOnePhyTable = RangeScanUtils.checkSplit(splitList);
         if (!allSplitHasOnePhyTable) {
             throw new TddlRuntimeException(ERR_EXECUTOR,
                 "all splits should has one physical table under range scan mode");
@@ -108,8 +137,8 @@ public class RangeScanSortExec extends TableScanSortExec {
      * @return A list of integer representing the physical partition IDs.
      * @throws TddlRuntimeException If no partition information is found in range scan mode.
      */
-    private static List<Integer> getPhysicalPartitions(List<Split> splitList, String logicalSchema,
-                                                       String logicalTableName) {
+    private List<Integer> getPhysicalPartitions(List<Split> splitList, String logicalSchema,
+                                                String logicalTableName) {
         // Convert the splitList to JdbcSplits and extract the physical schema and table names as pairs
         List<Pair<String, String>> phySchemaAndPhyTables =
             splitList.stream().map(split -> (JdbcSplit) split.getConnectorSplit())
@@ -118,7 +147,8 @@ public class RangeScanSortExec extends TableScanSortExec {
 
         // Calculate the physical partition numbers using the logical schema, logical table, and extracted pairs, then collect them
         List<Integer> partitions = phySchemaAndPhyTables.stream()
-            .map(pair -> PartitionUtils.calcPartition(logicalSchema, logicalTableName, pair.getKey(), pair.getValue()))
+            .map(pair ->
+                PartitionUtils.calcPartition(logicalSchema, logicalTableName, pair.getKey(), pair.getValue(), context))
             .collect(Collectors.toList());
 
         // Check if any partition was not found, and if so, throw an exception
@@ -166,7 +196,18 @@ public class RangeScanSortExec extends TableScanSortExec {
      * @return Chunk A Chunk containing the fetched data, or null if no data is available.
      */
     @Override
-    protected Chunk fetchSortedChunk() {
+    protected Chunk fetchChunk() {
+
+        if (fetched <= 0) {
+            isFinish = true;
+        }
+
+        if (isFinish) {
+            //stop early, so close the connection in time.
+            scanClient.cancelAllThreads(false);
+            return null;
+        }
+
         // Try to get a data chunk from the current result set. If it's null, attempt to pop a new one from the scan client.
         if (consumeResultSet == null) {
             consumeResultSet = scanClient.popResultSet();
@@ -234,7 +275,7 @@ public class RangeScanSortExec extends TableScanSortExec {
                             continue;
                         }
                     }
-                    appendRow(consumeResultSet);
+                    ResultSetCursorExec.buildOneRow(consumeResultSet.current(), dataTypes, blockBuilders, context);
                     count++;
                     fetched--;
                 }

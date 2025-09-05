@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.bvt.sql.mysql.insert;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplaceStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
@@ -38,10 +39,41 @@ public class MySqlInsertTest_46 extends TestCase {
 
         MySqlInsertStatement insertStmt = (MySqlInsertStatement) stmt;
         assertEquals("INSERT INTO do_pb_test (cid, 48_ddd, 24_fff)\n" +
-                "VALUES (1, 1.1, 1.2);", insertStmt.toString());
+            "VALUES (1, 1.1, 1.2);", insertStmt.toString());
 
-        assertEquals(FnvHash.hashCode64("24_fff"), ((SQLIdentifierExpr) insertStmt.getColumns().get(2)).nameHashCode64());
+        assertEquals(FnvHash.hashCode64("24_fff"),
+            ((SQLIdentifierExpr) insertStmt.getColumns().get(2)).nameHashCode64());
 
+    }
+
+    public void testInsertArgsInFunction() throws Exception {
+        String sql = "insert into test (cid, 48_ddd, 24_fff ) values (1, null, now());";
+        MySqlInsertStatement insertStmt = (MySqlInsertStatement)parseInsert(sql);
+        assertTrue(!insertStmt.isHasArgsInFunction());
+
+        sql = "insert into test (cid, 48_ddd, 24_fff ) values (1, null, now(3));";
+        insertStmt = (MySqlInsertStatement)parseInsert(sql);
+        assertTrue(insertStmt.isHasArgsInFunction());
+
+        sql = "insert into test (cid, 48_ddd, fff ) values (1, (select 1), now());";
+        insertStmt = (MySqlInsertStatement)parseInsert(sql);
+        assertTrue(insertStmt.isHasArgsInFunction());
+
+        sql = "   INSERT INTO table_name (column1, column2, column3)\n"
+            + "   VALUES (1, null, now())\n"
+            + "   ON DUPLICATE KEY UPDATE column1=VALUES(column1), column2=VALUES(column2);\n";
+        insertStmt = (MySqlInsertStatement)parseInsert(sql);
+        assertTrue(!insertStmt.isHasArgsInFunction());
+
+        sql = "replace into test (cid, 48_ddd, fff ) values (1, (select 1), now());";
+        SQLReplaceStatement replaceStmt = (SQLReplaceStatement) parseInsert(sql);
+        assertTrue(replaceStmt.isHasArgsInFunction());
+    }
+
+    private SQLStatement parseInsert(String sql) {
+        MySqlStatementParser parser = new MySqlStatementParser(sql, false, true);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        return statementList.get(0);
     }
 
 }

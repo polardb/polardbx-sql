@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.node.StorageStatus;
 import com.alibaba.polardbx.gms.node.StorageStatusManager;
+import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.google.common.base.Joiner;
 
 import java.util.ArrayList;
@@ -107,6 +108,94 @@ public class MasterSlaveGroupDataSourceHolder implements GroupDataSourceHolder {
             return selectLowDelaySlaveDataSource(false);
         }
         return masterDataSource;
+    }
+
+    @Override
+    public Pair<Boolean, XDataSource> isChangingLeader(MasterSlave masterSlave) {
+        try {
+            switch (masterSlave) {
+            case MASTER_ONLY:
+            case READ_WEIGHT:
+                if (masterDataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                    final XDataSource unwrap = masterDataSource.getDataSource().unwrap(XDataSource.class);
+                    return Pair.of(unwrap.getClientPool().isChangingLeader(), unwrap);
+                }
+                return Pair.of(false, null);
+
+            case FOLLOWER_ONLY:
+                if (existFollower) {
+                    for (final TAtomDataSource dataSource : followerDataSources) {
+                        if (dataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                            final XDataSource unwrap = dataSource.getDataSource().unwrap(XDataSource.class);
+                            if (unwrap.getClientPool().isChangingLeader()) {
+                                return Pair.of(true, unwrap);
+                            }
+                        }
+                    }
+                    return Pair.of(false, null);
+                }
+                if (masterDataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                    final XDataSource unwrap = masterDataSource.getDataSource().unwrap(XDataSource.class);
+                    return Pair.of(unwrap.getClientPool().isChangingLeader(), unwrap);
+                }
+                return Pair.of(false, null);
+
+            case SLAVE_FIRST:
+                if (GeneralUtil.isEmpty(slaveDataSources)) {
+                    if (masterDataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                        final XDataSource unwrap = masterDataSource.getDataSource().unwrap(XDataSource.class);
+                        return Pair.of(unwrap.getClientPool().isChangingLeader(), unwrap);
+                    }
+                    return Pair.of(false, null);
+                }
+                for (final TAtomDataSource dataSource : slaveDataSources) {
+                    if (dataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                        final XDataSource unwrap = dataSource.getDataSource().unwrap(XDataSource.class);
+                        if (unwrap.getClientPool().isChangingLeader()) {
+                            return Pair.of(true, unwrap);
+                        }
+                    }
+                }
+                if (masterDataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                    final XDataSource unwrap = masterDataSource.getDataSource().unwrap(XDataSource.class);
+                    return Pair.of(unwrap.getClientPool().isChangingLeader(), unwrap);
+                }
+                return Pair.of(false, null);
+
+            case SLAVE_ONLY:
+                if (GeneralUtil.isEmpty(slaveDataSources)) {
+                    if (masterDataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                        final XDataSource unwrap = masterDataSource.getDataSource().unwrap(XDataSource.class);
+                        return Pair.of(unwrap.getClientPool().isChangingLeader(), unwrap);
+                    }
+                    return Pair.of(false, null);
+                }
+                for (final TAtomDataSource dataSource : slaveDataSources) {
+                    if (dataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                        final XDataSource unwrap = dataSource.getDataSource().unwrap(XDataSource.class);
+                        if (unwrap.getClientPool().isChangingLeader()) {
+                            return Pair.of(true, unwrap);
+                        }
+                    }
+                }
+                return Pair.of(false, null);
+
+            case LOW_DELAY_SLAVE_ONLY:
+                for (final TAtomDataSource dataSource : slaveDataSources) {
+                    if (dataSource.getDataSource().isWrapperFor(XDataSource.class)) {
+                        final XDataSource unwrap = dataSource.getDataSource().unwrap(XDataSource.class);
+                        if (unwrap.getClientPool().isChangingLeader()) {
+                            return Pair.of(true, unwrap);
+                        }
+                    }
+                }
+            default:
+                return Pair.of(false, null);
+            }
+        } catch (Exception e) {
+            logger.error("get isChangingLeader error", e);
+            return Pair.of(false, null);
+        }
     }
 
     private TAtomDataSource selectSlaveDataSource() {
