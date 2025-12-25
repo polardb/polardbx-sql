@@ -165,6 +165,7 @@ public final class TddlLauncher {
 
         String metaDatabase = config.getMetaDbName();
         String innerUser = config.getMetaDbUser();
+        String metaDbProp = config.getMetaDbProp();
         String innerPasswd = PasswdUtil.genRandomPasswd(12);
         String innerPasswdEnc = PasswdUtil.encrypt(innerPasswd);
         config.setMetaDbPasswd(PasswdUtil.encrypt(innerPasswd));
@@ -182,7 +183,7 @@ public final class TddlLauncher {
             metaDbAddr.getKey(),
             metaDbAddr.getValue(),
             rootDb,
-            "",
+            metaDbProp,
             rootUser,
             rootPasswd)) {
 
@@ -230,7 +231,7 @@ public final class TddlLauncher {
         String sqlCreateUser = "CREATE USER %s IDENTIFIED WITH mysql_native_password BY '%s'";
         String sqlGrantPrivileges = "GRANT ALL PRIVILEGES ON *.* TO %s";
         String innerUser = config.getMetaDbUser();
-
+        String metaDbProp = config.getMetaDbProp();
         Pair<String, Integer> ipPort = AddressUtils.getIpPortPairByAddrStr(addr);
 
         String rootDb = "mysql";
@@ -241,7 +242,7 @@ public final class TddlLauncher {
             ipPort.getKey(),
             ipPort.getValue(),
             rootDb,
-            "",
+            metaDbProp,
             rootUser,
             rootPasswd)) {
 
